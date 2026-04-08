@@ -4,7 +4,7 @@ import { z } from "zod"; // Zod for validation
 import { createClient } from "@supabase/supabase-js";
 import { PUBLIC_SUPABASE_URL } from "$env/static/public";
 import { SUPABASE_SERVICE_ROLE_KEY } from "$env/static/private";
-import { applyRoleBasedCollegeFilter } from "$lib/server/security";
+import { generateReceiptNumber } from "$lib/server/receipt";
 
 function extractLinkedProfileFields(
   formData: any,
@@ -837,12 +837,74 @@ export const actions: Actions = {
       return fail(400, { message: "Invalid payment details.", error: true });
     }
 
+    // Fetch application details to get course and cycle info for receipt generation
+    const { data: application, error: appError } = await supabase
+      .from("applications")
+      .select(`
+        id,
+        course_id,
+        cycle_id,
+        form_type,
+        courses(college_id),
+        admission_cycles(academic_year_id, academic_years(name))
+      `)
+      .eq("id", application_id)
+      .single();
+
+    if (appError || !application) {
+      console.error("Error fetching application:", appError?.message);
+      return fail(404, { message: "Application not found.", error: true });
+    }
+
+    // Generate receipt number
+    let receipt_number: string;
+    try {
+      const academicYearId = application.admission_cycles?.academic_year_id;
+      const yearName = application.admission_cycles?.academic_years?.name;
+      const collegeId = application.courses?.college_id;
+      const courseId = application.course_id;
+      const paymentType = "application_fee";
+
+      if (!academicYearId || !collegeId || !courseId) {
+        console.error("Missing required parameters for receipt generation:", {
+          academicYearId,
+          collegeId,
+          courseId
+        });
+        receipt_number = `REC-${Date.now()}`;
+      } else {
+        console.log("Generating receipt number with params:", {
+          paymentType,
+          academicYearId,
+          yearName,
+          collegeId,
+          courseId
+        });
+
+        receipt_number = await generateReceiptNumber(
+          supabase,
+          paymentType,
+          academicYearId,
+          yearName,
+          collegeId,
+          courseId
+        );
+
+        console.log("Generated receipt number:", receipt_number);
+      }
+    } catch (e) {
+      console.error("Error generating receipt number:", e);
+      // Fallback to timestamp-based receipt number
+      receipt_number = `REC-${Date.now()}`;
+    }
+
     // Record Payment
     const { error: payError } = await supabase.from("payments").insert({
       application_id,
       amount,
       payment_type: "application_fee",
       transaction_id: transaction_ref, // Use reference as transaction ID
+      receipt_number, // Add generated receipt number
       status: "completed", // Manual payments are considered completed immediately
       payment_date: new Date().toISOString(),
       // Could add payment_mode to metadata or a new column if needed, but for now strict schema match.

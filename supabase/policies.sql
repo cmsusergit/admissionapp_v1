@@ -138,6 +138,8 @@ CREATE POLICY "Payments: Students own read and insert" ON public.payments FOR AL
 ) WITH CHECK (EXISTS (SELECT 1 FROM public.applications WHERE id = application_id AND student_id = auth.uid()));
 -- Fee collectors can view all payments and update status
 CREATE POLICY "Payments: Fee Collector view all and update" ON public.payments FOR ALL USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'fee_collector'));
+-- Admission Officers can view and update payment records
+CREATE POLICY "Payments: Adm Officer access" ON public.payments FOR ALL USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'adm_officer')) WITH CHECK (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'adm_officer'));
 -- Admins can view all payments
 CREATE POLICY "Payments: Admin can view all" ON public.payments FOR SELECT USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin'));
 

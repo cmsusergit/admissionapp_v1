@@ -7,8 +7,11 @@ node_modules/
 dist/
 build/
 out/
+.svelte-kit/generated/
+.svelte-kit/output/
+.svelte-kit/prerendered/
 
-# IDE
+.svelte-kit/
 .vscode/
 .idea/
 *.swp

@@ -208,6 +208,7 @@
 		"src/routes/+layout.server.ts"
 	],
 	"/deo/undertaking/[id]": [
+		"src/routes/deo/undertaking/[id]/+page.ts",
 		"src/routes/deo/undertaking/[id]/+page.server.ts",
 		"src/routes/+layout.server.ts"
 	],

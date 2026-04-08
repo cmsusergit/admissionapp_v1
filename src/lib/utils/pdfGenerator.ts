@@ -1,5 +1,5 @@
-import pdfMake from "pdfmake/build/pdfmake";
-import * as pdfFonts from "pdfmake/build/vfs_fonts";
+import pdfMake from "pdfmake/build/pdfmake.js";
+import * as pdfFonts from "pdfmake/build/vfs_fonts.js";
 
 (pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts;
 

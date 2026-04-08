@@ -49,14 +49,36 @@
     let loadingOptions: Record<string, boolean> = {};
     let activeTabId: string = '';
     
+    // Debug: Track component initialization
+    let componentId = Math.random().toString(36).substring(7);
+    
     // State for Select Options (dynamic loading)
     let dynamicOptions: Record<string, { value: string; label: string }[]> = {};
     
     // Compute field key helper
     const getKey = (f: FormField) => f.key || f.name || '';
-
+    
     // Initialize visibility and dynamic options
     let visibleFields: Record<string, boolean> = {};
+    
+    onMount(() => {
+        console.debug(`[DynamicForm ${componentId}] Mounted with ${schema.fields?.length || 0} fields`);
+        return () => {
+            console.debug(`[DynamicForm ${componentId}] Destroyed`);
+        };
+    });
+    
+    $: {
+        if (schema.fields?.length > 0) {
+            console.debug(`[DynamicForm ${componentId}] Schema updated: ${schema.fields.length} fields`);
+            // Check for duplicate keys in the schema
+            const fieldKeys = schema.fields.map(f => getKey(f));
+            const duplicateKeys = fieldKeys.filter((key, index) => fieldKeys.indexOf(key) !== index);
+            if (duplicateKeys.length > 0) {
+                console.warn(`[DynamicForm ${componentId}] WARNING - Duplicate field keys in database schema:`, [...new Set(duplicateKeys)]);
+            }
+        }
+    }
 
     // Reactivity for initializing formData for merit fields
     $: {
@@ -334,11 +356,12 @@
             {#each normalizedSchema.sections as section}
                 <div class="tab-pane fade {activeTabId === section.id ? 'show active' : ''}" style="display: {activeTabId === section.id ? 'block' : 'none'}">
                     <div class="row">
-                        {#each getFieldsForSection(section.id) as field (getKey(field))}
+                        {#each getFieldsForSection(section.id) as field, fieldIndex (getKey(field))}
                             {@const key = getKey(field)}
+                            {@const fieldId = `${section.id}-${key}-${fieldIndex}`} 
                             {#if visibleFields[key]}
                                 <div class="{`col-md-${field.col || 12}`} mb-3">
-                                    <label for={key} class="form-label">
+                                    <label for={fieldId} class="form-label">
                                         {field.label}
                                         {#if field.required}<span class="text-danger">*</span>{/if}
                                     </label>
@@ -349,7 +372,7 @@
                                                 <input
                                                     type="number"
                                                     class="form-control"
-                                                    id="{key}-value"
+                                                    id="{fieldId}-value"
                                                     name="{key}-value"
                                                     placeholder="Score"
                                                     bind:value={formData[key].value}
@@ -361,7 +384,7 @@
                                                 <input
                                                     type="number"
                                                     class="form-control"
-                                                    id="{key}-max-score"
+                                                    id="{fieldId}-max-score"
                                                     name="{key}-max-score"
                                                     placeholder="Max Score"
                                                     bind:value={formData[key].max_score}
@@ -374,7 +397,7 @@
                                         <input
                                             type={field.type}
                                             class="form-control"
-                                            id={key}
+                                            id={fieldId}
                                             name={key}
                                             bind:value={formData[key]}
                                             on:input={() => clearError(key)}
@@ -382,7 +405,7 @@
                                     {:else if field.type === 'textarea'}
                                         <textarea
                                             class="form-control"
-                                            id={key}
+                                            id={fieldId}
                                             name={key}
                                             bind:value={formData[key]}
                                             on:input={() => clearError(key)}
@@ -391,7 +414,7 @@
                                     {:else if field.type === 'select'}
                                         <select
                                             class="form-select"
-                                            id={key}
+                                            id={fieldId}
                                             name={key}
                                             bind:value={formData[key]}
                                             on:change={() => clearError(key)}
@@ -487,12 +510,13 @@
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        {#each getFieldsForSection(section.id) as field (getKey(field))}
+                        {#each getFieldsForSection(section.id) as field, fieldIndex (getKey(field))}
                             <!-- FIELD RENDER LOGIC START (Duplicated) -->
                             {@const key = getKey(field)}
+                            {@const fieldId = `${section.id}-${key}-${fieldIndex}`} 
                             {#if visibleFields[key]}
                                 <div class="{`col-md-${field.col || 12}`} mb-3">
-                                    <label for={key} class="form-label">
+                                    <label for={fieldId} class="form-label">
                                         {field.label}
                                         {#if field.required}<span class="text-danger">*</span>{/if}
                                     </label>
@@ -503,7 +527,7 @@
                                                 <input
                                                     type="number"
                                                     class="form-control"
-                                                    id="{key}-value"
+                                                    id="{fieldId}-value"
                                                     name="{key}-value"
                                                     placeholder="Score"
                                                     bind:value={formData[key].value}
@@ -515,7 +539,7 @@
                                                 <input
                                                     type="number"
                                                     class="form-control"
-                                                    id="{key}-max-score"
+                                                    id="{fieldId}-max-score"
                                                     name="{key}-max-score"
                                                     placeholder="Max Score"
                                                     bind:value={formData[key].max_score}
@@ -528,7 +552,7 @@
                                         <input
                                             type={field.type}
                                             class="form-control"
-                                            id={key}
+                                            id={fieldId}
                                             name={key}
                                             bind:value={formData[key]}
                                             on:input={() => clearError(key)}
@@ -536,7 +560,7 @@
                                     {:else if field.type === 'textarea'}
                                         <textarea
                                             class="form-control"
-                                            id={key}
+                                            id={fieldId}
                                             name={key}
                                             bind:value={formData[key]}
                                             on:input={() => clearError(key)}
@@ -545,7 +569,7 @@
                                     {:else if field.type === 'select'}
                                         <select
                                             class="form-select"
-                                            id={key}
+                                            id={fieldId}
                                             name={key}
                                             bind:value={formData[key]}
                                             on:change={() => clearError(key)}
@@ -636,12 +660,13 @@
     {:else}
         <!-- List Layout (Legacy) -->
         <div class="row">
-            {#each schema.fields as field (getKey(field))}
+            {#each schema.fields as field, fieldIndex (getKey(field))}
                 <!-- FIELD RENDER LOGIC START (Duplicated) -->
                                             {@const key = getKey(field)}
+                                            {@const fieldId = `${key}-${fieldIndex}`} 
                                 {#if visibleFields[key]}
                                     <div class="{`col-md-${field.col || 12}`} mb-3">
-                                        <label for={key} class="form-label">
+                                        <label for={fieldId} class="form-label">
                                             {field.label}
                                             {#if field.required}<span class="text-danger">*</span>{/if}
                                         </label>
@@ -675,14 +700,14 @@
                                             <input
                                                 type={field.type}
                                                 class="form-control"
-                                                id={key}
+                                                id={fieldId}
                                                 name={key}
                                                 bind:value={formData[key]}
                                                 on:input={() => clearError(key)}
                                             />                        {:else if field.type === 'textarea'}
                             <textarea
                                 class="form-control"
-                                id={key}
+                                id={fieldId}
                                 name={key}
                                 bind:value={formData[key]}
                                 on:input={() => clearError(key)}
@@ -690,7 +715,7 @@
                         {:else if field.type === 'select'}
                             <select
                                 class="form-select"
-                                id={key}
+                                id={fieldId}
                                 name={key}
                                 bind:value={formData[key]}
                                 on:change={() => clearError(key)}
@@ -710,19 +735,19 @@
                                 <input
                                     type="checkbox"
                                     class="form-check-input"
-                                    id={key}
+                                    id={fieldId}
                                     name={key}
                                     bind:checked={formData[key]}
                                     on:change={() => clearError(key)}
                                 />
-                                <label class="form-check-label" for={key}>{field.label}</label>
+                                <label class="form-check-label" for={fieldId}>{field.label}</label>
                             </div>
                         {:else if field.type === 'file'}
                             <div class="input-group">
                                 <input
                                     type="file"
                                     class="form-control"
-                                    id={key}
+                                    id={fieldId}
                                     name={key}
                                     accept="image/*,application/pdf"
                                     on:change={(e) => handleFileUpload(e, key)}

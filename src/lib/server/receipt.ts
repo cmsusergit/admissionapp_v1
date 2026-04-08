@@ -7,10 +7,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export async function generateReceiptNumber(
     supabase: SupabaseClient, 
     paymentType: string, 
-    academicYearId?: string,
+    academicYearId: string,
     yearName?: string, // e.g. "2025-2026" for formatting
-    collegeId?: string,
-    courseId?: string,
+    collegeId: string,
+    courseId: string,
     shortCode?: string // New optional parameter
 ): Promise<string> {
     
@@ -40,34 +40,21 @@ export async function generateReceiptNumber(
     let query = supabase
         .from('receipt_sequences')
         .select('id, current_sequence, prefix')
-        .eq('payment_type', paymentType);
-
-    if (academicYearId) {
-        query = query.eq('academic_year_id', academicYearId);
-    } else {
-        query = query.is('academic_year_id', null);
-    }
-
-    if (collegeId) {
-        query = query.eq('college_id', collegeId);
-    }
-
-    if (courseId) {
-        query = query.eq('course_id', courseId);
-    }
+        .eq('college_id', collegeId)
+        .eq('course_id', courseId)
+        .eq('academic_year_id', academicYearId);
 
     let { data: sequence, error } = await query.maybeSingle();
 
     // 2. Create if missing
     if (!sequence) {
         const payload: any = {
-            payment_type: paymentType,
-            academic_year_id: academicYearId || null,
+            college_id: collegeId,
+            course_id: courseId,
+            academic_year_id: academicYearId,
             prefix: prefix,
             current_sequence: 0
         };
-        if (collegeId) payload.college_id = collegeId;
-        if (courseId) payload.course_id = courseId;
 
         const { data: newSeq, error: createError } = await supabase
             .from('receipt_sequences')

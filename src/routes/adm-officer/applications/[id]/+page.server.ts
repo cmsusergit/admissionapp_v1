@@ -519,6 +519,119 @@ export const actions: Actions = {
     };
   },
 
+  updatePayment: async ({
+    request,
+    locals: { supabase, getAuthenticatedUser, userProfile },
+  }) => {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (
+      !authenticatedUser ||
+      !["adm_officer", "admin"].includes(userProfile?.role || "")
+    ) {
+      throw redirect(303, "/login");
+    }
+
+    const formData = await request.formData();
+    const payment_id = formData.get("payment_id") as string;
+    const receipt_number = ((formData.get("receipt_number") as string) || "").trim();
+    const payment_date = (formData.get("payment_date") as string) || "";
+
+    if (!payment_id) {
+      return fail(400, {
+        message: "Payment ID is required to update payment details.",
+        error: true,
+      });
+    }
+
+    if (!receipt_number) {
+      return fail(400, {
+        message: "Receipt number is required.",
+        error: true,
+      });
+    }
+
+    if (!payment_date) {
+      return fail(400, {
+        message: "Payment date is required.",
+        error: true,
+      });
+    }
+
+    const parsedDate = new Date(payment_date);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return fail(400, {
+        message: "Payment date must be a valid date.",
+        error: true,
+      });
+    }
+
+    if (parsedDate.getTime() > Date.now()) {
+      return fail(400, {
+        message: "Payment date cannot be in the future.",
+        error: true,
+      });
+    }
+
+    const supabaseAdmin = createClient(
+      PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("payments")
+      .select("id")
+      .eq("receipt_number", receipt_number)
+      .neq("id", payment_id)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error("Error checking receipt number uniqueness:", existingError.message);
+      return fail(500, {
+        message: "Error validating receipt number.",
+        error: true,
+      });
+    }
+
+    if (existing) {
+      return fail(400, {
+        message:
+          "Another payment already uses this receipt number. Please use a unique receipt number.",
+        error: true,
+      });
+    }
+
+    const { data: payment, error: paymentFetchError } = await supabaseAdmin
+      .from("payments")
+      .select("id")
+      .eq("id", payment_id)
+      .single();
+
+    if (paymentFetchError || !payment) {
+      return fail(404, { message: "Payment not found.", error: true });
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("payments")
+      .update({
+        receipt_number,
+        payment_date: parsedDate.toISOString(),
+      })
+      .eq("id", payment_id);
+
+    if (updateError) {
+      console.error("Error updating payment:", updateError.message);
+      return fail(500, {
+        message: "Failed to update payment details.",
+        error: true,
+      });
+    }
+
+    return {
+      success: true,
+      message: "Payment receipt number and date updated successfully.",
+    };
+  },
+
   cancelAdmission: async ({
     request,
     locals: { supabase, getAuthenticatedUser, userProfile },

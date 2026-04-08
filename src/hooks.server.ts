@@ -10,7 +10,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 // Bypass ISP DNS blocks (e.g., Reliance Jio) by forcing resolution to Cloudflare IPs
 // We only do this in development mode so production servers use standard DNS.
-if (dev) {
+if (dev && PUBLIC_SUPABASE_URL) {
     const supabaseUrlObj = new URL(PUBLIC_SUPABASE_URL);
     
     // Default known working Cloudflare IP for Supabase
@@ -43,9 +43,15 @@ if (dev) {
         }
         return originalLookup(hostname, options, callback);
     };
+} else if (dev && !PUBLIC_SUPABASE_URL) {
+    console.warn('[Dev] PUBLIC_SUPABASE_URL is not set. Skipping Supabase DNS override.');
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+	if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
+		throw new Error('Missing required public environment variables: PUBLIC_SUPABASE_URL and/or PUBLIC_SUPABASE_ANON_KEY.');
+	}
+
 	event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
 		global: {
 			fetch: event.fetch,

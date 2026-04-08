@@ -34,10 +34,22 @@
     
     let currentApplicationId: string | null = null;
     let applicationFormData: Record<string, any> = {};
+    
+    // Error handling for applicationId loading
+    let applicationLoadError: string | null = null;
+    let isLoadingApplication: boolean = false;
+    let isLoadedFromApplicationId: boolean = false; // Track if we loaded from URL param
+    
+    // Track if we're editing an existing application (vs creating new)
+    let isEditingExistingApplication: boolean = false;
 
     let currentAdmissionFormSchema: any = null;
     let isLoadingSchema = false;
     let loadedStudentProfile: any = null; // Store fetched student profile
+    
+    // Track schema availability
+    let isSchemaAvailable: boolean = true;
+    let schemaErrorMessage: string = '';
 
     // Profile Editing State
     let showEditProfileModal = false;
@@ -152,21 +164,53 @@
                 student.email?.toLowerCase().includes(term));
     });
 
+    // Track previous values to prevent duplicate fetches
+    let prevCourseId = '';
+    let prevCycleId = '';
+    let prevFormType = '';
+    let prevStudentId = '';
+
     // Reactive statement to fetch form schema, student profile, and check for existing application
     $: {
-        if (selectedStudentId) {
+        if (selectedStudentId && selectedStudentId !== prevStudentId) {
+             prevStudentId = selectedStudentId;
              // If student changes, fetch their profile
              if (!loadedStudentProfile || loadedStudentProfile.user_id !== selectedStudentId) {
                  fetchStudentProfile(selectedStudentId);
              }
-        } else {
+        } else if (!selectedStudentId) {
             loadedStudentProfile = null;
+            prevStudentId = '';
         }
 
-        if (selectedCourseId && selectedCycleId && selectedFormType) {
-            loadSchemaAndCheckApp();
-        } else {
-            currentAdmissionFormSchema = null;
+        // Only fetch schema if the combination actually changed
+        const schemaKey = `${selectedCourseId}|${selectedCycleId}|${selectedFormType}`;
+        const prevSchemaKey = `${prevCourseId}|${prevCycleId}|${prevFormType}`;
+        
+        if (schemaKey !== prevSchemaKey) {
+            prevCourseId = selectedCourseId;
+            prevCycleId = selectedCycleId;
+            prevFormType = selectedFormType;
+
+            // Reset editing flag if user manually changed selections
+            if (!isLoadedFromApplicationId) {
+                isEditingExistingApplication = false;
+            }
+
+            if (selectedCourseId && selectedCycleId && selectedFormType) {
+                // If we loaded from applicationId, skip the check since we already have the app data
+                if (isLoadedFromApplicationId) {
+                    isLoadedFromApplicationId = false; // Reset the flag after first use
+                    fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, true); // Allow fallback for existing apps
+                } else {
+                    // When user manually changes form type, don't allow fallback
+                    fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, isEditingExistingApplication);
+                }
+            } else {
+                currentAdmissionFormSchema = null;
+                isSchemaAvailable = true;
+                schemaErrorMessage = '';
+            }
         }
     }
 
@@ -187,7 +231,7 @@
     }
 
     async function loadSchemaAndCheckApp() {
-        await fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType);
+        await fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, isEditingExistingApplication);
         
         // Explicitly pre-fill form data from profile as soon as schema is loaded
         if (currentAdmissionFormSchema && loadedStudentProfile) {
@@ -324,7 +368,7 @@
         }
     }
 
-    async function fetchAdmissionFormSchema(courseId: string, cycleId: string, formType: string) {
+    async function fetchAdmissionFormSchema(courseId: string, cycleId: string, formType: string, allowFallback: boolean = true) {
         isLoadingSchema = true;
         startLoading(); // Show overlay while fetching schema
         // Fetch specific schema for type
@@ -340,10 +384,16 @@
         if (error) {
             console.error('Error fetching admission form schema:', error.message);
             currentAdmissionFormSchema = null;
+            isSchemaAvailable = false;
+            schemaErrorMessage = `Error loading form schema: ${error.message}`;
+            applicationFormData = {}; // Reset form data on error
         } else if (formResult) {
             currentAdmissionFormSchema = formResult.schema_json;
+            isSchemaAvailable = true;
+            schemaErrorMessage = '';
         } else {
-            if (formType !== 'Provisional') {
+            // Schema not found
+            if (allowFallback && formType !== 'Provisional') {
                  const { data: defaultForm, error: defaultError } = await supabase
                     .from('admission_forms')
                     .select('schema_json')
@@ -356,11 +406,19 @@
                 if (defaultForm) {
                     console.warn(`No schema found for ${formType}, using Provisional schema.`);
                     currentAdmissionFormSchema = defaultForm.schema_json;
+                    isSchemaAvailable = true;
+                    schemaErrorMessage = '';
                 } else {
                     currentAdmissionFormSchema = null;
+                    isSchemaAvailable = false;
+                    schemaErrorMessage = `No admission form configuration found for <strong>${formType}</strong> or <strong>Provisional</strong> in the selected course/cycle.`;
+                    applicationFormData = {}; // Reset form data when schema is not available
                 }
             } else {
                 currentAdmissionFormSchema = null;
+                isSchemaAvailable = false;
+                schemaErrorMessage = `No admission form configuration found for <strong>${formType}</strong> in the selected course/cycle. Please contact the administrator to create a form for this seat type.`;
+                applicationFormData = {}; // Reset form data when schema is not available
             }
         }
         isLoadingSchema = false;
@@ -368,28 +426,51 @@
     }
 
     async function fetchExistingApplication(appId: string) {
+        isLoadingApplication = true;
+        applicationLoadError = null;
+        
         const { data: application, error } = await supabase
             .from('applications')
-            .select('form_data, course_id, cycle_id, branch_id, form_type, student_id')
+            .select('form_data, course_id, cycle_id, branch_id, form_type, student_id, status')
             .eq('id', appId)
             .limit(1)
             .maybeSingle();
 
         if (error) {
             console.error('Error fetching existing application:', error.message);
-        } else if (application) {
+            applicationLoadError = `Failed to load application: ${error.message}`;
+            isLoadingApplication = false;
+            return;
+        }
+        
+        if (!application) {
+            applicationLoadError = `Application not found. The applicationId "${appId}" does not exist or you don't have access to it.`;
+            isLoadingApplication = false;
+            return;
+        }
+        
+        try {
             selectedStudentId = application.student_id;
             selectedCourseId = application.course_id;
             selectedCycleId = application.cycle_id;
             selectedBranchId = application.branch_id || '';
             selectedFormType = application.form_type || 'Provisional';
             applicationFormData = application.form_data || {};
+            isLoadedFromApplicationId = true; // Mark that we loaded from URL param
+            isEditingExistingApplication = true; // Mark that we're editing an existing application
 
             // Update search box display
             const student = data.students.find(s => s.id === selectedStudentId);
             if (student) {
                 studentSearchTerm = `${student.full_name} (${student.email})`;
+            } else {
+                console.warn(`Student with ID ${selectedStudentId} not found in data.`);
             }
+        } catch (e) {
+            console.error('Error processing application data:', e);
+            applicationLoadError = 'Failed to process application data. Please try again.';
+        } finally {
+            isLoadingApplication = false;
         }
     }
 
@@ -557,6 +638,22 @@
 <div class="container-fluid">
     <h1 class="mb-4">DEO: Apply on Behalf</h1>
 
+    {#if applicationLoadError}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <strong>Error loading application:</strong> {applicationLoadError}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" on:click={() => applicationLoadError = null}></button>
+        </div>
+    {/if}
+
+    {#if isLoadingApplication}
+        <div class="alert alert-info">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            Loading application details...
+        </div>
+    {/if}
+
     {#if form?.message}
         <div class="alert {form.error ? 'alert-danger' : 'alert-success'} alert-dismissible fade show" role="alert">
             {form.message}
@@ -579,7 +676,7 @@
                         placeholder="Type name or email..." 
                         bind:value={studentSearchTerm}
                         on:focus={() => isStudentListExpanded = true}
-                        disabled={!!currentApplicationId}
+                        disabled={!!currentApplicationId || isLoadingApplication}
                         autocomplete="off"
                     />
                     {#if selectedStudentId && !currentApplicationId}
@@ -669,7 +766,7 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label for="course-select" class="form-label">Course</label>
-                        <select class="form-select" id="course-select" bind:value={selectedCourseId} disabled={!!currentApplicationId}>
+                        <select class="form-select" id="course-select" bind:value={selectedCourseId} disabled={!!currentApplicationId || isLoadingApplication}>
                             <option value="">Select a Course</option>
                             {#each data.courses as course}
                                 <option value={course.id}>{course.name} ({course.colleges?.name})</option>
@@ -679,7 +776,7 @@
 
                     <div class="col-md-6 mb-3">
                         <label for="cycle-select" class="form-label">Admission Cycle</label>
-                        <select class="form-select" id="cycle-select" bind:value={selectedCycleId} disabled={!!currentApplicationId}>
+                        <select class="form-select" id="cycle-select" bind:value={selectedCycleId} disabled={!!currentApplicationId || isLoadingApplication}>
                             <option value="">Select an Admission Cycle</option>
                             {#each data.availableCycles as cycle}
                                 <option value={cycle.id}>{cycle.name} ({cycle.academic_years?.name})</option>
@@ -692,7 +789,7 @@
                     <!-- Form Type Selection -->
                     <div class="col-md-6 mb-3">
                         <label for="form-type-select" class="form-label">Form Type</label>
-                        <select class="form-select" id="form-type-select" bind:value={selectedFormType}>
+                        <select class="form-select" id="form-type-select" bind:value={selectedFormType} disabled={isEditingExistingApplication}>
                             {#if data.formTypes}
                                 {#each data.formTypes as ft}
                                     <option value={ft.name}>{ft.name}</option>
@@ -701,6 +798,9 @@
                                 <option value="Provisional">Provisional</option>
                             {/if}
                         </select>
+                        {#if isEditingExistingApplication}
+                            <div class="form-text">Form type cannot be changed for existing applications. Create a new application if you need a different form type.</div>
+                        {/if}
                     </div>
 
                     <!-- Branch Selection -->
@@ -729,12 +829,18 @@
                                 <span class="visually-hidden">Loading...</span>
                             </div>
                         </div>
+                    {:else if !isSchemaAvailable}
+                        <div class="alert alert-warning">
+                            {@html schemaErrorMessage}
+                        </div>
                     {:else if currentAdmissionFormSchema && currentAdmissionFormSchema.fields && currentAdmissionFormSchema.fields.length > 0}
-                        <DynamicForm 
-                            schema={currentAdmissionFormSchema} 
-                            bind:formData={applicationFormData} 
-                            bind:this={dynamicForm}
-                        />
+                        {#key `${currentAdmissionFormSchema.id || selectedCourseId}-${selectedCycleId}-${selectedFormType}`}
+                            <DynamicForm 
+                                schema={currentAdmissionFormSchema} 
+                                bind:formData={applicationFormData} 
+                                bind:this={dynamicForm}
+                            />
+                        {/key}
                         <div class="mt-3">
                             <button class="btn btn-secondary me-2" on:click={handleSaveDraft}>Save as Draft</button>
                             <button class="btn btn-success" on:click={handleSubmitApplication} disabled={!currentApplicationId}>Submit Application</button>

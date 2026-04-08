@@ -59,6 +59,41 @@
     let transferEnrollmentPrefixLetter = 'F'; // New: For Enrollment ID prefix
     let transferBranchId = '';
 
+    let showPaymentEditModal = false;
+    let selectedPayment: any = null;
+    let editReceiptNumber = '';
+    let editPaymentDate = '';
+
+    let showPrintModal = false;
+    let selectedPrintTemplate = '';
+    let availablePrintTemplates: Array<{ id: string; name: string }> = [];
+
+    function confirmPrintProfile() {
+        if (!selectedPrintTemplate) {
+            alert('Please select a template before printing.');
+            return;
+        }
+        // TODO: Implement print profile logic using selectedPrintTemplate
+        console.log('Printing profile using template', selectedPrintTemplate);
+        showPrintModal = false;
+    }
+
+    function openPaymentEditor(payment: any) {
+        selectedPayment = payment;
+        editReceiptNumber = payment.receipt_number || '';
+        editPaymentDate = payment.payment_date
+            ? payment.payment_date.slice(0, 10)
+            : new Date().toISOString().slice(0, 10);
+        showPaymentEditModal = true;
+    }
+
+    function closePaymentEditor() {
+        showPaymentEditModal = false;
+        selectedPayment = null;
+        editReceiptNumber = '';
+        editPaymentDate = '';
+    }
+
     // Reactive branches based on course selection
     $: transferBranches = transferCourseId 
         ? data.allCourses.find(c => c.id === transferCourseId)?.branches || [] 
@@ -235,21 +270,29 @@
                 <table class="table table-sm">
                     <thead>
                         <tr>
-                            <th>Date</th>
+                            <th>Payment Date</th>
                             <th>Type</th>
                             <th>Amount</th>
+                            <th>Receipt</th>
                             <th>Status</th>
                             <th>Transaction ID</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {#each application.payments as payment}
                             <tr>
-                                <td>{new Date(payment.created_at).toLocaleDateString()}</td>
+                                <td>{new Date(payment.payment_date || payment.created_at).toLocaleDateString()}</td>
                                 <td>{payment.payment_type}</td>
                                 <td>{payment.amount}</td>
+                                <td>{payment.receipt_number || '-'}</td>
                                 <td>{payment.status}</td>
                                 <td>{payment.transaction_id || '-'}</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" on:click={() => openPaymentEditor(payment)}>
+                                        Edit
+                                    </button>
+                                </td>
                             </tr>
                         {/each}
                     </tbody>
@@ -366,6 +409,55 @@
     </div>
 
 </div>
+
+{#if showPaymentEditModal}
+<div class="modal d-block" style="background: rgba(0,0,0,0.5);">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">Edit Payment Details</h5>
+                <button type="button" class="btn-close btn-close-white" on:click={closePaymentEditor}></button>
+            </div>
+            <form method="POST" action="?/updatePayment" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'success') {
+                        closePaymentEditor();
+                        toastStore.success('Payment updated successfully');
+                    } else if (result.type === 'failure') {
+                        toastStore.error(result.data?.message || 'Failed to update payment');
+                    } else if (result.type === 'error') {
+                        toastStore.error('An unexpected error occurred while updating payment.');
+                    }
+                    await update();
+                };
+            }}>
+                <div class="modal-body">
+                    <input type="hidden" name="payment_id" value={selectedPayment?.id} />
+                    <div class="mb-3">
+                        <label class="form-label">Payment Type</label>
+                        <input type="text" class="form-control" value={selectedPayment?.payment_type} readonly />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Receipt Number</label>
+                        <input type="text" class="form-control" name="receipt_number" bind:value={editReceiptNumber} required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Payment Date</label>
+                        <input type="date" class="form-control" name="payment_date" bind:value={editPaymentDate} required />
+                    </div>
+                    <p class="small text-muted">
+                        Receipt numbers must be unique. Payment date cannot be in the future.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={closePaymentEditor}>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{/if}
 
 <!-- Cancel Admission Modal -->
 {#if showCancelModal}
