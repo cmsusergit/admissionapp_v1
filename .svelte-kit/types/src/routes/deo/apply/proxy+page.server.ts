@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { PUBLIC_SUPABASE_URL } from "$env/static/public";
 import { SUPABASE_SERVICE_ROLE_KEY } from "$env/static/private";
 import { generateReceiptNumber } from "$lib/server/receipt";
+import { applyRoleBasedCollegeFilter } from "$lib/server/security";
 
 function extractLinkedProfileFields(
   formData: any,
@@ -866,24 +867,33 @@ export const actions = {
       const courseId = application.course_id;
       const paymentType = "application_fee";
 
-      console.log("Generating receipt number with params:", {
-        paymentType,
-        academicYearId,
-        yearName,
-        collegeId,
-        courseId
-      });
+      if (!academicYearId || !collegeId || !courseId) {
+        console.error("Missing required parameters for receipt generation:", {
+          academicYearId,
+          collegeId,
+          courseId
+        });
+        receipt_number = `REC-${Date.now()}`;
+      } else {
+        console.log("Generating receipt number with params:", {
+          paymentType,
+          academicYearId,
+          yearName,
+          collegeId,
+          courseId
+        });
 
-      receipt_number = await generateReceiptNumber(
-        supabase,
-        paymentType,
-        academicYearId,
-        yearName,
-        collegeId,
-        courseId
-      );
+        receipt_number = await generateReceiptNumber(
+          supabase,
+          paymentType,
+          academicYearId,
+          yearName,
+          collegeId,
+          courseId
+        );
 
-      console.log("Generated receipt number:", receipt_number);
+        console.log("Generated receipt number:", receipt_number);
+      }
     } catch (e) {
       console.error("Error generating receipt number:", e);
       // Fallback to timestamp-based receipt number

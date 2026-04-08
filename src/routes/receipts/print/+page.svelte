@@ -216,7 +216,7 @@
             {/if}
 
             <footer class="text-center text-muted small">
-                <p>This is a computer-generated receipt and does not require a signature.</p>
+                <p>Sardar Vallabhbhai Patel Institute of Technology,Vasad</p>
             </footer>
         </div>
     {/snippet}
@@ -226,7 +226,6 @@
     <div class="cut-line"></div>
     {@render receiptCopy("Student Copy")}
 </div>
-
 <style>
     .receipt-container {
         max-width: 800px;

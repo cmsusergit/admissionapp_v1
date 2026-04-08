@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { redirect } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit'; 
 import type { PageServerLoad } from './$types';
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';

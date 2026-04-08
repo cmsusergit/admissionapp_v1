@@ -404,7 +404,7 @@ function createReceiptContent(data: ReceiptData, copyLabel: string): any[] {
   }
 
   content.push({
-    text: "This is a computer-generated receipt and does not require a signature.",
+    text: "Sardar Vallbhbhai Patel Institute of Technology,Vasad",
     style: "footer",
     alignment: "center",
     margin: [0, 20, 0, 0],
