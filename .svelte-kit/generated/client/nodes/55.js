@@ -1,0 +1,1 @@
+export { default as component } from "../../../../src/routes/fee-collector/saved-reports/+page.svelte";

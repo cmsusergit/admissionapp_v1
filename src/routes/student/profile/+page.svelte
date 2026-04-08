@@ -1,0 +1,161 @@
+<script lang="ts">
+    import type { PageData } from './$types';
+    import { enhance } from '$app/forms';
+    import { toastStore } from '$lib/stores/toastStore';
+    import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+
+    export let data: PageData;
+
+    $: profileData = data.profile?.profile_data || {};
+    let uploadingFields: Record<string, boolean> = {};
+
+    async function handleFileUpload(event: Event, fieldKey: string) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+            toastStore.error('Invalid file type. Only PDF and Images are allowed.');
+            return;
+        }
+
+        if (file.size > 2 * 1024 * 1024) {
+            toastStore.error('File size exceeds 2MB limit.');
+            return;
+        }
+
+        uploadingFields[fieldKey] = true;
+        const uploadData = new FormData();
+        uploadData.append('file', file);
+
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: uploadData
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                profileData[fieldKey] = result.path;
+                toastStore.success('File uploaded successfully!');
+            } else {
+                toastStore.error(`Upload failed: ${result.message}`);
+            }
+        } catch (e) {
+            console.error(e);
+            toastStore.error('Upload failed due to network error.');
+        } finally {
+            uploadingFields[fieldKey] = false;
+        }
+    }
+    let isDraft = false;
+
+    function setDraft(draft: boolean) {
+        isDraft = draft;
+    }
+</script>
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">My Student Profile</h4>
+                    <span class="badge bg-info">{data.profile?.admission_status || 'Applicant'}</span>
+                </div>
+                <div class="card-body">
+                    <!-- System Info -->
+                    <div class="row mb-4 bg-light p-3 rounded mx-0">
+                        <div class="col-md-6">
+                            <label class="small text-muted fw-bold">Full Name</label>
+                            <div>{data.user.full_name}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small text-muted fw-bold">Email</label>
+                            <div>{data.user.email}</div>
+                        </div>
+                        <div class="col-md-6 mt-2">
+                            <label class="small text-muted fw-bold">Enrollment Number</label>
+                            <div class="font-monospace fs-5">{data.profile?.enrollment_number || 'Not Assigned'}</div>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="?/updateProfile" use:enhance={() => {
+                        return async ({ result }) => {
+                            if (result.type === 'success') {
+                                toastStore.success(isDraft ? 'Profile saved as draft!' : 'Profile submitted successfully!');
+                            } else {
+                                toastStore.error(result.data?.message || 'Error saving profile.');
+                            }
+                        };
+                    }}>
+                        <input type="hidden" name="is_draft" value={isDraft.toString()} />
+                        <h5 class="mb-3">Personal Details</h5>
+                        <div class="row g-3">
+                            {#each data.schemaFields as field}
+                                <div class="col-md-6">
+                                    <label for={field.key} class="form-label">
+                                        {field.label}
+                                        {#if field.is_required}<span class="text-danger">*</span>{/if}
+                                    </label>
+
+                                    {#if field.type === 'select'}
+                                        <select class="form-select" name={field.key} value={profileData[field.key] || ''} required={!isDraft && field.is_required}>
+                                            <option value="">-- Select --</option>
+                                            {#each field.options || [] as opt}
+                                                {@const parts = typeof opt === 'string' ? opt.split('|') : [opt]}
+                                                {@const val = parts[0]?.trim()}
+                                                {@const label = (parts[1] || parts[0])?.trim()}
+                                                <option value={val}>{label}</option>
+                                            {/each}
+                                        </select>
+                                    {:else if field.type === 'textarea'}
+                                        <textarea class="form-control" name={field.key} value={profileData[field.key] || ''} required={!isDraft && field.is_required}></textarea>
+                                    {:else if field.type === 'file'}
+                                        <input type="hidden" name={field.key} value={profileData[field.key] || ''}>
+                                        <div class="input-group">
+                                            <input 
+                                                type="file" 
+                                                class="form-control" 
+                                                accept="image/*,application/pdf"
+                                                on:change={(e) => handleFileUpload(e, field.key)}
+                                                disabled={uploadingFields[field.key]}
+                                            >
+                                            {#if uploadingFields[field.key]}
+                                                <span class="input-group-text"><span class="spinner-border spinner-border-sm" role="status"></span></span>
+                                            {/if}
+                                        </div>
+                                        {#if !isDraft && field.is_required && !profileData[field.key]}
+                                            <input type="hidden" required={true} value=""> <!-- Hack for file requirement -->
+                                        {/if}
+                                        {#if profileData[field.key]}
+                                            <div class="mt-1 d-flex gap-2 align-items-center">
+                                                <small class="text-success">File uploaded</small>
+                                                <a href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{profileData[field.key]}" target="_blank" class="btn btn-sm btn-outline-info">View</a>
+                                            </div>
+                                        {/if}
+                                    {:else}
+                                        <input 
+                                            type={field.type} 
+                                            class="form-control" 
+                                            name={field.key} 
+                                            value={profileData[field.key] || ''}
+                                            required={!isDraft && field.is_required}
+                                        >
+                                    {/if}
+                                </div>
+                            {:else}
+                                <p class="text-muted">No additional profile fields defined by admin.</p>
+                            {/each}
+                        </div>
+
+                        <div class="mt-4 text-end d-flex justify-content-end gap-2">
+                            <button type="submit" class="btn btn-secondary" on:click={() => setDraft(true)}>Save as Draft</button>
+                            <button type="submit" class="btn btn-primary" on:click={() => setDraft(false)}>Submit Profile</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

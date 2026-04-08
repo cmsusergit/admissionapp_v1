@@ -1,0 +1,525 @@
+<script lang="ts">
+    import type { PageData, ActionData } from './$types';
+    import { enhance } from '$app/forms';
+    import { toastStore } from '$lib/stores/toastStore';
+    import { startLoading, stopLoading } from '$lib/stores/loadingStore';
+
+    export let data: PageData;
+    export let form: ActionData;
+    
+    // Reactive update of application data if re-loaded or manually updated would be ideal, 
+    // but for simple actions, page reload via form submission is fine.
+    $: application = data.application;
+    $: formSchema = data.formSchema;
+
+    let rejecting = false;
+    let rejectionReason = '';
+
+    function confirmReject() {
+        if (!rejectionReason) {
+            alert('Please enter a rejection reason.');
+            return false;
+        }
+        return true;
+    }
+
+    // Helper to find field definition in schema
+    function getFieldDefinition(key: string) {
+        if (!formSchema || !formSchema.fields) return null;
+        return formSchema.fields.find((f: any) => (f.key || f.name) === key);
+    }
+
+    let meritFields: { key: string; value: any; fieldDef: any }[] = [];
+    let otherFields: { key: string; value: any; fieldDef: any }[] = [];
+
+    $: {
+        meritFields = [];
+        otherFields = [];
+        if (application.form_data) {
+            for (const [key, value] of Object.entries(application.form_data)) {
+                const fieldDef = getFieldDefinition(key);
+                const entry = { key, value, fieldDef };
+                if (fieldDef?.is_merit) {
+                    meritFields.push(entry);
+                } else {
+                    otherFields.push(entry);
+                }
+            }
+        }
+    }
+
+    // Modal State
+    let showCancelModal = false;
+    let cancelReason = '';
+
+    let showTransferModal = false;
+    let transferCourseId = '';
+    let transferCycleId = '';
+    let transferFormType = 'Provisional';
+    let transferEnrollmentPrefixLetter = 'F'; // New: For Enrollment ID prefix
+    let transferBranchId = '';
+
+    // Reactive branches based on course selection
+    $: transferBranches = transferCourseId 
+        ? data.allCourses.find(c => c.id === transferCourseId)?.branches || [] 
+        : [];
+</script>
+
+<div class="container mt-4 pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Application Details</h1>
+        <a href="/adm-officer/dashboard" class="btn btn-outline-secondary">Back to Dashboard</a>
+    </div>
+
+    {#if form?.message}
+        <div class="alert {form.success ? 'alert-success' : 'alert-danger'} alert-dismissible fade show" role="alert">
+            {form.message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    {/if}
+
+    <div class="row">
+        <!-- Student Info -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 border-primary">
+                <div class="card-header bg-primary text-white">Student Information</div>
+                <div class="card-body">
+                    <p><strong>Name:</strong> {application.student_user?.full_name || 'N/A'}</p>
+                    <p><strong>Email:</strong> {application.student_user?.email || 'N/A'}</p>
+                    <p><strong>User ID:</strong> <small>{application.student_user?.id}</small></p>
+                    <p><strong>Enrollment No:</strong> <span class="badge bg-secondary">{application.student_user?.student_profiles?.enrollment_number || 'Pending'}</span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Application Info -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 border-warning">
+                <div class="card-header bg-warning text-dark">Course & Status</div>
+                <div class="card-body">
+                    <p><strong>Course:</strong> {application.courses?.name} ({application.courses?.code})</p>
+                    <p><strong>College:</strong> {application.courses?.colleges?.name}</p>
+                    <p><strong>University:</strong> {application.courses?.colleges?.universities?.name}</p>
+                    <p><strong>Cycle:</strong> {application.admission_cycles?.name} ({application.admission_cycles?.academic_years?.name})</p>
+                    <hr>
+                    <p><strong>Status:</strong> <span class="badge bg-info">{application.status}</span>
+                    {#if application.approval_comment}
+                        <span class="badge bg-light text-dark border ms-1" title="Approval Comment">
+                            <i class="bi bi-chat-left-text me-1"></i>{application.approval_comment}
+                        </span>
+                    {/if}
+                    </p>
+                    <p>
+                        <strong>Fee Status:</strong> 
+                        <span class="badge {application.application_fee_status === 'paid' ? 'bg-success' : application.application_fee_status === 'pending' ? 'bg-warning text-dark' : 'bg-secondary'}">
+                            {application.application_fee_status || 'N/A'}
+                        </span>
+                    </p>
+                    <p><strong>Application ID:</strong> <small>{application.id}</small></p>
+                    {#if application.account_admissions && application.account_admissions.length > 0}
+                         <p><strong>Admission No:</strong> <span class="badge bg-success">{application.account_admissions[0].admission_number}</span></p>
+                    {/if}
+                    {#if application.rejection_reason}
+                        <div class="alert alert-danger mt-2">
+                            <strong>Rejection Reason:</strong> {application.rejection_reason}
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Data (Other Fields) -->
+    <div class="card mb-4 border-secondary">
+        <div class="card-header bg-secondary text-white">Submitted Form Data</div>
+        <div class="card-body bg-light">
+            {#if otherFields.length > 0}
+                <dl class="row mb-0">
+                    {#each otherFields as { key, value, fieldDef }}
+                        <dt class="col-sm-3 text-capitalize">
+                            {fieldDef?.label || key.replace(/_/g, ' ')}
+                        </dt>
+                        <dd class="col-sm-9">
+                            {#if typeof value === 'object' && value !== null}
+                                <pre class="mb-0" style="font-size: 0.85rem;">{JSON.stringify(value, null, 2)}</pre>
+                            {:else}
+                                {value}
+                            {/if}
+                        </dd>
+                    {/each}
+                </dl>
+            {:else if meritFields.length === 0}
+                <p class="mb-0 text-muted">No form data available.</p>
+            {:else}
+                 <p class="mb-0 text-muted">See Merit Scores below.</p>
+            {/if}
+        </div>
+    </div>
+
+    <!-- Merit Scores (New Card) -->
+    {#if meritFields.length > 0}
+        <div class="card mb-4 border-info">
+            <div class="card-header bg-info text-white">Merit Scores</div>
+            <div class="card-body bg-light">
+                 <dl class="row mb-0">
+                    {#each meritFields as { key, value, fieldDef }}
+                        <dt class="col-sm-3 text-capitalize">
+                            {fieldDef?.label || key.replace(/_/g, ' ')}
+                        </dt>
+                        <dd class="col-sm-9">
+                            {#if typeof value === 'object' && value !== null && 'value' in value && 'max_score' in value}
+                                <p class="mb-0">
+                                    <span class="fw-bold fs-5">{value.value}</span> 
+                                    <span class="text-muted">/ {value.max_score} (Max)</span>
+                                </p>
+                            {:else}
+                                <p class="mb-0">
+                                    <span class="fw-bold fs-5">{value}</span> 
+                                    <span class="text-muted">/ {fieldDef?.max_score || 100} (Max)</span>
+                                </p>
+                            {/if}
+                        </dd>
+                    {/each}
+                </dl>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Documents -->
+    <div class="card mb-4 border-dark">
+        <div class="card-header bg-dark text-white">Documents</div>
+        <div class="card-body">
+            {#if application.documents && application.documents.length > 0}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>File Name</th>
+                                <th>Status</th>
+                                <th>Rejection Reason</th>
+                                <th>View</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each application.documents as doc}
+                                <tr>
+                                    <td>{doc.document_type}</td>
+                                    <td>{doc.file_name}</td>
+                                    <td>
+                                        <span class="badge {doc.status === 'approved' ? 'bg-success' : doc.status === 'rejected' ? 'bg-danger' : 'bg-warning'}">
+                                            {doc.status}
+                                        </span>
+                                    </td>
+                                    <td>{doc.rejection_reason || '-'}</td>
+                                    <td>
+                                        <!-- Use signed_url if available, else file_path (fallback) -->
+                                        <a href="{doc.signed_url || doc.file_path}" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                </div>
+            {:else}
+                <p class="mb-0">No documents uploaded.</p>
+            {/if}
+        </div>
+    </div>
+
+    <!-- Payments -->
+    {#if application.payments && application.payments.length > 0}
+        <div class="card mb-4">
+            <div class="card-header">Payment History</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Transaction ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each application.payments as payment}
+                            <tr>
+                                <td>{new Date(payment.created_at).toLocaleDateString()}</td>
+                                <td>{payment.payment_type}</td>
+                                <td>{payment.amount}</td>
+                                <td>{payment.status}</td>
+                                <td>{payment.transaction_id || '-'}</td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Actions -->
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">Application Actions</div>
+        <div class="card-body">
+            <div class="d-flex flex-wrap gap-3 align-items-start">
+                <!-- Verify Form -->
+                {#if application.status !== 'verified' && application.status !== 'approved' && application.status !== 'rejected'}
+                    <form method="POST" action="?/verifyApplication" use:enhance={() => {
+                        startLoading();
+                        return async ({ update }) => {
+                            await update();
+                            stopLoading();
+                        };
+                    }}>
+                        <input type="hidden" name="application_id" value={application.id} />
+                        <input type="text" name="approval_comment" class="form-control form-control-sm mb-2" placeholder="Comment (optional)" style="max-width: 200px;" />
+                        <button type="submit" class="btn btn-success">
+                            Verify & Forward
+                        </button>
+                    </form>
+                {:else}
+                    <span class="btn btn-success disabled">Verified</span>
+                {/if}
+
+                <!-- Revert Verification -->
+                {#if application.status === 'verified'}
+                    <form method="POST" action="?/revertVerification" use:enhance={() => {
+                        startLoading();
+                        return async ({ update }) => {
+                            await update();
+                            stopLoading();
+                        };
+                    }} on:submit|preventDefault={(e) => { if(!confirm('Are you sure you want to revert this verification? This will unlock the application for edits.')) { stopLoading(); e.preventDefault(); } }}>
+                        <input type="hidden" name="application_id" value={application.id} />
+                        <button type="submit" class="btn btn-outline-warning">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i> Revert Verification
+                        </button>
+                    </form>
+                {/if}
+
+                <!-- Mark Fee Paid (Manual) -->
+                {#if application.application_fee_status === 'pending'}
+                    <form method="POST" action="?/markFeePaid" use:enhance={() => {
+                        startLoading();
+                        return async ({ update }) => {
+                            await update();
+                            stopLoading();
+                        };
+                    }} on:submit|preventDefault={(e) => { if(!confirm('Mark this application fee as PAID manually? This will record a manual transaction.')) { stopLoading(); e.preventDefault(); } }}>
+                        <input type="hidden" name="application_id" value={application.id} />
+                        <input type="text" name="approval_comment" class="form-control form-control-sm mb-2" placeholder="Comment (optional)" style="max-width: 200px;" />
+                        <button type="submit" class="btn btn-warning">
+                            Mark Fee Paid (Manual)
+                        </button>
+                    </form>
+                {/if}
+
+                <!-- Cancel Admission (Only if Approved) -->
+                {#if application.status === 'approved'}
+                    <button class="btn btn-danger" on:click={() => showCancelModal = true}>
+                        <i class="bi bi-x-circle me-1"></i> Cancel Admission
+                    </button>
+                    
+                    <button class="btn btn-info text-white" on:click={() => showTransferModal = true}>
+                        <i class="bi bi-arrow-left-right me-1"></i> Transfer Student
+                    </button>
+
+                    <!-- Revert Approval (Only for self-approved via auto_approve_on_verification) -->
+                    {#if application.form_types?.auto_approve_on_verification === true}
+                        <form method="POST" action="?/revertSelfApproval" use:enhance={() => {
+                            startLoading();
+                            return async ({ update }) => {
+                                await update();
+                                stopLoading();
+                            };
+                        }}>
+                            <input type="hidden" name="application_id" value={application.id} />
+                            <button type="submit" class="btn btn-outline-danger">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i> Revert Approval
+                            </button>
+                        </form>
+                    {/if}
+                {/if}
+
+                <!-- Reject Form -->
+                <div class="d-flex flex-column gap-2">
+                     <button class="btn btn-danger" on:click={() => rejecting = !rejecting} disabled={application.status === 'rejected' || application.status === 'approved'}>
+                        {application.status === 'rejected' ? 'Already Rejected' : 'Reject Application'}
+                    </button>
+                    
+                    {#if rejecting && application.status !== 'rejected'}
+                        <form method="POST" action="?/rejectApplication" use:enhance on:submit|preventDefault={(e) => { if(!confirmReject()) e.preventDefault(); }}>
+                            <input type="hidden" name="application_id" value={application.id} />
+                            <div class="input-group">
+                                <input type="text" class="form-control" name="rejection_reason" placeholder="Reason..." bind:value={rejectionReason} required />
+                                <button class="btn btn-outline-danger" type="submit">Confirm</button>
+                            </div>
+                        </form>
+                    {/if}
+                </div>
+            </div>
+             <div class="mt-2 text-muted">
+                <small>* Verifying will automatically approve all pending documents.</small>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Cancel Admission Modal -->
+{#if showCancelModal}
+<div class="modal d-block" style="background: rgba(0,0,0,0.5);">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Cancel Admission</h5>
+                <button type="button" class="btn-close btn-close-white" on:click={() => showCancelModal = false}></button>
+            </div>
+            <form method="POST" action="?/cancelAdmission" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'success') showCancelModal = false;
+                    await update();
+                };
+            }}>
+                <div class="modal-body">
+                    <input type="hidden" name="application_id" value={application.id} />
+                    <p class="text-danger fw-bold">Warning: This action will revoke the student's admission and clear their enrollment number.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Cancellation Reason</label>
+                        <textarea name="reason" class="form-control" rows="3" required bind:value={cancelReason} placeholder="e.g. Student Request, Documents invalid..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showCancelModal = false}>Close</button>
+                    <button type="submit" class="btn btn-danger">Confirm Cancellation</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{/if}
+
+<!-- Transfer Student Modal -->
+{#if showTransferModal}
+<div class="modal d-block" style="background: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">Transfer Student (Course/Branch Change)</h5>
+                <button type="button" class="btn-close btn-close-white" on:click={() => showTransferModal = false}></button>
+            </div>
+            <form method="POST" action="?/transferStudent" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'success') {
+                        showTransferModal = false;
+                        toastStore.success('Transfer Processed Successfully');
+                    } else if (result.type === 'failure') {
+                        toastStore.error(result.data?.message || 'Transfer Failed');
+                    } else if (result.type === 'error') {
+                        toastStore.error('An error occurred during transfer.');
+                    }
+                    await update();
+                };
+            }}>
+                <div class="modal-body">
+                    <input type="hidden" name="application_id" value={application.id} />
+                    
+                    <div class="alert alert-info">
+                        <strong>Current:</strong> {application.courses?.name} 
+                        {#if application.branches} - {application.branches.name}{/if}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">New Course</label>
+                            <select class="form-select" name="new_course_id" bind:value={transferCourseId} required>
+                                <option value="">Select Course</option>
+                                {#each data.allCourses as c}
+                                    <option value={c.id}>{c.name} ({c.code})</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">New Branch</label>
+                            <select class="form-select" name="new_branch_id" bind:value={transferBranchId} disabled={!transferBranches.length}>
+                                <option value="">{transferBranches.length ? 'Select Branch (Optional)' : 'No Branches'}</option>
+                                {#each transferBranches as b}
+                                    <option value={b.id}>{b.name} ({b.code})</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Admission Cycle</label>
+                            <select class="form-select" name="new_cycle_id" bind:value={transferCycleId} required>
+                                <option value="">Select Cycle</option>
+                                {#each data.allCycles as cy}
+                                    <option value={cy.id}>{cy.name}</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Form Type</label>
+                            <select class="form-select" name="new_form_type" bind:value={transferFormType} required>
+                                {#each data.allFormTypes as ft}
+                                    <option value={ft.name}>{ft.name}</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Enrollment Prefix Letter</label>
+                            <input 
+                                type="text" 
+                                class="form-control" 
+                                name="enrollment_prefix_letter" 
+                                bind:value={transferEnrollmentPrefixLetter} 
+                                required 
+                                maxlength="2" 
+                                placeholder="e.g. F"
+                            />
+                        </div>
+                    </div>
+                    
+                    <p class="small text-muted">
+                        Note: Transferring will regenerate the Enrollment Number and update the student profile. 
+                        The application form data will be merged with the new course's requirements.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showTransferModal = false}>Close</button>
+                    <button type="submit" class="btn btn-primary">Process Transfer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{/if}
+
+<!-- Print Modal -->
+{#if showPrintModal}
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Custom Profile Form Template</h5>
+                    <button type="button" class="btn-close" on:click={() => showPrintModal = false}></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Template</label>
+                        <select class="form-select" bind:value={selectedPrintTemplate}>
+                            <option value="">Select a template...</option>
+                            {#each availablePrintTemplates as t}
+                                <option value={t.id}>{t.name}</option>
+                            {/each}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showPrintModal = false}>Cancel</button>
+                    <button type="button" class="btn btn-primary" on:click={confirmPrintProfile}>Print Form</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}

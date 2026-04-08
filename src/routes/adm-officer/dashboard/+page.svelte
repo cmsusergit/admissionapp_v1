@@ -1,0 +1,360 @@
+<script lang="ts">
+    import type { PageData } from './$types';
+    import { goto } from '$app/navigation';
+    import { page } from '$app/stores';
+
+    export let data: PageData;
+
+    console.log('Total Amount Collected (frontend):', data.totalAmountCollected);
+
+    let searchText = data.filters?.search || '';
+
+    function applyFilter(status: string | null) {
+        const url = new URL($page.url);
+        if (status) {
+            url.searchParams.set('status', status);
+        } else {
+            url.searchParams.delete('status');
+        }
+        // Keep search param if exists
+        goto(url.toString());
+    }
+
+    function handleSearch() {
+        const url = new URL($page.url);
+        if (searchText) {
+            url.searchParams.set('search', searchText);
+        } else {
+            url.searchParams.delete('search');
+        }
+        // Reset status on new search? Optional. Let's keep it combined.
+        goto(url.toString());
+    }
+
+    function clearFilters() {
+        searchText = '';
+        goto('/adm-officer/dashboard');
+    }
+
+    function handleSort(field: string) {
+        const url = new URL($page.url);
+        const currentSort = url.searchParams.get('sort');
+        const currentOrder = url.searchParams.get('order') || 'desc';
+        
+        let newOrder = 'desc';
+        if (currentSort === field && currentOrder === 'desc') {
+            newOrder = 'asc';
+        }
+        
+        url.searchParams.set('sort', field);
+        url.searchParams.set('order', newOrder);
+        goto(url.toString());
+    }
+
+    function handlePage(newPage: number) {
+        if (newPage < 1 || newPage > data.pagination.totalPages) return;
+        const url = new URL($page.url);
+        url.searchParams.set('page', newPage.toString());
+        goto(url.toString());
+    }
+
+    function handleFilterChange(key: string, value: string) {
+        const url = new URL($page.url);
+        if (value) {
+            url.searchParams.set(key, value);
+        } else {
+            url.searchParams.delete(key);
+        }
+        
+        // If course changes, reset branch
+        if (key === 'course') {
+            url.searchParams.delete('branch');
+        }
+
+        url.searchParams.set('page', '1'); // Reset to first page
+        goto(url.toString());
+    }
+
+    // Export URL builder
+    $: exportUrl = `/adm-officer/export${$page.url.search}`;
+
+    // Reactive branch filtering
+    $: filteredBranchOptions = data.filters.course 
+        ? data.options.branches.filter(b => b.course_id === data.filters.course)
+        : data.options.branches;
+
+    // Reactive branch stats filtering
+    $: filteredBranchCounts = data.filters.course
+        ? data.branchCounts.filter(b => b.course_id === data.filters.course)
+        : data.branchCounts;
+</script>
+
+<div class="container-fluid">
+    <h1 class="mb-4">Admission Officer Dashboard</h1>
+
+    <!-- Top Stats Rows -->
+    <div class="row">
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-primary mb-3">
+                <div class="card-header">Total Applications</div>
+                <div class="card-body">
+                    <h5 class="card-title">{data.totalApplications}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-header">Total App Fees Collected</div>
+                <div class="card-body">
+                    <h5 class="card-title">{data.totalAmountCollected.toFixed(2)}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-info mb-3">
+                <div class="card-header">Total Prov Fees Collected</div>
+                <div class="card-body">
+                    <h5 class="card-title">{data.totalProvFeesCollected?.toFixed(2) || '0.00'}</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Status Filters (Clickable) -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Applications by Status</span>
+                    {#if data.filters.status}
+                        <button class="btn btn-sm btn-outline-dark" on:click={() => applyFilter(null)}>Clear</button>
+                    {/if}
+                </div>
+                <div class="card-body">
+                    {#if data.statusCounts && data.statusCounts.length > 0}
+                        <div class="list-group list-group-flush">
+                            {#each data.statusCounts as statusCount}
+                                <button 
+                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {data.filters.status === statusCount.status ? 'active' : ''}"
+                                    on:click={() => applyFilter(statusCount.status)}
+                                >
+                                    {statusCount.status}
+                                    <span class="badge {data.filters.status === statusCount.status ? 'bg-light text-dark' : 'bg-primary'} rounded-pill">
+                                        {statusCount.count}
+                                    </span>
+                                </button>
+                            {/each}
+                        </div>
+                    {:else}
+                        <p class="card-text">No application status data available.</p>
+                    {/if}
+                </div>
+            </div>
+        </div>
+
+        <!-- Form Type Filters (Clickable) -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Applications by Type</span>
+                    {#if data.filters.form_type}
+                        <button class="btn btn-sm btn-outline-dark" on:click={() => handleFilterChange('form_type', '')}>Clear</button>
+                    {/if}
+                </div>
+                <div class="card-body">
+                    {#if data.formTypeCounts && data.formTypeCounts.length > 0}
+                        <div class="list-group list-group-flush">
+                            {#each data.formTypeCounts as typeCount}
+                                <button 
+                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {data.filters.form_type === typeCount.form_type ? 'active' : ''}"
+                                    on:click={() => handleFilterChange('form_type', typeCount.form_type)}
+                                >
+                                    {typeCount.form_type || 'N/A'}
+                                    <span class="badge {data.filters.form_type === typeCount.form_type ? 'bg-light text-dark' : 'bg-primary'} rounded-pill">
+                                        {typeCount.count}
+                                    </span>
+                                </button>
+                            {/each}
+                        </div>
+                    {:else}
+                        <p class="card-text">No form type data available.</p>
+                    {/if}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Applications by Course</span>
+                    {#if data.filters.course}
+                        <button class="btn btn-sm btn-outline-dark" on:click={() => handleFilterChange('course', '')}>Clear</button>
+                    {/if}
+                </div>
+                <div class="card-body">
+                    {#if data.courseCounts && data.courseCounts.length > 0}
+                        <div class="list-group list-group-flush">
+                            {#each data.courseCounts as courseCount}
+                                <button 
+                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {data.filters.course === courseCount.course_name ? 'active' : ''}"
+                                    on:click={() => {
+                                        // Find course ID from name (since count returns name)
+                                        // Wait, get_application_course_counts returns course_name. 
+                                        // We need ID to filter. 
+                                        // We can match name against allCourses options to get ID.
+                                        const course = data.options.courses.find(c => c.name === courseCount.course_name);
+                                        if (course) handleFilterChange('course', course.id);
+                                    }}
+                                >
+                                    {courseCount.course_name}
+                                    <span class="badge {data.filters.course === courseCount.course_name ? 'bg-light text-dark' : 'bg-primary'} rounded-pill">
+                                        {courseCount.count}
+                                    </span>
+                                </button>
+                            {/each}
+                        </div>
+                    {:else}
+                        <p class="card-text">No application course data available.</p>
+                    {/if}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Search & List -->
+    <div class="card mt-4">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                        <h5 class="mb-0">
+                            Application List 
+                            {#if data.filters.status}
+                                <span class="badge bg-secondary ms-2">Status: {data.filters.status}</span>
+                            {/if}
+                            {#if data.filters.course}
+                                {@const cName = data.options.courses.find(c => c.id === data.filters.course)?.name}
+                                <span class="badge bg-info ms-2">Course: {cName}</span>
+                            {/if}
+                        </h5>
+                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                            <!-- Filters -->
+                            <select class="form-select form-select-sm" style="max-width: 250px;" value={data.filters.branch || ''} on:change={(e) => handleFilterChange('branch', e.currentTarget.value)}>
+                                <option value="">All Branches</option>
+                                {#each filteredBranchOptions as branch}
+                                    {@const branchAny = branch as any}
+                                    <option value={branch.id}>{branch.name} ({branchAny.courses?.name || 'Unknown'})</option>
+                                {/each}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Search Row -->
+                    <div class="d-flex gap-2">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            style="max-width: 300px;"
+                            placeholder="Search Name/Email..." 
+                            bind:value={searchText}
+                            on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+                        />
+                        <button class="btn btn-sm btn-primary" on:click={handleSearch}>Search</button>
+                        {#if data.filters.status || data.filters.search || data.filters.course || data.filters.branch || data.filters.form_type}
+                            <button class="btn btn-sm btn-outline-secondary" on:click={clearFilters}>Reset</button>
+                        {/if}
+                    </div>
+                </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>App ID</th>
+                            <th>Student</th>
+                            <th>Course</th>
+                            <th>Branch</th>
+                            <th>Form Type</th>
+                            <th style="cursor: pointer;" on:click={() => handleSort('status')}>
+                                Status {data.filters.sort === 'status' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                            </th>
+                            <th style="cursor: pointer;" on:click={() => handleSort('updated_at')}>
+                                Date {data.filters.sort === 'updated_at' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                            </th>
+                            <th>Fee Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#if data.filteredApplications && data.filteredApplications.length > 0}
+                            {#each data.filteredApplications as app}
+                                {@const appAny = app as any}
+                                <tr>
+                                    <td><small>{app.id.slice(0, 8)}...</small></td>
+                                    <td>
+                                        <div>{appAny.users?.full_name || 'N/A'}</div>
+                                        <small class="text-muted">{appAny.users?.email || 'N/A'}</small>
+                                    </td>
+                                    <td>
+                                        <div>{appAny.courses?.name || 'N/A'}</div>
+                                        <small class="text-muted">{appAny.courses?.colleges?.name || ''}</small>
+                                    </td>
+                                    <td>{appAny.branches?.name || '-'}</td>
+                                    <td>
+                                        <span class="badge bg-light text-dark border">{app.form_type || 'N/A'}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge 
+                                            {app.status === 'approved' ? 'bg-success' : ''}
+                                            {app.status === 'rejected' ? 'bg-danger' : ''}
+                                            {app.status === 'verified' ? 'bg-info' : ''}
+                                            {app.status === 'submitted' ? 'bg-primary' : ''}
+                                            {app.status === 'needs_correction' ? 'bg-warning' : ''}
+                                            {app.status === 'draft' ? 'bg-secondary' : ''}
+                                        ">
+                                            {app.status}
+                                        </span>
+                                    </td>
+                                    <td>{new Date(app.updated_at).toLocaleDateString()}</td>
+                                    <td>
+                                        <span class="badge 
+                                            {app.application_fee_status === 'paid' ? 'bg-success' : ''}
+                                            {app.application_fee_status === 'pending' ? 'bg-danger' : ''}
+                                            {app.application_fee_status === 'not_applicable' ? 'bg-secondary' : ''}
+                                            {app.application_fee_status === 'waived' ? 'bg-info' : ''}
+                                        ">
+                                            {app.application_fee_status === 'not_applicable' ? 'N/A' : app.application_fee_status}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <!-- Actions depend on context, maybe link to details view -->
+                                        <a href="/adm-officer/applications/{app.id}" class="btn btn-sm btn-outline-primary">View</a>
+                                    </td>
+                                </tr>
+                            {/each}
+                        {:else}
+                            <tr>
+                                <td colspan="8" class="text-center py-4">No applications found matching your filters.</td>
+                            </tr>
+                        {/if}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer">
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center mb-0">
+                    <li class="page-item {data.pagination.page === 1 ? 'disabled' : ''}">
+                        <button class="page-link" on:click={() => handlePage(data.pagination.page - 1)}>Previous</button>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link">
+                            Page {data.pagination.page} of {data.pagination.totalPages}
+                        </span>
+                    </li>
+                    <li class="page-item {data.pagination.page >= data.pagination.totalPages ? 'disabled' : ''}">
+                        <button class="page-link" on:click={() => handlePage(data.pagination.page + 1)}>Next</button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,593 @@
+<script lang="ts">
+    import { createEventDispatcher } from 'svelte';
+
+    // Updated Schema Interface
+    export let schema: { 
+        layout?: 'tabs' | 'cards' | 'list';
+        sections?: { id: string; title: string }[];
+        fields: any[];
+    } = { fields: [] };
+    
+    export let studentProfileFields: any[] = []; // Prop passed from parent
+
+    // Ensure defaults
+    if (!schema.fields) schema.fields = [];
+    if (!schema.sections) schema.sections = [{ id: 'default', title: 'General' }];
+    if (!schema.layout) schema.layout = 'cards';
+
+    // Field Config
+    let key = '';
+    let label = '';
+    let type = 'text';
+    let col = '12';
+    let required = false;
+    let isMerit = false; 
+    let maxScore = 100; 
+    let dependsOn = '';
+    let showWhen = '';
+    let sectionId = schema.sections[0]?.id || 'default'; // Default to first section
+    
+    // Select Config
+    let selectSource = '';
+    let staticOptions = '';
+    let endpoint = '';
+    let valueField = '';
+    let labelField = '';
+    
+    // Profile Linking State
+    let linkToProfileField = false;
+    let selectedProfileFieldKey = '';
+
+    // Section Config
+    let newSectionTitle = '';
+    let isEditingSection = false;
+    let editingSectionId = '';
+
+    // State for editing fields
+    let isEditing = false;
+    let editingIndex = -1;
+    let showAddFieldModal = false;
+    let showAddSectionModal = false;
+    let editingField = null;
+
+    const dispatch = createEventDispatcher();
+
+    function notifyChange() {
+        dispatch('change', schema);
+    }
+
+    // --- Section Management ---
+    function addSection() {
+        if (!newSectionTitle) return;
+        const id = newSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
+        schema.sections = [...(schema.sections || []), { id, title: newSectionTitle }];
+        newSectionTitle = '';
+        showAddSectionModal = false;
+        notifyChange();
+    }
+
+    function removeSection(id: string) {
+        if ((schema.sections || []).length <= 1) {
+            alert('At least one section is required.');
+            return;
+        }
+        schema.sections = schema.sections?.filter(s => s.id !== id);
+        // Move fields from deleted section to the first available section
+        const fallbackSectionId = schema.sections?.[0]?.id || 'default';
+        schema.fields = schema.fields.map(f => f.sectionId === id ? { ...f, sectionId: fallbackSectionId } : f);
+        
+        if (sectionId === id) sectionId = fallbackSectionId;
+        notifyChange();
+    }
+
+    // --- Field Management ---
+
+    function openAddFieldModal() {
+        clearInputs();
+        showAddFieldModal = true;
+    }
+
+    function saveField() {
+        let field;
+
+        if (linkToProfileField) {
+            // Logic for Linked Profile Field
+            if (!selectedProfileFieldKey) {
+                alert('Please select a profile field.');
+                return;
+            }
+            const selectedSpf = studentProfileFields.find(f => f.key === selectedProfileFieldKey);
+            if (!selectedSpf) {
+                alert('Invalid profile field selected.');
+                return;
+            }
+
+            field = {
+                key: selectedSpf.key,
+                label: selectedSpf.label,
+                type: selectedSpf.type,
+                col: Number(col), // User can still choose column width
+                sectionId: sectionId || (schema.sections?.[0]?.id),
+                required: selectedSpf.is_required, // Inherit requirement
+                profileFieldKey: selectedSpf.key,
+                // Inherit options if applicable
+                dataSource: (selectedSpf.type === 'select' && selectedSpf.options) ? {
+                    type: 'static',
+                    options: selectedSpf.options.map((o: any) => {
+                        if (typeof o === 'string') {
+                            const parts = o.split('|');
+                            return { value: parts[0]?.trim(), label: (parts[1] || parts[0])?.trim() };
+                        }
+                        return { value: o, label: o };
+                    })
+                } : undefined
+            };
+
+        } else {
+            // Logic for Custom Field
+            if (!key) {
+                alert('Key is required');
+                return;
+            }
+            field = constructCustomFieldObject();
+        }
+
+        if (isEditing) {
+            schema.fields[editingIndex] = field;
+            isEditing = false;
+            editingIndex = -1;
+        } else {
+            // Check uniqueness if adding new
+            if (!isEditing && schema.fields.some(f => f.key === field.key)) {
+                alert('Field key must be unique.');
+                return;
+            }
+            schema.fields = [...schema.fields, field];
+        }
+        
+        showAddFieldModal = false;
+        notifyChange();
+        clearInputs();
+    }
+
+    function constructCustomFieldObject() {
+        const field: any = {
+            key,
+            label,
+            type,
+            col: Number(col),
+            sectionId: sectionId || (schema.sections?.[0]?.id),
+            profileFieldKey: undefined
+        };
+
+        if (required) field.required = true;
+        if (dependsOn) field.dependsOn = dependsOn;
+        if (isMerit) field.is_merit = true;
+        if (isMerit && maxScore !== 100) field.max_score = Number(maxScore);
+
+        if (showWhen) {
+            const [f, v] = showWhen.split('=');
+            if (f && v) {
+                field.showWhen = { field: f.trim(), equals: v.trim() };
+            }
+        }
+
+        // SELECT CONFIG
+        if (type === 'select' && selectSource) {
+            if (selectSource === 'static') {
+                field.dataSource = {
+                    type: 'static',
+                    options: staticOptions
+                        .split('\n')
+                        .filter(Boolean)
+                        .map(line => {
+                            const [v, l] = line.split('|');
+                            return { value: v.trim(), label: (l || v).trim() };
+                        })
+                };
+            }
+
+            if (selectSource === 'rest') {
+                field.dataSource = {
+                    type: 'rest',
+                    endpoint,
+                    valueField,
+                    labelField
+                };
+            }
+        }
+        return field;
+    }
+
+    function editField(index: number) {
+        const field = schema.fields[index];
+        
+        // Common props
+        col = String(field.col || 12);
+        sectionId = field.sectionId || schema.sections?.[0]?.id || 'default';
+
+        if (field.profileFieldKey) {
+            linkToProfileField = true;
+            selectedProfileFieldKey = field.profileFieldKey;
+            // Clear custom inputs to avoid confusion, though they won't be shown
+            key = '';
+            label = '';
+            type = 'text';
+        } else {
+            linkToProfileField = false;
+            selectedProfileFieldKey = '';
+            
+            // Populate custom inputs
+            key = field.key;
+            label = field.label;
+            type = field.type;
+            required = !!field.required;
+            isMerit = !!field.is_merit; 
+            maxScore = field.max_score || 100;
+            dependsOn = field.dependsOn || '';
+            showWhen = field.showWhen ? `${field.showWhen.field}=${field.showWhen.equals}` : '';
+
+            // Reset Select Config first
+            selectSource = '';
+            staticOptions = '';
+            endpoint = '';
+            valueField = '';
+            labelField = '';
+
+            if (field.type === 'select' && field.dataSource) {
+                selectSource = field.dataSource.type;
+                if (field.dataSource.type === 'static' && field.dataSource.options) {
+                    staticOptions = field.dataSource.options.map((o: any) => `${o.value}|${o.label}`).join('\n');
+                }
+                if (field.dataSource.type === 'rest') {
+                    endpoint = field.dataSource.endpoint || '';
+                    valueField = field.dataSource.valueField || '';
+                    labelField = field.dataSource.labelField || '';
+                }
+            }
+        }
+
+        isEditing = true;
+        editingIndex = index;
+        editingField = field;
+        showAddFieldModal = true;
+    }
+
+    function removeField(index: number) {
+        if (!confirm('Delete this field?')) return;
+        schema.fields = schema.fields.filter((_, i) => i !== index);
+        if (isEditing && editingIndex === index) {
+            showAddFieldModal = false;
+            clearInputs(); 
+        }
+        notifyChange();
+    }
+
+    function moveFieldUp(globalIndex: number) {
+        const field = schema.fields[globalIndex];
+        const sectionId = field.sectionId || schema.sections?.[0]?.id;
+        
+        // Find the index of the previous field in the same section
+        let prevIndexInSameSection = -1;
+        for (let i = globalIndex - 1; i >= 0; i--) {
+            const f = schema.fields[i];
+            const fSectionId = f.sectionId || schema.sections?.[0]?.id;
+            if (fSectionId === sectionId) {
+                prevIndexInSameSection = i;
+                break;
+            }
+        }
+        
+        if (prevIndexInSameSection !== -1) {
+            // Swap
+            const temp = schema.fields[globalIndex];
+            schema.fields[globalIndex] = schema.fields[prevIndexInSameSection];
+            schema.fields[prevIndexInSameSection] = temp;
+            notifyChange();
+        }
+    }
+
+    function moveFieldDown(globalIndex: number) {
+        const field = schema.fields[globalIndex];
+        const sectionId = field.sectionId || schema.sections?.[0]?.id;
+        
+        // Find the index of the next field in the same section
+        let nextIndexInSameSection = -1;
+        for (let i = globalIndex + 1; i < schema.fields.length; i++) {
+            const f = schema.fields[i];
+            const fSectionId = f.sectionId || schema.sections?.[0]?.id;
+            if (fSectionId === sectionId) {
+                nextIndexInSameSection = i;
+                break;
+            }
+        }
+        
+        if (nextIndexInSameSection !== -1) {
+            // Swap
+            const temp = schema.fields[globalIndex];
+            schema.fields[globalIndex] = schema.fields[nextIndexInSameSection];
+            schema.fields[nextIndexInSameSection] = temp;
+            notifyChange();
+        }
+    }
+
+    function clearInputs() {
+        key = '';
+        label = '';
+        type = 'text';
+        col = '12';
+        required = false;
+        isMerit = false; 
+        maxScore = 100; 
+        dependsOn = '';
+        showWhen = '';
+        selectSource = '';
+        staticOptions = '';
+        endpoint = '';
+        valueField = '';
+        labelField = '';
+        linkToProfileField = false;
+        selectedProfileFieldKey = '';
+        isEditing = false;
+        editingIndex = -1;
+        editingField = null;
+    }
+
+    // Helper to get fields for a section
+    $: getFieldsForSection = (sid: string) => schema.fields.filter(f => f.sectionId === sid || (!f.sectionId && sid === schema.sections?.[0]?.id));
+</script>
+
+<div class="form-builder">
+    <div class="row">
+        <!-- Sidebar: Global Settings & Sections -->
+        <div class="col-md-4">
+            <div class="card mb-3">
+                <div class="card-header">Form Layout</div>
+                <div class="card-body">
+                    <select bind:value={schema.layout} class="form-select" on:change={notifyChange}>
+                        <option value="cards">Cards (Vertical Sections)</option>
+                        <option value="tabs">Tabs (Horizontal)</option>
+                        <option value="list">Simple List (Legacy)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Sections</div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input bind:value={newSectionTitle} class="form-control" placeholder="New Section Title" />
+                        <button type="button" class="btn btn-outline-primary" on:click={() => showAddSectionModal = true}>Add</button>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {#each schema.sections || [] as section}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                {section.title}
+                                {#if (schema.sections || []).length > 1}
+                                    <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
+                                {/if}
+                            </li>
+                        {/each}
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main: Field Editor -->
+        <div class="col-md-8">
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Fields</span>
+                    <button type="button" class="btn btn-primary btn-sm" on:click={openAddFieldModal}>Add Field</button>
+                </div>
+                <div class="card-body p-0">
+                    {#each schema.sections || [] as section}
+                        {@const sectionFields = getFieldsForSection(section.id)}
+                        <div class="p-2 bg-light border-bottom">
+                            <strong>{section.title}</strong>
+                        </div>
+                        <ul class="list-group list-group-flush mb-3">
+                            {#each sectionFields as field}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        {field.label} <small class="text-muted">({field.key})</small>
+                                        <span class="badge bg-secondary">{field.type}</span>
+                                        {#if field.is_merit}
+                                            <span class="badge bg-success ms-1">Merit ({field.max_score || 100})</span>
+                                        {/if}
+                                        {#if field.profileFieldKey}
+                                            <span class="badge bg-info ms-1">Profile</span>
+                                        {/if}
+                                    </div>
+                                    <div>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary me-1" 
+                                                on:click={() => moveFieldUp(schema.fields.indexOf(field))}
+                                                disabled={sectionFields.indexOf(field) === 0}
+                                                title="Move Up">&uarr;</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary me-1" 
+                                                on:click={() => moveFieldDown(schema.fields.indexOf(field))}
+                                                disabled={sectionFields.indexOf(field) === sectionFields.length - 1}
+                                                title="Move Down">&darr;</button>
+                                        <button type="button" class="btn btn-sm btn-outline-primary me-1" on:click={() => editField(schema.fields.indexOf(field))}>Edit</button>
+                                        <button type="button" class="btn btn-sm btn-danger" on:click={() => removeField(schema.fields.indexOf(field))}>Remove</button>
+                                    </div>
+                                </li>
+                            {/each}
+                            {#if sectionFields.length === 0}
+                                <li class="list-group-item text-muted small">No fields in this section.</li>
+                            {/if}
+                        </ul>
+                    {/each}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Field Modal -->
+{#if showAddFieldModal}
+<div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{isEditing ? 'Edit' : 'Add'} Field</h5>
+                <button type="button" class="btn-close" on:click={() => showAddFieldModal = false}></button>
+            </div>
+            <div class="modal-body">
+                <!-- Profile Link -->
+                <div class="mb-3 form-check bg-light p-2 rounded border">
+                    <input type="checkbox" id="fb-link-profile" class="form-check-input" bind:checked={linkToProfileField}>
+                    <label for="fb-link-profile" class="form-check-label fw-bold">Link to Student Profile Field</label>
+                    
+                    {#if linkToProfileField}
+                        <div class="mt-2">
+                            {#if studentProfileFields.length > 0}
+                                <select class="form-select" bind:value={selectedProfileFieldKey}>
+                                    <option value="">-- Select Field --</option>
+                                    {#each studentProfileFields as spf}
+                                        <option value={spf.key}>{spf.label} ({spf.type})</option>
+                                    {/each}
+                                </select>
+                            {:else}
+                                <div class="alert alert-warning py-1 small mb-0">
+                                    No profile fields defined. 
+                                    <a href="/admin/profile-schema" target="_blank">Create Schema</a>
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+
+                <div class="mb-2">
+                    <label class="form-label">Section</label>
+                    <select bind:value={sectionId} class="form-select">
+                        {#each schema.sections || [] as section}
+                            <option value={section.id}>{section.title}</option>
+                        {/each}
+                    </select>
+                </div>
+
+                <!-- Custom Field Inputs (Hidden if Linked) -->
+                {#if !linkToProfileField}
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label">Label</label>
+                            <input bind:value={label} class="form-control" placeholder="Label" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Key</label>
+                            <input bind:value={key} class="form-control" placeholder="Key (unique name)" />
+                        </div>
+                    </div>
+                    <div class="mb-2 mt-2">
+                        <label class="form-label">Type</label>
+                        <select bind:value={type} class="form-select">
+                            <option value="text">Text</option>
+                            <option value="email">Email</option>
+                            <option value="number">Number</option>
+                            <option value="date">Date</option>
+                            <option value="textarea">Textarea</option>
+                            <option value="select">Select</option>
+                            <option value="checkbox">Checkbox</option>
+                            <option value="file">File Upload</option>
+                        </select>
+                    </div>
+                {/if}
+                
+                <div class="row g-2 mt-2">
+                    <div class="col-6">
+                        <label class="form-label">Column Width</label>
+                        <select bind:value={col} class="form-select">
+                            <option value="12">Full Width</option>
+                            <option value="6">Half Width</option>
+                            <option value="4">1/3 Width</option>
+                            <option value="3">1/4 Width</option>
+                        </select>
+                    </div>
+                </div>
+
+                {#if !linkToProfileField}
+                    {#if type === 'select'}
+                        <div class="mt-3 p-2 border rounded bg-light">
+                            <h6>Select Options Config</h6>
+                            <select bind:value={selectSource} class="form-select mb-2">
+                                <option value="">-- Select Data Source --</option>
+                                <option value="static">Static Options</option>
+                                <option value="rest">REST Endpoint</option>
+                            </select>
+
+                            {#if selectSource === 'static'}
+                                <textarea
+                                    bind:value={staticOptions}
+                                    class="form-control mb-2"
+                                    rows="3"
+                                    placeholder="value|label (one per line)"
+                                ></textarea>
+                            {/if}
+
+                            {#if selectSource === 'rest'}
+                                <input bind:value={endpoint} class="form-control mb-2" placeholder="REST Endpoint URL" />
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <input bind:value={valueField} class="form-control" placeholder="Value Key" />
+                                    </div>
+                                    <div class="col-6">
+                                        <input bind:value={labelField} class="form-control" placeholder="Label Key" />
+                                    </div>
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+                    
+                    <div class="form-check mt-3">
+                        <input bind:checked={required} id="req-check" class="form-check-input" type="checkbox">
+                        <label for="req-check" class="form-check-label">Required</label>
+                    </div>
+                    
+                    <div class="form-check mt-2">
+                        <input bind:checked={isMerit} id="is-merit-check" class="form-check-input" type="checkbox">
+                        <label for="is-merit-check" class="form-check-label">Is Merit Field?</label>
+                    </div>
+                    {#if isMerit}
+                        <div class="col-md-6 mt-2">
+                            <label for="max-score-input" class="form-label">Max Score</label>
+                            <input bind:value={maxScore} id="max-score-input" class="form-control" type="number" min="1">
+                        </div>
+                    {/if}
+                    
+                    <div class="mt-2">
+                        <label class="form-label">Logic (Optional)</label>
+                        <input bind:value={dependsOn} class="form-control mb-1" placeholder="Depends On (parent key)" />
+                        <input bind:value={showWhen} class="form-control" placeholder="Show When (field=value)" />
+                    </div>
+                {/if}
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" on:click={() => showAddFieldModal = false}>Cancel</button>
+                <button type="button" class="btn btn-primary" on:click={saveField}>Save Field</button>
+            </div>
+        </div>
+    </div>
+</div>
+{/if}
+
+<!-- Add Section Modal -->
+{#if showAddSectionModal}
+<div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Section</h5>
+                <button type="button" class="btn-close" on:click={() => showAddSectionModal = false}></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="form-control" placeholder="Section Title" bind:value={newSectionTitle}>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" on:click={addSection}>Add</button>
+            </div>
+        </div>
+    </div>
+</div>
+{/if}

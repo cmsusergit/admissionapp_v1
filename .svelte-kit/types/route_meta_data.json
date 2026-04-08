@@ -1,0 +1,323 @@
+{
+	"/": [
+		"src/routes/+page.server.ts",
+		"src/routes/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/applications": [
+		"src/routes/adm-officer/applications/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/applications/[id]": [
+		"src/routes/adm-officer/applications/[id]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/circulars": [
+		"src/routes/adm-officer/circulars/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/dashboard": [
+		"src/routes/adm-officer/dashboard/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/export": [
+		"src/routes/adm-officer/export/+server.ts"
+	],
+	"/adm-officer/help": [
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/merit-list": [
+		"src/routes/adm-officer/merit-list/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/reports": [
+		"src/routes/adm-officer/reports/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/reports/conversion": [
+		"src/routes/adm-officer/reports/conversion/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/saved-reports": [
+		"src/routes/adm-officer/saved-reports/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/saved-reports/[id]": [
+		"src/routes/adm-officer/saved-reports/[id]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/adm-officer/verification/bulk": [
+		"src/routes/adm-officer/verification/bulk/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/academic-calendar": [
+		"src/routes/admin/academic-calendar/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/admission-sequences": [
+		"src/routes/admin/admission-sequences/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/branches": [
+		"src/routes/admin/branches/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/colleges": [
+		"src/routes/admin/colleges/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/config-guide": [
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/courses": [
+		"src/routes/admin/courses/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/dashboard": [
+		"src/routes/admin/dashboard/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/docs": [
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/fee-structures": [
+		"src/routes/admin/fee-structures/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/form-types": [
+		"src/routes/admin/form-types/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/forms": [
+		"src/routes/admin/forms/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/forms/new": [
+		"src/routes/admin/forms/new/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/forms/[id]": [
+		"src/routes/admin/forms/[id]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/forms/[id]/edit": [
+		"src/routes/admin/forms/[id]/edit/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/help": [
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/merit-calculation": [
+		"src/routes/admin/merit-calculation/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/merit-formulas": [
+		"src/routes/admin/merit-formulas/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/payment-gateways": [
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/profile-schema": [
+		"src/routes/admin/profile-schema/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/report-builder": [
+		"src/routes/admin/report-builder/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/universities": [
+		"src/routes/admin/universities/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/admin/users": [
+		"src/routes/admin/users/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/api/admin/check-form": [
+		"src/routes/api/admin/check-form/+server.ts"
+	],
+	"/api/deo/get-student-profile": [
+		"src/routes/api/deo/get-student-profile/+server.ts"
+	],
+	"/api/payment/callback": [
+		"src/routes/api/payment/callback/+server.ts"
+	],
+	"/api/payment/create-order": [
+		"src/routes/api/payment/create-order/+server.ts"
+	],
+	"/api/payment/verify": [
+		"src/routes/api/payment/verify/+server.ts"
+	],
+	"/api/reports/generate": [
+		"src/routes/api/reports/generate/+server.ts"
+	],
+	"/api/reports/profile-data": [
+		"src/routes/api/reports/profile-data/+server.ts"
+	],
+	"/api/upload": [
+		"src/routes/api/upload/+server.ts"
+	],
+	"/auth/callback": [
+		"src/routes/auth/callback/+server.ts"
+	],
+	"/college-auth": [
+		"src/routes/college-auth/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/college-auth/applications": [
+		"src/routes/college-auth/applications/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/college-auth/circulars": [
+		"src/routes/college-auth/circulars/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/college-auth/dashboard": [
+		"src/routes/college-auth/dashboard/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/college-auth/help": [
+		"src/routes/+layout.server.ts"
+	],
+	"/college-auth/reports": [
+		"src/routes/college-auth/reports/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/applications": [
+		"src/routes/deo/applications/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/apply": [
+		"src/routes/deo/apply/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/dashboard": [
+		"src/routes/deo/dashboard/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/help": [
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/saved-reports": [
+		"src/routes/deo/saved-reports/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/saved-reports/[id]": [
+		"src/routes/deo/saved-reports/[id]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/undertaking/[id]": [
+		"src/routes/deo/undertaking/[id]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/deo/verification/bulk": [
+		"src/routes/deo/verification/bulk/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/fee-collector/dashboard": [
+		"src/routes/fee-collector/dashboard/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/fee-collector/export": [
+		"src/routes/fee-collector/export/+server.ts"
+	],
+	"/fee-collector/help": [
+		"src/routes/+layout.server.ts"
+	],
+	"/fee-collector/payments": [
+		"src/routes/fee-collector/payments/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/fee-collector/reports": [
+		"src/routes/fee-collector/reports/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/fee-collector/saved-reports": [
+		"src/routes/fee-collector/saved-reports/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/fee-collector/saved-reports/[id]": [
+		"src/routes/fee-collector/saved-reports/[id]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/login": [
+		"src/routes/login/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/logout": [
+		"src/routes/logout/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/print-profile/[applicationId]": [
+		"src/routes/print-profile/[applicationId]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/receipts/print": [
+		"src/routes/receipts/print/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/register": [
+		"src/routes/register/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/student": [
+		"src/routes/student/+page.server.ts",
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts",
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/student/apply": [
+		"src/routes/student/apply/+page.server.ts",
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/student/documents": [
+		"src/routes/student/documents/+page.server.ts",
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/student/help": [
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/student/payments": [
+		"src/routes/student/payments/+page.server.ts",
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/student/profile": [
+		"src/routes/student/profile/+page.server.ts",
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/student/support": [
+		"src/routes/student/support/+page.server.ts",
+		"src/routes/student/+layout.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/university-auth": [
+		"src/routes/university-auth/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/university-auth/applications": [
+		"src/routes/university-auth/applications/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/university-auth/circulars": [
+		"src/routes/university-auth/circulars/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/university-auth/dashboard": [
+		"src/routes/university-auth/dashboard/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/university-auth/help": [
+		"src/routes/+layout.server.ts"
+	],
+	"/university-auth/reports": [
+		"src/routes/university-auth/reports/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	]
+}

@@ -1,0 +1,175 @@
+import type { RequestHandler } from "./$types";
+import { createClient } from "@supabase/supabase-js";
+import { PUBLIC_SUPABASE_URL } from "$env/static/public";
+import { SUPABASE_SERVICE_ROLE_KEY } from "$env/static/private";
+
+export const GET: RequestHandler = async ({
+  url,
+  locals: { getSession, userProfile },
+}) => {
+  const session = await getSession();
+  if (
+    !session ||
+    (userProfile?.role !== "adm_officer" && userProfile?.role !== "admin")
+  ) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const supabaseAdmin = createClient(
+    PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+  );
+
+  const statusFilter = url.searchParams.get("status");
+  const searchQuery = url.searchParams.get("search");
+  const courseFilter = url.searchParams.get("course");
+  const branchFilter = url.searchParams.get("branch");
+  const formTypeFilter = url.searchParams.get("form_type");
+  const startDate = url.searchParams.get("start_date");
+  const endDate = url.searchParams.get("end_date");
+  const fieldsParam = url.searchParams.get("fields");
+
+  let query = supabaseAdmin
+    .from("applications")
+    .select(
+      `
+                    id,
+                    status,
+                    form_type,
+                    submitted_at,
+                    updated_at,
+                    form_data,
+                    approval_comment,
+            users (full_name, email, student_profiles(enrollment_number)),
+                    courses(name, code, colleges(name)),
+                    branches(name),
+                    admission_cycles(name, academic_years(name)),
+                    account_admissions(admission_number),
+                    merit_list_entries(merit_score)
+                `,
+    )
+    .order("updated_at", { ascending: false });
+  if (statusFilter) query = query.eq("status", statusFilter);
+  if (courseFilter) query = query.eq("course_id", courseFilter);
+  if (branchFilter) query = query.eq("branch_id", branchFilter);
+  if (formTypeFilter) query = query.eq("form_type", formTypeFilter);
+  if (startDate) query = query.gte("submitted_at", startDate);
+  if (endDate) query = query.lte("submitted_at", endDate + "T23:59:59");
+
+  if (searchQuery) {
+    query = query.or(
+      `email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`,
+      { foreignTable: "users" },
+    );
+  }
+
+  const { data: applications, error } = await query;
+
+  if (error) {
+    console.error("Export query error:", error);
+    return new Response("Error fetching data", { status: 500 });
+  }
+
+  // Define Field Mappings
+  const fieldMap: Record<
+    string,
+    { label: string; getValue: (app: any) => string }
+  > = {
+    id: { label: "Application ID", getValue: (app) => app.id },
+    student_name: {
+      label: "Student Name",
+      getValue: (app) => `"${app.users?.full_name || ""}"`,
+    },
+    email: { label: "Email", getValue: (app) => app.users?.email || "" },
+    enrollment_number: {
+      label: "College ID",
+      getValue: (app) => app.users?.enrollment_number || "",
+    },
+    course: {
+      label: "Course",
+      getValue: (app) => `"${app.courses?.name || ""}"`,
+    },
+    branch: { label: "Branch", getValue: (app) => app.branches?.name || "-" },
+    form_type: { label: "Form Type", getValue: (app) => app.form_type || "" },
+    college: {
+      label: "College",
+      getValue: (app) => `"${app.courses?.colleges?.name || ""}"`,
+    },
+    cycle: {
+      label: "Admission Cycle",
+      getValue: (app) => `"${app.admission_cycles?.name || ""}"`,
+    },
+    status: { label: "Status", getValue: (app) => app.status || "" },
+    merit_score: {
+      label: "Merit Score",
+      getValue: (app) => {
+        const score = Array.isArray(app.merit_list_entries)
+          ? app.merit_list_entries[0]?.merit_score
+          : app.merit_list_entries?.merit_score;
+        return score || "";
+      },
+    },
+    admission_no: {
+      label: "Admission Number",
+      getValue: (app) => app.account_admissions?.[0]?.admission_number || "",
+    },
+    submitted_date: {
+      label: "Submitted Date",
+      getValue: (app) =>
+        app.submitted_at
+          ? new Date(app.submitted_at).toISOString().split("T")[0]
+          : "",
+    },
+    updated_date: {
+      label: "Last Updated",
+      getValue: (app) =>
+        app.updated_at
+          ? new Date(app.updated_at).toISOString().split("T")[0]
+          : "",
+    },
+  };
+
+  // Determine columns to export
+  let selectedKeys = Object.keys(fieldMap);
+  if (fieldsParam) {
+    const requestedKeys = fieldsParam.split(",");
+    // Filter valid keys (in fieldMap) OR dynamic keys
+    selectedKeys = requestedKeys.filter(
+      (k) => fieldMap[k] || k.startsWith("dynamic:"),
+    );
+    if (selectedKeys.length === 0) selectedKeys = Object.keys(fieldMap);
+  }
+
+  const headers = selectedKeys.map((k) => {
+    if (fieldMap[k]) return fieldMap[k].label;
+    if (k.startsWith("dynamic:")) return k.replace("dynamic:", "");
+    return k;
+  });
+  const csvRows = [headers.join(",")];
+
+  applications?.forEach((app: any) => {
+    const row = selectedKeys.map((k) => {
+      if (fieldMap[k]) return fieldMap[k].getValue(app);
+      if (k.startsWith("dynamic:")) {
+        const dynamicKey = k.replace("dynamic:", "");
+        const val = app.form_data?.[dynamicKey];
+        if (val === undefined || val === null) return "";
+        // Simple string conversion and CSV escaping
+        const strVal =
+          typeof val === "object" ? JSON.stringify(val) : String(val);
+        return `"${strVal.replace(/"/g, '""')}"`;
+      }
+      return "";
+    });
+    csvRows.push(row.join(","));
+  });
+
+  const csvContent = csvRows.join("\n");
+
+  return new Response(csvContent, {
+    headers: {
+      "Content-Type": "text/csv",
+      "Content-Disposition": `attachment; filename="applications_report_${new Date().toISOString().split("T")[0]}.csv"`,
+    },
+  });
+};
