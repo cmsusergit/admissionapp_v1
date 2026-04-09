@@ -128,6 +128,8 @@ CREATE TABLE public.admission_forms (
     course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE NOT NULL,
     cycle_id UUID REFERENCES public.admission_cycles(id) ON DELETE CASCADE NOT NULL,
     form_type TEXT REFERENCES public.form_types(name) ON DELETE RESTRICT,
+    name TEXT NOT NULL,
+    description TEXT,
     schema_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     form_fee NUMERIC(10, 2) DEFAULT 0,
     prov_fee NUMERIC(10, 2) DEFAULT 0,

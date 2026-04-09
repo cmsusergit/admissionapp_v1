@@ -402,6 +402,14 @@ function createReceiptContent(data: ReceiptData, copyLabel: string): any[] {
       margin: [0, 0, 0, 10],
     });
   }
+  content.push({
+
+    text: "Signature:__________________________",
+    style: "smallText",
+    alignment: "right",
+    margin: [0, 10, 0, 0],
+  });
+
 
   content.push({
     text: "Sardar Vallbhbhai Patel Institute of Technology,Vasad",

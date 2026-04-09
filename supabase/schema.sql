@@ -68,9 +68,15 @@ CREATE TABLE public.admission_forms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE NOT NULL,
     cycle_id UUID REFERENCES public.admission_cycles(id) ON DELETE CASCADE NOT NULL,
+    form_type TEXT REFERENCES public.form_types(name) ON DELETE RESTRICT,
+    name TEXT NOT NULL,
+    description TEXT,
     schema_json JSONB NOT NULL DEFAULT '{}'::jsonb, -- Form fields definition
+    form_fee NUMERIC(10, 2) DEFAULT 0,
+    prov_fee NUMERIC(10, 2) DEFAULT 0,
+    is_enabled BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    UNIQUE(course_id, cycle_id)
+    UNIQUE(course_id, cycle_id, form_type)
 );
 
 -- 8. Fee Structures

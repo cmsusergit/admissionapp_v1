@@ -27,6 +27,10 @@
           text: `Date: ${undertaking.date}`,
           style: "body",
         },
+        {
+          text: `Receipt Number: ${undertaking.receiptNumber}`,
+          style: "body"
+        },
         { text: "", margin: [0, 3, 0, 3] },
         {
           text: "To,",

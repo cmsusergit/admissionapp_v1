@@ -45,6 +45,7 @@ declare module '$env/static/private' {
 	export const RVM_PATH: string;
 	export const FEATURE_SPARK_POST_COMMIT_CREATE_ITERATION: string;
 	export const HOSTNAME: string;
+	export const GIT_ASKPASS: string;
 	export const PIPX_HOME: string;
 	export const CONDA_SCRIPT: string;
 	export const DOTNET_USE_POLLING_FILE_WATCHER: string;
@@ -69,6 +70,8 @@ declare module '$env/static/private' {
 	export const DOTNET_RUNNING_IN_CONTAINER: string;
 	export const GRADLE_HOME: string;
 	export const ORYX_DIR: string;
+	export const VSCODE_GIT_ASKPASS_MAIN: string;
+	export const VSCODE_GIT_ASKPASS_NODE: string;
 	export const MAVEN_HOME: string;
 	export const JUPYTERLAB_PATH: string;
 	export const npm_config_userconfig: string;
@@ -114,6 +117,7 @@ declare module '$env/static/private' {
 	export const MY_RUBY_HOME: string;
 	export const LANG: string;
 	export const LS_COLORS: string;
+	export const VSCODE_GIT_IPC_HANDLE: string;
 	export const SDKMAN_DIR: string;
 	export const GITHUB_REPOSITORY: string;
 	export const RUBY_ROOT: string;
@@ -132,6 +136,7 @@ declare module '$env/static/private' {
 	export const rvm_version: string;
 	export const CONDA_DIR: string;
 	export const DEBIAN_FLAVOR: string;
+	export const VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
 	export const npm_config_globalconfig: string;
 	export const npm_config_init_module: string;
 	export const JAVA_HOME: string;
@@ -149,6 +154,7 @@ declare module '$env/static/private' {
 	export const NVS_OS: string;
 	export const PHP_PATH: string;
 	export const RAILS_DEVELOPMENT_HOSTS: string;
+	export const CODESPACE_VSCODE_FOLDER: string;
 	export const MAVEN_ROOT: string;
 	export const RUBY_HOME: string;
 	export const rvm_path: string;
@@ -207,6 +213,7 @@ declare module '$env/dynamic/private' {
 		RVM_PATH: string;
 		FEATURE_SPARK_POST_COMMIT_CREATE_ITERATION: string;
 		HOSTNAME: string;
+		GIT_ASKPASS: string;
 		PIPX_HOME: string;
 		CONDA_SCRIPT: string;
 		DOTNET_USE_POLLING_FILE_WATCHER: string;
@@ -231,6 +238,8 @@ declare module '$env/dynamic/private' {
 		DOTNET_RUNNING_IN_CONTAINER: string;
 		GRADLE_HOME: string;
 		ORYX_DIR: string;
+		VSCODE_GIT_ASKPASS_MAIN: string;
+		VSCODE_GIT_ASKPASS_NODE: string;
 		MAVEN_HOME: string;
 		JUPYTERLAB_PATH: string;
 		npm_config_userconfig: string;
@@ -276,6 +285,7 @@ declare module '$env/dynamic/private' {
 		MY_RUBY_HOME: string;
 		LANG: string;
 		LS_COLORS: string;
+		VSCODE_GIT_IPC_HANDLE: string;
 		SDKMAN_DIR: string;
 		GITHUB_REPOSITORY: string;
 		RUBY_ROOT: string;
@@ -294,6 +304,7 @@ declare module '$env/dynamic/private' {
 		rvm_version: string;
 		CONDA_DIR: string;
 		DEBIAN_FLAVOR: string;
+		VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
 		npm_config_globalconfig: string;
 		npm_config_init_module: string;
 		JAVA_HOME: string;
@@ -311,6 +322,7 @@ declare module '$env/dynamic/private' {
 		NVS_OS: string;
 		PHP_PATH: string;
 		RAILS_DEVELOPMENT_HOSTS: string;
+		CODESPACE_VSCODE_FOLDER: string;
 		MAVEN_ROOT: string;
 		RUBY_HOME: string;
 		rvm_path: string;

@@ -176,8 +176,6 @@ export const actions = {
     if (fetchError || !application) {
       return fail(404, { message: "Application not found." });
     }
-    
-    application.documents = docs || [];
 
     // Determine Approval Flow
     // 1. Try DB configuration (Priority)

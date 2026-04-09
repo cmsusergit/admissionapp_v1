@@ -149,7 +149,7 @@ export const load: PageServerLoad = async ({
     provisionalFee: admissionForm?.prov_fee || 0,
     collegeName: app.courses?.colleges?.name || "",
     paymentDate: provPayment?.payment_date || "",
-    receiptNumber: provPayment?.receceipt_number || "",
+    receiptNumber: provPayment?.receipt_number || "",
     parentName,
     studentPhone,
     parentPhone,
