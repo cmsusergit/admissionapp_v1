@@ -114,34 +114,102 @@ export const load = async ({
   }
 
   if (search) {
-    baseQuery = baseQuery.or(`users.full_name.ilike.%${search}%,users.email.ilike.%${search}%,users.student_profiles.enrollment_number.ilike.%${search}%,form_data->>'firstname'.ilike.%${search}%,form_data->>'first_name'.ilike.%${search}%,form_data->>'middlename'.ilike.%${search}%,form_data->>'middle_name'.ilike.%${search}%,form_data->>'lastname'.ilike.%${search}%,form_data->>'last_name'.ilike.%${search}%`);
+    console.log("🔍 DEO Search Term:", search);
+    console.log("⚠️ Fetching all records for client-side filtering");
   }
 
   const page = parseInt(url.searchParams.get("page") || "1");
   const limit = parseInt(url.searchParams.get("limit") || "10");
   const offset = (page - 1) * limit;
 
-  // Execute the query to get data and count
+  console.log("📋 DEO Applications Page Load");
+  console.log("Filters:", { courseId, cycleId, status, search, createdBy, updatedBy });
+  console.log("Pagination:", { page, limit, offset });
+
+  // Execute the query - if no search, use pagination; if search exists, fetch all for filtering
+  let executeQuery = baseQuery;
+  if (!search) {
+    executeQuery = executeQuery.range(offset, offset + limit - 1);
+  }
+  
   const {
     data: applications,
     count: totalCount,
     error,
-  } = await baseQuery.range(offset, offset + limit - 1); // Apply range for data fetching
+  } = await executeQuery;
 
   if (error) {
-    console.error("Error fetching DEO applications:", error.message);
-    return {
-      applications: [],
-      courses: [],
-      cycles: [],
-      colleges: [],
-      staffUsers: [],
-      filters: { courseId, cycleId, status, search, createdBy, updatedBy },
-      page,
-      limit,
-      totalCount: 0,
-      formTypesMap: {},
-    };
+    console.error("❌ Error fetching DEO applications:", error.message);
+    console.error("Error details:", error);
+    console.error("Error code:", error.code);
+  } else {
+    console.log("✅ DEO Applications fetched successfully");
+    console.log("📊 Total Count (before filter):", totalCount);
+    console.log("📋 Results Count (before filter):", applications?.length);
+    
+    // If search is active, filter client-side
+    if (search && applications) {
+      const searchLower = search.toLowerCase().trim();
+      const filteredApplications = applications.filter((app: any) => {
+        const firstName = (app.form_data?.first_name || '').toLowerCase();
+        const middleName = (app.form_data?.middle_name || '').toLowerCase();
+        const lastName = (app.form_data?.last_name || '').toLowerCase();
+        
+        return firstName.includes(searchLower) || 
+               middleName.includes(searchLower) || 
+               lastName.includes(searchLower);
+      });
+      
+      console.log("🔍 Search filtered results:");
+      console.log({
+        searchTerm: search,
+        totalMatches: filteredApplications.length,
+        hasResults: filteredApplications.length > 0
+      });
+      
+      if (filteredApplications.length > 0) {
+        console.log("✅ First matching result:", {
+          first_name: filteredApplications[0].form_data?.first_name,
+          middle_name: filteredApplications[0].form_data?.middle_name,
+          last_name: filteredApplications[0].form_data?.last_name
+        });
+      }
+      
+      // Apply pagination to filtered results
+      const paginatedResults = filteredApplications.slice(offset, offset + limit);
+      
+      return {
+        applications: paginatedResults || [],
+        courses: courses || [],
+        cycles: cycles || [],
+        colleges: colleges || [],
+        staffUsers: staffUsers || [],
+        filters: { courseId, cycleId, status, search, createdBy, updatedBy },
+        page,
+        limit,
+        totalCount: filteredApplications.length, // Total matches, not total records
+        formTypesMap: Object.fromEntries(formTypesMap),
+      };
+    }
+    
+    console.log("📊 Search returned:", {
+      searchTerm: search,
+      totalCount,
+      resultsCount: applications?.length,
+      hasResults: (applications?.length || 0) > 0
+    });
+    
+    if (applications && applications.length > 0) {
+      console.log("📝 First result form_data (showing name fields):");
+      const sample = applications[0];
+      console.log({
+        first_name: sample.form_data?.first_name,
+        middle_name: sample.form_data?.middle_name,
+        last_name: sample.form_data?.last_name
+      });
+    } else if (search) {
+      console.warn("⚠️ Search found no results. Search term:", search);
+    }
   }
 
   return {

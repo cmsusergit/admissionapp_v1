@@ -59,12 +59,6 @@
         goto('?');
     }
 
-    function searchByStudent(app: any) {
-        const studentName = getDisplayName(app);
-        filterSearch = studentName;
-        applyFilters();
-    }
-
     function handleSearchKeydown(event: KeyboardEvent) {
         if (event.key === 'Enter') {
             applyFilters();
@@ -224,7 +218,12 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Search</label>
-                    <input type="text" class="form-control" placeholder="Name, Email, or Enrollment ID (press Enter)" bind:value={filterSearch} on:keydown={handleSearchKeydown}>
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Search Student Name" bind:value={filterSearch} on:keydown={handleSearchKeydown}>
+                        <button class="btn btn-primary" type="button" on:click={applyFilters}>
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="col-md-2">
                     <div class="d-flex gap-2">
@@ -248,7 +247,7 @@
                     <table class="table table-striped table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>Student <small class="text-muted">(click to search)</small></th>
+                                <th>Student</th>
                                 <th>Course & Cycle</th>
                                 <th>Status</th>
                                 <th>Created By</th>
@@ -261,9 +260,7 @@
                                 {@const appAny = app as any}
                                 <tr>
                                     <td>
-                                        <button class="btn btn-link p-0 text-start text-decoration-none" on:click={() => searchByStudent(appAny)} style="cursor: pointer;">
-                                            {getDisplayName(appAny)}
-                                        </button>
+                                        {getDisplayName(appAny)}
                                         {#if appAny.users?.student_profiles?.enrollment_number}
                                             <br/><small class="text-muted">ID: {appAny.users.student_profiles.enrollment_number}</small>
                                         {/if}
