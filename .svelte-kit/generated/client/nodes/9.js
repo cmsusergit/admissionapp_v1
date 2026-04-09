@@ -1,1 +1,1 @@
-export { default as component } from "../../../../src/routes/adm-officer/merit-list/+page.svelte";
+export { default as component } from "../../../../src/routes/adm-officer/help/+page.svelte";

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Generates a sequential receipt number based on payment type and optional academic year.
- * Format: PREFIX-YYYY-SEQUENCE (e.g., PROV-2025-0001)
+ * Format: PREFIX-YYCOURSECODE-0001 (e.g., PROV-26BE-0001)
  */
 export async function generateReceiptNumber(
     supabase: SupabaseClient, 
@@ -34,6 +34,20 @@ export async function generateReceiptNumber(
         } else {
             academicYearShortcode = yearName; // Fallback if format is unexpected
         }
+    }
+
+    // Fetch course code for the receipt format
+    const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select('code')
+        .eq('id', courseId)
+        .single();
+
+    let courseCode = '';
+    if (courseData?.code) {
+        courseCode = courseData.code;
+    } else if (courseError) {
+        console.warn('Error fetching course code:', courseError.message);
     }
 
     // 1. Fetch Sequence
@@ -83,8 +97,13 @@ export async function generateReceiptNumber(
         return `REC-${Date.now()}`; // Fallback
     }
 
-    // 4. Format: PREFIX-YY-YY-0001
-    return `${prefix}${academicYearShortcode ? academicYearShortcode + '-' : ''}${newSeqNum.toString().padStart(4, '0')}`;
+    // 4. Format: PREFIX-YYCOURSECODE-0001 (e.g., PROV-26BE-0001)
+    const courseCodePart = courseCode ? courseCode : '';
+    const yearCoursePart = academicYearShortcode && courseCodePart ? 
+        `${academicYearShortcode}${courseCodePart}` : 
+        (academicYearShortcode || courseCodePart || '');
+    
+    return `${prefix}${yearCoursePart ? yearCoursePart + '-' : ''}${newSeqNum.toString().padStart(4, '0')}`;
 }
 
 export interface ReceiptCreationParams {

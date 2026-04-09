@@ -103,6 +103,7 @@ declare module '$env/static/private' {
 	export const npm_config_cache: string;
 	export const DOTNET_ROOT: string;
 	export const NVS_DIR: string;
+	export const HISTCONTROL: string;
 	export const PHP_ROOT: string;
 	export const npm_config_node_gyp: string;
 	export const PATH: string;
@@ -137,6 +138,7 @@ declare module '$env/static/private' {
 	export const CONDA_DIR: string;
 	export const DEBIAN_FLAVOR: string;
 	export const VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
+	export const GIT_PAGER: string;
 	export const npm_config_globalconfig: string;
 	export const npm_config_init_module: string;
 	export const JAVA_HOME: string;
@@ -144,6 +146,7 @@ declare module '$env/static/private' {
 	export const PWD: string;
 	export const INTERNAL_VSCS_TARGET_URL: string;
 	export const GEM_PATH: string;
+	export const GIT_MERGE_AUTOEDIT: string;
 	export const npm_execpath: string;
 	export const GITHUB_SERVER_URL: string;
 	export const NVM_CD_FLAGS: string;
@@ -271,6 +274,7 @@ declare module '$env/dynamic/private' {
 		npm_config_cache: string;
 		DOTNET_ROOT: string;
 		NVS_DIR: string;
+		HISTCONTROL: string;
 		PHP_ROOT: string;
 		npm_config_node_gyp: string;
 		PATH: string;
@@ -305,6 +309,7 @@ declare module '$env/dynamic/private' {
 		CONDA_DIR: string;
 		DEBIAN_FLAVOR: string;
 		VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
+		GIT_PAGER: string;
 		npm_config_globalconfig: string;
 		npm_config_init_module: string;
 		JAVA_HOME: string;
@@ -312,6 +317,7 @@ declare module '$env/dynamic/private' {
 		PWD: string;
 		INTERNAL_VSCS_TARGET_URL: string;
 		GEM_PATH: string;
+		GIT_MERGE_AUTOEDIT: string;
 		npm_execpath: string;
 		GITHUB_SERVER_URL: string;
 		NVM_CD_FLAGS: string;

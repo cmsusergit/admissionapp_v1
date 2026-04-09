@@ -99,6 +99,7 @@ export const load = async ({ url, locals: { supabase, getSession, userProfile } 
         .from('applications')
         .select(`
             *,
+            approval_comment,
             users!student_id!inner(full_name, email),
             courses(name, code, colleges(name)),
             branches(name),

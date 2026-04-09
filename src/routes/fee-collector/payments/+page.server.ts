@@ -1,6 +1,6 @@
 import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import { generateSequence, generateCollegeId } from '$lib/server/sequences';
+import { generateReceiptNumber } from '$lib/server/receipt';
 import { applyRoleBasedCollegeFilter } from '$lib/server/security';
 
 export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
@@ -281,16 +281,17 @@ export const actions: Actions = {
         // 2. Generate Receipt Number
         let receipt_number;
         try {
-            // Receipt number generation remains per college/course/year (sequential)
-            receipt_number = await generateSequence(
-                supabase, 
-                'receipt_sequences', 
-                collegeId, 
-                courseId, 
-                academicYearId, 
-                'RCPT-'
+            // Use the proper receipt number generation function
+            receipt_number = await generateReceiptNumber(
+                supabase,
+                payment_type, // 'tuition_fee' or other payment types
+                academicYearId,
+                academicYearName,
+                collegeId,
+                courseId
             );
         } catch (e) {
+            console.error('Error generating receipt number:', e);
             return fail(500, { message: 'Failed to generate receipt number.', error: true });
         }
 

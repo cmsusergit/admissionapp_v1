@@ -24,7 +24,7 @@ export const load = async ({
   const courseId = url.searchParams.get("courseId");
   const cycleId = url.searchParams.get("cycleId");
   const status = url.searchParams.get("status");
-  const search = url.searchParams.get("search");
+  const search = url.searchParams.get("search")?.trim();
   const createdBy = url.searchParams.get("createdBy"); // 'student' or UUID
   const updatedBy = url.searchParams.get("updatedBy"); // 'student' or UUID
 
@@ -72,7 +72,8 @@ export const load = async ({
             form_type,
             course_id,
             cycle_id,
-            users!applications_student_id_fkey (id, full_name, email),
+            form_data,
+            users!applications_student_id_fkey (id, full_name, email, student_profiles(enrollment_number, profile_data)),
             courses!inner (name, college_id),
             branches(name),
             admission_cycles(name),
@@ -113,10 +114,7 @@ export const load = async ({
   }
 
   if (search) {
-    baseQuery = baseQuery.or(
-      `full_name.ilike.%${search}%,email.ilike.%${search}%`,
-      { foreignTable: "users" },
-    );
+    baseQuery = baseQuery.or(`users.full_name.ilike.%${search}%,users.email.ilike.%${search}%,users.student_profiles.enrollment_number.ilike.%${search}%,form_data->>'firstname'.ilike.%${search}%,form_data->>'first_name'.ilike.%${search}%,form_data->>'middlename'.ilike.%${search}%,form_data->>'middle_name'.ilike.%${search}%,form_data->>'lastname'.ilike.%${search}%,form_data->>'last_name'.ilike.%${search}%`);
   }
 
   const page = parseInt(url.searchParams.get("page") || "1");

@@ -12,6 +12,7 @@ out/
 .svelte-kit/prerendered/
 
 .svelte-kit/
+.svelte-kit/generated/client/
 .vscode/
 .idea/
 *.swp

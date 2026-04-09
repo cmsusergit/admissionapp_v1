@@ -576,11 +576,44 @@ export const actions = {
       SUPABASE_SERVICE_ROLE_KEY,
     );
 
+    // First, get the application details for this payment to determine course and academic year
+    const { data: paymentData, error: paymentError } = await supabaseAdmin
+      .from("payments")
+      .select(`
+        id,
+        applications!inner (
+          course_id,
+          admission_cycles!inner (academic_year_id)
+        )
+      `)
+      .eq("id", payment_id)
+      .single();
+
+    if (paymentError || !paymentData) {
+      console.error("Error fetching payment application data:", paymentError?.message);
+      return fail(500, {
+        message: "Error retrieving payment information.",
+        error: true,
+      });
+    }
+
+    const course_id = paymentData.applications.course_id;
+    const academic_year_id = paymentData.applications.admission_cycles.academic_year_id;
+
+    // Check receipt number uniqueness within the same course-academic year pair
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("payments")
-      .select("id")
+      .select(`
+        id,
+        applications!inner (
+          course_id,
+          admission_cycles!inner (academic_year_id)
+        )
+      `)
       .eq("receipt_number", receipt_number)
       .neq("id", payment_id)
+      .eq("applications.course_id", course_id)
+      .eq("applications.admission_cycles.academic_year_id", academic_year_id)
       .maybeSingle();
 
     if (existingError) {
@@ -594,7 +627,7 @@ export const actions = {
     if (existing) {
       return fail(400, {
         message:
-          "Another payment already uses this receipt number. Please use a unique receipt number.",
+          "Another payment in the same course and academic year already uses this receipt number. Please use a unique receipt number within this course-year combination.",
         error: true,
       });
     }

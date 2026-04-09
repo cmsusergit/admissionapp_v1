@@ -20,6 +20,11 @@
 		"src/routes/adm-officer/dashboard/+page.server.ts",
 		"src/routes/+layout.server.ts"
 	],
+	"/adm-officer/dashboard/update-comment": [
+		"src/routes/adm-officer/dashboard/update-comment/+page.server.ts",
+		"src/routes/+layout.server.ts",
+		"src/routes/adm-officer/dashboard/update-comment/+server.ts"
+	],
 	"/adm-officer/export": [
 		"src/routes/adm-officer/export/+server.ts"
 	],

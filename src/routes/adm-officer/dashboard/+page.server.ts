@@ -98,6 +98,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         .from('applications')
         .select(`
             *,
+            approval_comment,
             users!student_id!inner(full_name, email),
             courses(name, code, colleges(name)),
             branches(name),

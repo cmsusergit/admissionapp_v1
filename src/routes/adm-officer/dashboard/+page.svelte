@@ -87,6 +87,50 @@
     $: filteredBranchCounts = data.filters.course
         ? data.branchCounts.filter(b => b.course_id === data.filters.course)
         : data.branchCounts;
+
+    // Dialog state for approval comment editing
+    let showCommentDialog = false;
+    let selectedApp: any = null;
+    let commentText = '';
+
+    function openCommentDialog(app: any) {
+        selectedApp = app;
+        commentText = app.approval_comment || '';
+        showCommentDialog = true;
+    }
+
+    function closeCommentDialog() {
+        showCommentDialog = false;
+        selectedApp = null;
+        commentText = '';
+    }
+
+    async function saveComment() {
+        if (!selectedApp) return;
+
+        try {
+            const response = await fetch('/adm-officer/dashboard/update-comment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    applicationId: selectedApp.id,
+                    comment: commentText.trim() || null
+                })
+            });
+
+            if (response.ok) {
+                // Refresh the page to show updated data
+                location.reload();
+            } else {
+                alert('Failed to update comment');
+            }
+        } catch (error) {
+            console.error('Error updating comment:', error);
+            alert('Error updating comment');
+        }
+    }
 </script>
 
 <div class="container-fluid">
@@ -276,6 +320,7 @@
                             <th style="cursor: pointer;" on:click={() => handleSort('status')}>
                                 Status {data.filters.sort === 'status' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
                             </th>
+                            <th>Approval Comment</th>
                             <th style="cursor: pointer;" on:click={() => handleSort('updated_at')}>
                                 Date {data.filters.sort === 'updated_at' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
                             </th>
@@ -313,6 +358,20 @@
                                             {app.status}
                                         </span>
                                     </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <small class="text-muted">{app.approval_comment || '-'}</small>
+                                            <button 
+                                                class="btn btn-sm btn-outline-secondary p-1" 
+                                                on:click={() => openCommentDialog(app)}
+                                                title="Edit approval comment"
+                                            >
+                                                <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5H9v-.5a.5.5 0 0 1 .5-.5h.5V9a.5.5 0 0 1 .5-.5h.5v-.5a.5.5 0 0 1 .5-.5zM10 6.207V7h1v1h1v1H9V9H8V8H7V7h1V6.207l.146-.146z"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td>{new Date(app.updated_at).toLocaleDateString()}</td>
                                     <td>
                                         <span class="badge 
@@ -332,7 +391,7 @@
                             {/each}
                         {:else}
                             <tr>
-                                <td colspan="8" class="text-center py-4">No applications found matching your filters.</td>
+                                <td colspan="9" class="text-center py-4">No applications found matching your filters.</td>
                             </tr>
                         {/if}
                     </tbody>
@@ -357,4 +416,41 @@
             </nav>
         </div>
     </div>
+
+    <!-- Approval Comment Edit Dialog -->
+    {#if showCommentDialog}
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Edit Approval Comment</h5>
+                        <button type="button" class="btn-close" on:click={closeCommentDialog}></button>
+                    </div>
+                    <div class="modal-body">
+                        {#if selectedApp}
+                            <div class="mb-3">
+                                <label for="commentText" class="form-label">
+                                    <strong>Application:</strong> {selectedApp.id.slice(0, 8)}... - {(selectedApp as any).users?.full_name || 'N/A'}
+                                </label>
+                                <textarea 
+                                    id="commentText"
+                                    class="form-control" 
+                                    rows="4" 
+                                    placeholder="Enter approval comment..."
+                                    bind:value={commentText}
+                                ></textarea>
+                                <div class="form-text">
+                                    Leave empty to remove the comment.
+                                </div>
+                            </div>
+                        {/if}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" on:click={closeCommentDialog}>Cancel</button>
+                        <button type="button" class="btn btn-primary" on:click={saveComment}>Save Comment</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
 </div>

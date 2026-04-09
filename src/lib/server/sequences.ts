@@ -15,6 +15,20 @@ export async function generateSequence(
     admissionCategory?: string
 ): Promise<string> {
     
+    // Fetch course code for receipt format (only for receipt_sequences)
+    let courseCode = '';
+    if (tableName === 'receipt_sequences') {
+        const { data: courseData } = await supabase
+            .from('courses')
+            .select('code')
+            .eq('id', courseId)
+            .single();
+        
+        if (courseData?.code) {
+            courseCode = courseData.code;
+        }
+    }
+
     // 1. Try to find existing sequence
     let query = supabase
         .from(tableName)
@@ -89,8 +103,28 @@ export async function generateSequence(
     }
 
     // 4. Format
-    // Format: PREFIX + 0001
-    return `${prefix}${nextSeq.toString().padStart(4, '0')}`;
+    // For receipts: PREFIX-YYCOURSECODE-0001, for others: PREFIX-0001
+    if (tableName === 'receipt_sequences' && courseCode) {
+        // Get academic year shortcode
+        const { data: yearData } = await supabase
+            .from('academic_years')
+            .select('name')
+            .eq('id', academicYearId)
+            .single();
+        
+        let yearShort = '';
+        if (yearData?.name) {
+            const parts = yearData.name.split('-');
+            if (parts.length >= 2 && parts[0].length === 4) {
+                yearShort = parts[0].slice(-2); // Get last 2 digits of start year
+            }
+        }
+        
+        const yearCoursePart = yearShort && courseCode ? `${yearShort}${courseCode}` : (yearShort || courseCode || '');
+        return `${prefix}${yearCoursePart ? yearCoursePart + '-' : ''}${nextSeq.toString().padStart(4, '0')}`;
+    } else {
+        return `${prefix}${nextSeq.toString().padStart(4, '0')}`;
+    }
 }
 
 export async function generateCollegeId(

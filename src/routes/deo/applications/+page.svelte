@@ -33,6 +33,22 @@
         goto(`?${query.toString()}`);
     }
 
+    function getDisplayName(app: any) {
+        // First try full_name from users table
+        if (app.users?.full_name) {
+            return app.users.full_name;
+        }
+        
+        // If not available, try to combine from form_data
+        const formData = app.form_data || {};
+        const firstName = formData.firstname || formData.first_name || '';
+        const middleName = formData.middlename || formData.middle_name || '';
+        const lastName = formData.lastname || formData.last_name || '';
+        
+        const combined = [firstName, middleName, lastName].filter(n => n).join(' ');
+        return combined || 'N/A';
+    }
+
     function clearFilters() {
         filterCourseId = '';
         filterCycleId = '';
@@ -41,6 +57,18 @@
         filterCreatedBy = '';
         filterUpdatedBy = '';
         goto('?');
+    }
+
+    function searchByStudent(app: any) {
+        const studentName = getDisplayName(app);
+        filterSearch = studentName;
+        applyFilters();
+    }
+
+    function handleSearchKeydown(event: KeyboardEvent) {
+        if (event.key === 'Enter') {
+            applyFilters();
+        }
     }
 
     function gotoPage(newPage: number) {
@@ -196,7 +224,7 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Search</label>
-                    <input type="text" class="form-control" placeholder="Student Name/Email" bind:value={filterSearch}>
+                    <input type="text" class="form-control" placeholder="Name, Email, or Enrollment ID (press Enter)" bind:value={filterSearch} on:keydown={handleSearchKeydown}>
                 </div>
                 <div class="col-md-2">
                     <div class="d-flex gap-2">
@@ -220,7 +248,7 @@
                     <table class="table table-striped table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>Student</th>
+                                <th>Student <small class="text-muted">(click to search)</small></th>
                                 <th>Course & Cycle</th>
                                 <th>Status</th>
                                 <th>Created By</th>
@@ -233,7 +261,13 @@
                                 {@const appAny = app as any}
                                 <tr>
                                     <td>
-                                        {appAny.users?.full_name}<br/>
+                                        <button class="btn btn-link p-0 text-start text-decoration-none" on:click={() => searchByStudent(appAny)} style="cursor: pointer;">
+                                            {getDisplayName(appAny)}
+                                        </button>
+                                        {#if appAny.users?.student_profiles?.enrollment_number}
+                                            <br/><small class="text-muted">ID: {appAny.users.student_profiles.enrollment_number}</small>
+                                        {/if}
+                                        <br/>
                                         <small class="text-muted">{appAny.users?.email}</small>
                                     </td>
                                     <td>
