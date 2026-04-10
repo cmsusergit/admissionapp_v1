@@ -3,6 +3,7 @@
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
     import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+    import { evaluate } from 'mathjs';
 
     // Flexible Schema Interface
     interface FormField {
@@ -29,9 +30,19 @@
         showWhen?: { field: string; equals: string };
     }
 
+    interface TableColumn {
+        key: string;
+        label: string;
+        type: 'number' | 'text' | 'calculated';
+        formula?: string;
+    }
+
     interface FormSection {
         id: string;
         title: string;
+        layout?: 'column' | 'table';
+        rowHeaderLabel?: string;
+        tableColumns?: TableColumn[];
     }
 
     interface FormSchema {
@@ -80,11 +91,27 @@
         }
     }
 
-    // Reactivity for initializing formData for merit fields
+    // Reactivity for initializing formData for merit fields and datagrid
     $: {
         normalizedSchema.fields.forEach(field => {
             const key = getKey(field);
-            if (field.is_merit) {
+            const section = normalizedSchema.sections.find(s => s.id === field.sectionId) || normalizedSchema.sections[0];
+            const isDatagrid = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0;
+
+            if (isDatagrid) {
+                 if (typeof formData[key] !== 'object' || formData[key] === null) {
+                     const existingValue = formData[key];
+                     formData = { ...formData, [key]: {} };
+                     // Map existing primitive value to the first datagrid column or a 'value' column if it exists
+                     if (existingValue !== undefined && existingValue !== null && section.tableColumns) {
+                         const targetCol = section.tableColumns.find(c => c.key === 'value')?.key || section.tableColumns[0]?.key;
+                         if (targetCol) formData[key][targetCol] = existingValue;
+                     }
+                 }
+                 if (field.is_merit && formData[key].max_score === undefined) {
+                     formData[key].max_score = field.max_score !== undefined ? field.max_score : 100;
+                 }
+            } else if (field.is_merit) {
                 // If it's a merit field and not already an object, convert it
                 if (typeof formData[key] !== 'object' || formData[key] === null || !('value' in formData[key])) {
                     const existingValue = formData[key]; // Might be undefined or a primitive value
@@ -105,7 +132,7 @@
         layout: schema.layout || 'list',
         sections: (schema.sections && schema.sections.length > 0) 
             ? schema.sections 
-            : [{ id: 'default', title: 'General' }],
+            : [{ id: 'default', title: 'General', layout: 'column' as const }],
         fields: schema.fields || []
     };
 
@@ -334,7 +361,294 @@
             uploadingFields[fieldName] = false;
         }
     }
+
+    function getCalculatedValue(rowKey: string, formula?: string) {
+        if (!formula || !formData[rowKey]) return '';
+        try {
+            const scope = { ...formData[rowKey] };
+            // Convert strings to numbers for evaluation if possible
+            for (const k in scope) {
+                if (typeof scope[k] === 'string' && !isNaN(Number(scope[k]))) {
+                    scope[k] = Number(scope[k]);
+                }
+            }
+            const result = evaluate(formula, scope);
+            // Optional: update formData reactively if needed
+            // if (formData[rowKey][colKey] !== result) formData[rowKey][colKey] = result;
+            return result;
+        } catch (e) {
+            return '';
+        }
+    }
 </script>
+
+{#snippet fieldControl(field: FormField, fieldId: string, key: string, hideLabel: boolean = false)}
+    {#if field.is_merit}
+        <div class="row g-2">
+            <div class="col-md-6">
+                <input
+                    type="number"
+                    class="form-control"
+                    id="{fieldId}-value"
+                    name="{key}-value"
+                    placeholder="Score"
+                    bind:value={formData[key].value}
+                    on:input={() => clearError(key)}
+                    disabled={readonly}
+                />
+            </div>
+            <div class="col-md-6">
+                <input
+                    type="number"
+                    class="form-control"
+                    id="{fieldId}-max-score"
+                    name="{key}-max-score"
+                    placeholder="Max Score"
+                    bind:value={formData[key].max_score}
+                    on:input={() => clearError(key)}
+                    disabled={readonly}
+                />
+            </div>
+        </div>
+    {:else if field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date'}
+        <input
+            type={field.type}
+            class="form-control"
+            id={fieldId}
+            name={key}
+            bind:value={formData[key]}
+            on:input={() => clearError(key)}
+            disabled={readonly}
+        />
+    {:else if field.type === 'textarea'}
+        <textarea
+            class="form-control"
+            id={fieldId}
+            name={key}
+            bind:value={formData[key]}
+            on:input={() => clearError(key)}
+            disabled={readonly}
+        ></textarea>
+    {:else if field.type === 'select'}
+        <select
+            class="form-select"
+            id={fieldId}
+            name={key}
+            bind:value={formData[key]}
+            on:change={() => clearError(key)}
+            disabled={readonly || loadingOptions[key] || (!!field.dependsOn && !formData[field.dependsOn])}
+        >
+            {#if loadingOptions[key]}
+                <option value="">Loading...</option>
+            {:else}
+                <option value="">-- Select {field.label} --</option>
+                {#each getOptions(field) as option}
+                    <option value={option.value}>{option.label}</option>
+                {/each}
+            {/if}
+        </select>
+    {:else if field.type === 'checkbox'}
+        <div class="form-check">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id={fieldId}
+                name={key}
+                bind:checked={formData[key]}
+                on:change={() => clearError(key)}
+                disabled={readonly}
+            />
+            {#if !hideLabel}
+                <label class="form-check-label" for={fieldId}>{field.label}</label>
+            {/if}
+        </div>
+    {:else if field.type === 'file'}
+        <div class="input-group">
+            <input
+                type="file"
+                class="form-control"
+                id={fieldId}
+                name={key}
+                accept="image/*,application/pdf"
+                on:change={(e) => handleFileUpload(e, key)}
+                disabled={readonly || uploadingFields[key]}
+            />
+            {#if uploadingFields[key]}
+                <span class="input-group-text">
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    Uploading...
+                </span>
+            {/if}
+        </div>
+        <div class="form-text">Max size: 2MB. Allowed: PDF, Images.</div>
+        {#if formData[key]}
+            <div class="mt-1 d-flex align-items-center gap-2">
+                <small class="text-success">File uploaded</small>
+                <a 
+                    href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{formData[key]}" 
+                    target="_blank" 
+                    class="btn btn-sm btn-outline-info"
+                >
+                    View
+                </a>
+                {#if !readonly}
+                    <button 
+                        type="button" 
+                        class="btn btn-sm btn-outline-danger" 
+                        on:click={() => handleFileDelete(key)}
+                    >
+                        Delete
+                    </button>
+                {/if}
+            </div>
+        {:else if uploadingFields[key]}
+            <div class="mt-1">
+                <small class="text-info">Uploading...</small>
+            </div>
+        {/if}
+    {:else}
+        <p class="text-danger">Unsupported field type: {field.type}</p>
+    {/if}
+{/snippet}
+
+{#snippet sectionContent(section: FormSection)}
+    {#if section.layout === 'table'}
+        {@const sectionFields = getFieldsForSection(section.id)}
+        {@const hasMerit = sectionFields.some(f => f.is_merit)}
+        {@const isDatagrid = section.tableColumns && section.tableColumns.length > 0}
+        <div class="table-responsive mb-3">
+            <table class="table table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        {#if isDatagrid}
+                            <th style="width: 25%">{section.rowHeaderLabel || 'Field Name'}</th>
+                            {#each section.tableColumns || [] as col}
+                                <th>{col.label}</th>
+                            {/each}
+                            {#if hasMerit}
+                                <th style="width: 20%">Max Score</th>
+                            {/if}
+                        {:else}
+                            <th style="width: 30%">Field Name</th>
+                            <th>Value</th>
+                            {#if hasMerit}
+                                <th style="width: 20%">Max Score</th>
+                            {/if}
+                        {/if}
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each sectionFields as field, fieldIndex}
+                        {@const key = getKey(field)}
+                        {@const fieldId = `${section.id}-${key}-${fieldIndex}`}
+                        {#if visibleFields[key]}
+                            <tr>
+                                <td>
+                                    <label for={fieldId} class="form-label mb-0">
+                                        {field.label}
+                                        {#if field.required}<span class="text-danger">*</span>{/if}
+                                    </label>
+                                </td>
+                                {#if isDatagrid}
+                                    {#each section.tableColumns || [] as col}
+                                        <td>
+                                            {#if col.type === 'calculated'}
+                                                {@const calcVal = getCalculatedValue(key, col.formula)}
+                                                <input type="text" class="form-control bg-light" readonly value={calcVal} />
+                                                <input type="hidden" name={`${key}-${col.key}`} value={calcVal} />
+                                            {:else}
+                                                <input
+                                                    type={col.type === 'number' ? 'number' : 'text'}
+                                                    class="form-control"
+                                                    id={`${fieldId}-${col.key}`}
+                                                    name={`${key}-${col.key}`}
+                                                    bind:value={formData[key][col.key]}
+                                                    on:input={() => clearError(key)}
+                                                    disabled={readonly}
+                                                />
+                                            {/if}
+                                        </td>
+                                    {/each}
+                                    {#if hasMerit}
+                                        <td>
+                                            {#if field.is_merit}
+                                                <input
+                                                    type="number"
+                                                    class="form-control"
+                                                    id="{fieldId}-max-score"
+                                                    name="{key}-max-score"
+                                                    placeholder="Max Score"
+                                                    bind:value={formData[key].max_score}
+                                                    on:input={() => clearError(key)}
+                                                    disabled={readonly}
+                                                />
+                                            {/if}
+                                        </td>
+                                    {/if}
+                                {:else}
+                                    <td>
+                                        {#if field.is_merit}
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="{fieldId}-value"
+                                                name="{key}-value"
+                                                placeholder="Score"
+                                                bind:value={formData[key].value}
+                                                on:input={() => clearError(key)}
+                                                disabled={readonly}
+                                            />
+                                        {:else}
+                                            {@render fieldControl(field, fieldId, key, true)}
+                                        {/if}
+                                        {#if errors[key]}
+                                            <div class="text-danger mt-1">{errors[key]}</div>
+                                        {/if}
+                                    </td>
+                                    {#if hasMerit}
+                                        <td>
+                                            {#if field.is_merit}
+                                                <input
+                                                    type="number"
+                                                    class="form-control"
+                                                    id="{fieldId}-max-score"
+                                                    name="{key}-max-score"
+                                                    placeholder="Max Score"
+                                                    bind:value={formData[key].max_score}
+                                                    on:input={() => clearError(key)}
+                                                    disabled={readonly}
+                                                />
+                                            {/if}
+                                        </td>
+                                    {/if}
+                                {/if}
+                            </tr>
+                        {/if}
+                    {/each}
+                </tbody>
+            </table>
+        </div>
+    {:else}
+        <div class="row">
+            {#each getFieldsForSection(section.id) as field, fieldIndex}
+                {@const key = getKey(field)}
+                {@const fieldId = `${section.id}-${key}-${fieldIndex}`}
+                {#if visibleFields[key]}
+                    <div class="{`col-md-${field.col || 12}`} mb-3">
+                        <label for={fieldId} class="form-label">
+                            {field.label}
+                            {#if field.required}<span class="text-danger">*</span>{/if}
+                        </label>
+                        {@render fieldControl(field, fieldId, key, false)}
+                        {#if errors[key]}
+                            <div class="text-danger mt-1">{errors[key]}</div>
+                        {/if}
+                    </div>
+                {/if}
+            {/each}
+        </div>
+    {/if}
+{/snippet}
 
 <div class="dynamic-form-container">
     {#if normalizedSchema.layout === 'tabs'}
@@ -355,149 +669,7 @@
         <div class="tab-content border p-3 border-top-0 rounded-bottom bg-white">
             {#each normalizedSchema.sections as section}
                 <div class="tab-pane fade {activeTabId === section.id ? 'show active' : ''}" style="display: {activeTabId === section.id ? 'block' : 'none'}">
-                    <div class="row">
-                        {#each getFieldsForSection(section.id) as field, fieldIndex (getKey(field))}
-                            {@const key = getKey(field)}
-                            {@const fieldId = `${section.id}-${key}-${fieldIndex}`} 
-                            {#if visibleFields[key]}
-                                <div class="{`col-md-${field.col || 12}`} mb-3">
-                                    <label for={fieldId} class="form-label">
-                                        {field.label}
-                                        {#if field.required}<span class="text-danger">*</span>{/if}
-                                    </label>
-
-                                    {#if field.is_merit}
-                                        <div class="row g-2">
-                                            <div class="col-md-6">
-                                                <input
-                                                    type="number"
-                                                    class="form-control"
-                                                    id="{fieldId}-value"
-                                                    name="{key}-value"
-                                                    placeholder="Score"
-                                                    bind:value={formData[key].value}
-                                                    on:input={() => clearError(key)}
-                                                    disabled={readonly}
-                                                />
-                                            </div>
-                                            <div class="col-md-6">
-                                                <input
-                                                    type="number"
-                                                    class="form-control"
-                                                    id="{fieldId}-max-score"
-                                                    name="{key}-max-score"
-                                                    placeholder="Max Score"
-                                                    bind:value={formData[key].max_score}
-                                                    on:input={() => clearError(key)}
-                                                    disabled={readonly}
-                                                />
-                                            </div>
-                                        </div>
-                                    {:else if field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date'}
-                                        <input
-                                            type={field.type}
-                                            class="form-control"
-                                            id={fieldId}
-                                            name={key}
-                                            bind:value={formData[key]}
-                                            on:input={() => clearError(key)}
-                                        />
-                                    {:else if field.type === 'textarea'}
-                                        <textarea
-                                            class="form-control"
-                                            id={fieldId}
-                                            name={key}
-                                            bind:value={formData[key]}
-                                            on:input={() => clearError(key)}
-                                            disabled={readonly}
-                                        ></textarea>
-                                    {:else if field.type === 'select'}
-                                        <select
-                                            class="form-select"
-                                            id={fieldId}
-                                            name={key}
-                                            bind:value={formData[key]}
-                                            on:change={() => clearError(key)}
-                                            disabled={readonly || loadingOptions[key] || (field.dependsOn && !formData[field.dependsOn])}
-                                        >
-                                            {#if loadingOptions[key]}
-                                                <option value="">Loading...</option>
-                                            {:else}
-                                                <option value="">-- Select {field.label} --</option>
-                                                {#each getOptions(field) as option}
-                                                    <option value={option.value}>{option.label}</option>
-                                                {/each}
-                                            {/if}
-                                        </select>
-                                    {:else if field.type === 'checkbox'}
-                                        <div class="form-check">
-                                            <input
-                                                type="checkbox"
-                                                class="form-check-input"
-                                                id={key}
-                                                name={key}
-                                                bind:checked={formData[key]}
-                                                on:change={() => clearError(key)}
-                                                disabled={readonly}
-                                            />
-                                            <label class="form-check-label" for={key}>{field.label}</label>
-                                        </div>
-                                    {:else if field.type === 'file'}
-                                        <div class="input-group">
-                                            <input
-                                                type="file"
-                                                class="form-control"
-                                                id={key}
-                                                name={key}
-                                                accept="image/*,application/pdf"
-                                                on:change={(e) => handleFileUpload(e, key)}
-                                                disabled={readonly || uploadingFields[key]}
-                                            />
-                                            {#if uploadingFields[key]}
-                                                <span class="input-group-text">
-                                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                                    Uploading...
-                                                </span>
-                                            {/if}
-                                        </div>
-                                        <div class="form-text">Max size: 2MB. Allowed: PDF, Images.</div>
-                                        {#if formData[key]}
-                                            <div class="mt-1 d-flex align-items-center gap-2">
-                                                <small class="text-success">File uploaded</small>
-                                                <a 
-                                                    href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{formData[key]}" 
-                                                    target="_blank" 
-                                                    class="btn btn-sm btn-outline-info"
-                                                >
-                                                    View
-                                                </a>
-                                                {#if !readonly}
-                                                    <button 
-                                                        type="button" 
-                                                        class="btn btn-sm btn-outline-danger" 
-                                                        on:click={() => handleFileDelete(key)}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                {/if}
-                                            </div>
-                                        {:else if uploadingFields[key]}
-                                            <div class="mt-1">
-                                                <small class="text-info">Uploading...</small>
-                                            </div>
-                                        {/if}
-                                    {:else}
-                                        <p class="text-danger">Unsupported field type: {field.type}</p>
-                                    {/if}
-
-                                    {#if errors[key]}
-                                        <div class="text-danger mt-1">{errors[key]}</div>
-                                    {/if}
-                                </div>
-                            {/if}
-                            <!-- FIELD RENDER LOGIC END -->
-                        {/each}
-                    </div>
+                    {@render sectionContent(section)}
                 </div>
             {/each}
         </div>
@@ -509,150 +681,7 @@
                     <h5 class="mb-0 text-primary">{section.title}</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        {#each getFieldsForSection(section.id) as field, fieldIndex (getKey(field))}
-                            <!-- FIELD RENDER LOGIC START (Duplicated) -->
-                            {@const key = getKey(field)}
-                            {@const fieldId = `${section.id}-${key}-${fieldIndex}`} 
-                            {#if visibleFields[key]}
-                                <div class="{`col-md-${field.col || 12}`} mb-3">
-                                    <label for={fieldId} class="form-label">
-                                        {field.label}
-                                        {#if field.required}<span class="text-danger">*</span>{/if}
-                                    </label>
-                                    
-                                    {#if field.is_merit}
-                                        <div class="row g-2">
-                                            <div class="col-md-6">
-                                                <input
-                                                    type="number"
-                                                    class="form-control"
-                                                    id="{fieldId}-value"
-                                                    name="{key}-value"
-                                                    placeholder="Score"
-                                                    bind:value={formData[key].value}
-                                                    on:input={() => clearError(key)}
-                                                    disabled={readonly}
-                                                />
-                                            </div>
-                                            <div class="col-md-6">
-                                                <input
-                                                    type="number"
-                                                    class="form-control"
-                                                    id="{fieldId}-max-score"
-                                                    name="{key}-max-score"
-                                                    placeholder="Max Score"
-                                                    bind:value={formData[key].max_score}
-                                                    on:input={() => clearError(key)}
-                                                    disabled={readonly}
-                                                />
-                                            </div>
-                                        </div>
-                                    {:else if field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date'}
-                                        <input
-                                            type={field.type}
-                                            class="form-control"
-                                            id={fieldId}
-                                            name={key}
-                                            bind:value={formData[key]}
-                                            on:input={() => clearError(key)}
-                                        />
-                                    {:else if field.type === 'textarea'}
-                                        <textarea
-                                            class="form-control"
-                                            id={fieldId}
-                                            name={key}
-                                            bind:value={formData[key]}
-                                            on:input={() => clearError(key)}
-                                            disabled={readonly}
-                                        ></textarea>
-                                    {:else if field.type === 'select'}
-                                        <select
-                                            class="form-select"
-                                            id={fieldId}
-                                            name={key}
-                                            bind:value={formData[key]}
-                                            on:change={() => clearError(key)}
-                                            disabled={readonly || loadingOptions[key] || (field.dependsOn && !formData[field.dependsOn])}
-                                        >
-                                            {#if loadingOptions[key]}
-                                                <option value="">Loading...</option>
-                                            {:else}
-                                                <option value="">-- Select {field.label} --</option>
-                                                {#each getOptions(field) as option}
-                                                    <option value={option.value}>{option.label}</option>
-                                                {/each}
-                                            {/if}
-                                        </select>
-                                    {:else if field.type === 'checkbox'}
-                                        <div class="form-check">
-                                            <input
-                                                type="checkbox"
-                                                class="form-check-input"
-                                                id={key}
-                                                name={key}
-                                                bind:checked={formData[key]}
-                                                on:change={() => clearError(key)}
-                                                disabled={readonly}
-                                            />
-                                            <label class="form-check-label" for={key}>{field.label}</label>
-                                        </div>
-                                    {:else if field.type === 'file'}
-                                        <div class="input-group">
-                                            <input
-                                                type="file"
-                                                class="form-control"
-                                                id={key}
-                                                name={key}
-                                                accept="image/*,application/pdf"
-                                                on:change={(e) => handleFileUpload(e, key)}
-                                                disabled={readonly || uploadingFields[key]}
-                                            />
-                                            {#if uploadingFields[key]}
-                                                <span class="input-group-text">
-                                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                                    Uploading...
-                                                </span>
-                                            {/if}
-                                        </div>
-                                        <div class="form-text">Max size: 2MB. Allowed: PDF, Images.</div>
-                                        {#if formData[key]}
-                                            <div class="mt-1 d-flex align-items-center gap-2">
-                                                <small class="text-success">File uploaded</small>
-                                                <a 
-                                                    href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{formData[key]}" 
-                                                    target="_blank" 
-                                                    class="btn btn-sm btn-outline-info"
-                                                >
-                                                    View
-                                                </a>
-                                                {#if !readonly}
-                                                    <button 
-                                                        type="button" 
-                                                        class="btn btn-sm btn-outline-danger" 
-                                                        on:click={() => handleFileDelete(key)}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                {/if}
-                                            </div>
-                                        {:else if uploadingFields[key]}
-                                            <div class="mt-1">
-                                                <small class="text-info">Uploading...</small>
-                                            </div>
-                                        {/if}
-                                    {:else}
-                                        <p class="text-danger">Unsupported field type: {field.type}</p>
-                                    {/if}
-
-                                    {#if errors[key]}
-                                        <div class="text-danger mt-1">{errors[key]}</div>
-                                    {/if}
-                                </div>
-                            {/if}
-                            <!-- FIELD RENDER LOGIC END -->
-                        {/each}
-                    </div>
+                    {@render sectionContent(section)}
                 </div>
             </div>
         {/each}
@@ -660,133 +689,21 @@
     {:else}
         <!-- List Layout (Legacy) -->
         <div class="row">
-            {#each schema.fields as field, fieldIndex (getKey(field))}
-                <!-- FIELD RENDER LOGIC START (Duplicated) -->
-                                            {@const key = getKey(field)}
-                                            {@const fieldId = `${key}-${fieldIndex}`} 
-                                {#if visibleFields[key]}
-                                    <div class="{`col-md-${field.col || 12}`} mb-3">
-                                        <label for={fieldId} class="form-label">
-                                            {field.label}
-                                            {#if field.required}<span class="text-danger">*</span>{/if}
-                                        </label>
-                                        
-                                        {#if field.is_merit}
-                                            <div class="row g-2">
-                                                <div class="col-md-6">
-                                                    <input
-                                                        type="number"
-                                                        class="form-control"
-                                                        id="{key}-value"
-                                                        name="{key}-value"
-                                                        placeholder="Score"
-                                                        bind:value={formData[key].value}
-                                                        on:input={() => clearError(key)}
-                                                    />
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <input
-                                                        type="number"
-                                                        class="form-control"
-                                                        id="{key}-max-score"
-                                                        name="{key}-max-score"
-                                                        placeholder="Max Score"
-                                                        bind:value={formData[key].max_score}
-                                                        on:input={() => clearError(key)}
-                                                    />
-                                                </div>
-                                            </div>
-                                        {:else if field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date'}
-                                            <input
-                                                type={field.type}
-                                                class="form-control"
-                                                id={fieldId}
-                                                name={key}
-                                                bind:value={formData[key]}
-                                                on:input={() => clearError(key)}
-                                            />                        {:else if field.type === 'textarea'}
-                            <textarea
-                                class="form-control"
-                                id={fieldId}
-                                name={key}
-                                bind:value={formData[key]}
-                                on:input={() => clearError(key)}
-                            ></textarea>
-                        {:else if field.type === 'select'}
-                            <select
-                                class="form-select"
-                                id={fieldId}
-                                name={key}
-                                bind:value={formData[key]}
-                                on:change={() => clearError(key)}
-                                disabled={loadingOptions[key] || (field.dependsOn && !formData[field.dependsOn])}
-                            >
-                                {#if loadingOptions[key]}
-                                    <option value="">Loading...</option>
-                                {:else}
-                                    <option value="">-- Select {field.label} --</option>
-                                    {#each getOptions(field) as option}
-                                        <option value={option.value}>{option.label}</option>
-                                    {/each}
-                                {/if}
-                            </select>
-                        {:else if field.type === 'checkbox'}
-                            <div class="form-check">
-                                <input
-                                    type="checkbox"
-                                    class="form-check-input"
-                                    id={fieldId}
-                                    name={key}
-                                    bind:checked={formData[key]}
-                                    on:change={() => clearError(key)}
-                                />
-                                <label class="form-check-label" for={fieldId}>{field.label}</label>
-                            </div>
-                        {:else if field.type === 'file'}
-                            <div class="input-group">
-                                <input
-                                    type="file"
-                                    class="form-control"
-                                    id={fieldId}
-                                    name={key}
-                                    accept="image/*,application/pdf"
-                                    on:change={(e) => handleFileUpload(e, key)}
-                                    disabled={uploadingFields[key]}
-                                />
-                                {#if uploadingFields[key]}
-                                    <span class="input-group-text">
-                                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                        Uploading...
-                                    </span>
-                                {/if}
-                            </div>
-                            <div class="form-text">Max size: 2MB. Allowed: PDF, Images.</div>
-                            {#if formData[key]}
-                                <div class="mt-1 d-flex align-items-center gap-2">
-                                    <small class="text-success">File uploaded</small>
-                                    <a 
-                                        href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{formData[key]}" 
-                                        target="_blank" 
-                                        class="btn btn-sm btn-outline-info"
-                                    >
-                                        View Document
-                                    </a>
-                                </div>
-                            {:else if uploadingFields[key]}
-                                <div class="mt-1">
-                                    <small class="text-info">Uploading...</small>
-                                </div>
-                            {/if}
-                        {:else}
-                            <p class="text-danger">Unsupported field type: {field.type}</p>
-                        {/if}
-
+            {#each schema.fields as field, fieldIndex}
+                {@const key = getKey(field)}
+                {@const fieldId = `${key}-${fieldIndex}`} 
+                {#if visibleFields[key]}
+                    <div class="{`col-md-${field.col || 12}`} mb-3">
+                        <label for={fieldId} class="form-label">
+                            {field.label}
+                            {#if field.required}<span class="text-danger">*</span>{/if}
+                        </label>
+                        {@render fieldControl(field, fieldId, key, false)}
                         {#if errors[key]}
                             <div class="text-danger mt-1">{errors[key]}</div>
                         {/if}
                     </div>
                 {/if}
-                <!-- FIELD RENDER LOGIC END -->
             {/each}
         </div>
     {/if}
