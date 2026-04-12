@@ -4,64 +4,95 @@
     import FormBuilder from '$lib/components/FormBuilder.svelte';
     import { toastStore } from '$lib/stores/toastStore';
 
-    export let data: PageData;
-    export let form: ActionData;
+    let { data, form }: { data: PageData, form: ActionData } = $props();
 
-    let currentForm = data.admissionForm;
-    let selectedFormType = currentForm.form_type; // Local state for form type select
-    // Store initial config to prevent warning on load
+    let currentForm = $state(data.admissionForm);
+    let selectedFormType = $state(currentForm.form_type);
+    
     const initialConfig = {
         course_id: currentForm.course_id,
         cycle_id: currentForm.cycle_id,
         form_type: currentForm.form_type
     };
 
-    let builderSchema = { fields: [], enableBranchSelection: false };
-    
-    // Initialize builder with existing schema
-    try {
-        builderSchema = typeof currentForm.schema_json === 'string' ? JSON.parse(currentForm.schema_json) : currentForm.schema_json;
-        if (!builderSchema.fields) builderSchema.fields = [];
-    } catch (e) {
-        builderSchema = { fields: [], enableBranchSelection: false };
-    }
-    
-    let builderSchemaString = JSON.stringify(builderSchema);
-    let duplicateFormId: string | null = null;
-    let isConfigUnique = false;
+    let builderSchema = $state({ fields: [] as any[], enableBranchSelection: false });
+    let builderSchemaString = $state('');
+    let duplicateFormId = $state<string | null>(null);
+    let isConfigUnique = $state(false);
+    let isLoadingSchema = $state(false);
+    let schemaInitialized = false;
 
-    // Handle schema changes from FormBuilder
+    // Initialize builder schema from loaded form (run once on mount)
+    $effect(() => {
+        if (schemaInitialized) return;
+        try {
+            const schema = typeof currentForm.schema_json === 'string' 
+                ? JSON.parse(currentForm.schema_json) 
+                : currentForm.schema_json;
+            builderSchema = schema || { fields: [], enableBranchSelection: false };
+            if (!builderSchema.fields) builderSchema.fields = [];
+        } catch (e) {
+            builderSchema = { fields: [], enableBranchSelection: false };
+        }
+        builderSchemaString = JSON.stringify(builderSchema);
+        schemaInitialized = true;
+    });
+
     function handleSchemaChange(event: CustomEvent) {
         builderSchema = event.detail;
         builderSchemaString = JSON.stringify(builderSchema);
     }
     
-    // Reactive flags based on selected form type
-    $: isCurrentTypeProvisional = data.formTypes?.find(ft => ft.name === selectedFormType)?.is_prov || false;
-    $: isApplicationFeeRequired = data.formTypes?.find(ft => ft.name === selectedFormType)?.application_fee_required ?? true;
+    let isCurrentTypeProvisional = $derived(data.formTypes?.find(ft => ft.name === selectedFormType)?.is_prov || false);
+    let isApplicationFeeRequired = $derived(data.formTypes?.find(ft => ft.name === selectedFormType)?.application_fee_required ?? true);
 
-    // Reactive check for duplicate form config (excluding self)
-    $: if (currentForm.course_id && currentForm.cycle_id && currentForm.form_type) {
-        checkDuplicateForm();
+    async function fetchSchemaForConfig(courseId: string, cycleId: string, formType: string) {
+        isLoadingSchema = true;
+        
+        try {
+            const params = new URLSearchParams({
+                course_id: courseId,
+                cycle_id: cycleId,
+                form_type: formType || ''
+            });
+            
+            const response = await fetch(`/api/admin/get-form-schema?${params.toString()}`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.form) {
+                    const schema = typeof result.form.schema_json === 'string' 
+                        ? JSON.parse(result.form.schema_json) 
+                        : result.form.schema_json;
+                    builderSchema = schema || { fields: [], enableBranchSelection: false };
+                    currentForm.form_fee = result.form.form_fee || 0;
+                    currentForm.prov_fee = result.form.prov_fee || 0;
+                    currentForm.is_enabled = result.form.is_enabled ?? true;
+                    currentForm.qr_code_url = result.form.qr_code_url || '';
+                    duplicateFormId = result.form.id;
+                    isConfigUnique = false;
+                } else {
+                    builderSchema = { fields: [], enableBranchSelection: false };
+                    duplicateFormId = null;
+                    isConfigUnique = true;
+                }
+                builderSchemaString = JSON.stringify(builderSchema);
+            }
+        } catch (e) {
+            console.error('Error fetching schema:', e);
+        } finally {
+            isLoadingSchema = false;
+        }
     }
 
     async function checkDuplicateForm() {
-        duplicateFormId = null;
-        isConfigUnique = false;
-
-        // Don't run check or show messages if config hasn't changed
-        if (
-            currentForm.course_id === initialConfig.course_id &&
-            currentForm.cycle_id === initialConfig.cycle_id &&
-            currentForm.form_type === initialConfig.form_type
-        ) {
+        if (!currentForm.course_id || !currentForm.cycle_id) {
             return;
         }
 
         const params = new URLSearchParams({
             course_id: currentForm.course_id,
             cycle_id: currentForm.cycle_id,
-            form_type: currentForm.form_type,
+            form_type: selectedFormType,
             exclude_id: currentForm.id
         });
 
@@ -71,6 +102,7 @@
                 const result = await response.json();
                 if (result.exists) {
                     duplicateFormId = result.formId;
+                    isConfigUnique = false;
                 } else {
                     isConfigUnique = true;
                 }
@@ -80,9 +112,34 @@
         }
     }
 
-    $: if (form?.message) {
-        toastStore.error(form.message);
-    }
+    // Watch for configuration changes
+    $effect(() => {
+        const courseId = currentForm.course_id;
+        const cycleId = currentForm.cycle_id;
+        const formType = selectedFormType;
+        
+        // Skip initial load
+        if (
+            courseId === initialConfig.course_id &&
+            cycleId === initialConfig.cycle_id &&
+            formType === initialConfig.form_type
+        ) {
+            return;
+        }
+        
+        if (!courseId || !cycleId) {
+            return;
+        }
+        
+        fetchSchemaForConfig(courseId, cycleId, formType);
+        checkDuplicateForm();
+    });
+
+    $effect(() => {
+        if (form?.message) {
+            toastStore.error(form.message);
+        }
+    });
 </script>
 
 <div class="container-fluid">

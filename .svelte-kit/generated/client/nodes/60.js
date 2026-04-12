@@ -1,1 +1,1 @@
-export { default as component } from "../../../../src/routes/print-profile/[applicationId]/+page.svelte";
+export { default as component } from "../../../../src/routes/logout/+page.svelte";

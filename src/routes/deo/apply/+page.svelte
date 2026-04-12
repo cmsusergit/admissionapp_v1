@@ -468,12 +468,15 @@
         }
         
         try {
+            console.log('[DEO Apply] Raw application data from DB:', JSON.stringify(application.form_data, null, 2));
+            
             selectedStudentId = application.student_id;
             selectedCourseId = application.course_id;
             selectedCycleId = application.cycle_id;
             selectedBranchId = application.branch_id || '';
             selectedFormType = application.form_type || 'Provisional';
             applicationFormData = application.form_data || {};
+            console.log('[DEO Apply] applicationFormData after loading:', JSON.stringify(applicationFormData, null, 2));
             isLoadedFromApplicationId = true; // Mark that we loaded from URL param
             isEditingExistingApplication = true; // Mark that we're editing an existing application
 
@@ -505,6 +508,8 @@
             return;
         }
 
+        console.log('[DEO Apply] Saving applicationFormData:', JSON.stringify(applicationFormData, null, 2));
+        
         const formPayload = new FormData();
         formPayload.append('student_id', selectedStudentId);
         formPayload.append('course_id', selectedCourseId);
