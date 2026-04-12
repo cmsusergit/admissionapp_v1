@@ -63,6 +63,17 @@
         Navigate to <strong>Fee Structures</strong> to define tuition, admission, and other fees. These can be set globally or overridden per college.
       </p>
 
+      <h3 class="text-xl font-medium mb-3">Creating Dynamic Forms (Table / Data Grid Layouts)</h3>
+      <div class="mb-4 text-gray-600">
+        <p class="mb-2">When creating a new Form Schema via <strong>Admin > Forms</strong>, you can set a section's layout to <strong>Table Layout</strong> to create advanced Data Grids (e.g., for Subjects and Scores).</p>
+        <ul class="list-disc list-inside space-y-1">
+          <li><strong>Columns:</strong> Add custom columns (e.g., <em>Theory</em>, <em>Practical</em>, <em>Total</em>). Types can be Number, Text, or Calculated.</li>
+          <li><strong>Calculated Columns:</strong> Use math formulas like <code>theory + practical</code>. The system will automatically compute the value in real-time based on the other column keys in the same row.</li>
+          <li><strong>Rows (Fields):</strong> Each Field you add to the section acts as a <strong>Row</strong> (e.g., Subject: <em>Math</em>).</li>
+          <li><strong>Merit Fields:</strong> If a field is marked as an "Is Merit Field", an extra <strong>Max Score</strong> column is automatically generated for that row, allowing input for the maximum possible score (defaulting to the field's max score setting).</li>
+        </ul>
+      </div>
+
       <h3 class="text-xl font-medium mb-3">System Reports</h3>
       <p class="text-gray-600">
         Access the <strong>Reports</strong> section to generate system-wide analytics on admissions, payments, and user activity.

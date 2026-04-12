@@ -4,7 +4,20 @@
     // Updated Schema Interface
     export let schema: { 
         layout?: 'tabs' | 'cards' | 'list';
-        sections?: { id: string; title: string }[];
+        sections?: { 
+            id: string; 
+            title: string; 
+            layout?: 'column' | 'table'; 
+            rowHeaderLabel?: string; 
+            tableColumns?: { 
+                key: string; 
+                label: string; 
+                type: string; 
+                formula?: string;
+                is_merit?: boolean;
+                default_max_score?: number;
+            }[] 
+        }[];
         fields: any[];
     } = { fields: [] };
     
@@ -23,9 +36,33 @@
     let required = false;
     let isMerit = false; 
     let maxScore = 100; 
+    let columnMaxScores: Record<string, number> = {};
     let dependsOn = '';
     let showWhen = '';
     let sectionId = schema.sections[0]?.id || 'default'; // Default to first section
+    $: isTableSection = schema.sections?.find(s => s.id === sectionId)?.layout === 'table';
+    
+    // Reactive: Get current section's merit columns for table layout
+    $: currentSectionMeritColumns = (() => {
+        const section = schema.sections?.find(s => s.id === sectionId);
+        if (section?.layout === 'table' && section.tableColumns) {
+            return section.tableColumns.filter(col => col.is_merit && col.default_max_score);
+        }
+        return [];
+    })();
+    
+    // Reactive: Initialize columnMaxScores when section changes or when opening modal
+    $: if (isTableSection && currentSectionMeritColumns.length > 0 && !showAddFieldModal) {
+        // Reset to defaults when section changes (but not when modal is open)
+        const defaults: Record<string, number> = {};
+        currentSectionMeritColumns.forEach(col => {
+            defaults[col.key] = col.default_max_score || 100;
+        });
+        // Only reset if not already set with actual values
+        if (Object.keys(columnMaxScores).length === 0) {
+            columnMaxScores = defaults;
+        }
+    }
     
     // Select Config
     let selectSource = '';
@@ -60,7 +97,7 @@
     function addSection() {
         if (!newSectionTitle) return;
         const id = newSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
-        schema.sections = [...(schema.sections || []), { id, title: newSectionTitle }];
+        schema.sections = [...(schema.sections || []), { id, title: newSectionTitle, layout: 'column' }];
         newSectionTitle = '';
         showAddSectionModal = false;
         notifyChange();
@@ -165,6 +202,17 @@
         if (isMerit) field.is_merit = true;
         if (isMerit && maxScore !== 100) field.max_score = Number(maxScore);
 
+        // Table Section: Save row-specific max score overrides for merit columns
+        if (isTableSection && currentSectionMeritColumns.length > 0) {
+            const hasOverrides = Object.entries(columnMaxScores).some(([colKey, score]) => {
+                const col = currentSectionMeritColumns.find(c => c.key === colKey);
+                return score !== (col?.default_max_score || 100);
+            });
+            if (hasOverrides) {
+                field.column_max_scores = { ...columnMaxScores };
+            }
+        }
+
         if (showWhen) {
             const [f, v] = showWhen.split('=');
             if (f && v) {
@@ -226,6 +274,20 @@
             maxScore = field.max_score || 100;
             dependsOn = field.dependsOn || '';
             showWhen = field.showWhen ? `${field.showWhen.field}=${field.showWhen.equals}` : '';
+
+            // Load column_max_scores for table sections
+            if (isTableSection && currentSectionMeritColumns.length > 0) {
+                if (field.column_max_scores) {
+                    columnMaxScores = { ...field.column_max_scores };
+                } else {
+                    // Initialize with defaults
+                    const defaults: Record<string, number> = {};
+                    currentSectionMeritColumns.forEach(col => {
+                        defaults[col.key] = col.default_max_score || 100;
+                    });
+                    columnMaxScores = defaults;
+                }
+            }
 
             // Reset Select Config first
             selectSource = '';
@@ -361,10 +423,50 @@
                     </div>
                     <ul class="list-group list-group-flush">
                         {#each schema.sections || [] as section}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                {section.title}
-                                {#if (schema.sections || []).length > 1}
-                                    <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
+                            <li class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>{section.title}</span>
+                                    {#if (schema.sections || []).length > 1}
+                                        <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
+                                    {/if}
+                                </div>
+                                <select bind:value={section.layout} class="form-select form-select-sm" on:change={notifyChange}>
+                                    <option value="column">Column Layout</option>
+                                    <option value="table">Table Layout</option>
+                                </select>
+                                {#if section.layout === 'table'}
+                                    <div class="mt-2">
+                                        <label class="form-label small">Row Header Label</label>
+                                        <input type="text" class="form-control form-control-sm mb-2" bind:value={section.rowHeaderLabel} placeholder="E.g. Subject Name" on:input={notifyChange} />
+                                        
+                                        <label class="form-label small">Columns</label>
+                                        {#each section.tableColumns || [] as col, colIndex}
+                                            <div class="border p-2 mb-2 bg-white rounded small">
+                                                <div class="d-flex justify-content-between mb-1">
+                                                    <strong>Col {colIndex + 1}</strong>
+                                                    <button type="button" class="btn btn-sm btn-link text-danger p-0" on:click={() => { if(section.tableColumns) { section.tableColumns.splice(colIndex, 1); section.tableColumns = section.tableColumns; notifyChange(); } }}>Remove</button>
+                                                </div>
+                                                <input type="text" class="form-control form-control-sm mb-1" bind:value={col.label} placeholder="Label" on:input={notifyChange} />
+                                                <input type="text" class="form-control form-control-sm mb-1" bind:value={col.key} placeholder="Key" on:input={notifyChange} />
+                                                <select class="form-select form-select-sm mb-1" bind:value={col.type} on:change={notifyChange}>
+                                                    <option value="number">Number</option>
+                                                    <option value="text">Text</option>
+                                                    <option value="calculated">Calculated</option>
+                                                </select>
+                                                {#if col.type === 'calculated'}
+                                                    <input type="text" class="form-control form-control-sm mb-1" bind:value={col.formula} placeholder="E.g. col1 + col2" on:input={notifyChange} />
+                                                {/if}
+                                                <div class="form-check mt-1">
+                                                    <input type="checkbox" class="form-check-input" id="col-merit-{colIndex}" bind:checked={col.is_merit} on:change={notifyChange}>
+                                                    <label class="form-check-label small" for="col-merit-{colIndex}">Is Merit Score?</label>
+                                                </div>
+                                                {#if col.is_merit}
+                                                    <input type="number" class="form-control form-control-sm mt-1" bind:value={col.default_max_score} placeholder="Default Max Score (e.g. 100)" on:input={notifyChange} />
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" on:click={() => { section.tableColumns = [...(section.tableColumns || []), { key: '', label: '', type: 'number' }]; notifyChange(); }}>+ Add Column</button>
+                                    </div>
                                 {/if}
                             </li>
                         {/each}
@@ -494,6 +596,7 @@
                     </div>
                 {/if}
                 
+                {#if !isTableSection}
                 <div class="row g-2 mt-2">
                     <div class="col-6">
                         <label class="form-label">Column Width</label>
@@ -505,6 +608,36 @@
                         </select>
                     </div>
                 </div>
+                {/if}
+
+                <!-- Table Section: Row-specific Max Score Overrides for Merit Columns -->
+                {#if isTableSection && currentSectionMeritColumns.length > 0}
+                    <div class="mt-3 p-2 border rounded bg-light">
+                        <h6><i class="bi bi-table me-1"></i>Table Section: Max Score Overrides</h6>
+                        <p class="small text-muted mb-2">Override default max scores for this row (field) in the table.</p>
+                        {#each currentSectionMeritColumns as col}
+                            {@const defaultVal = col.default_max_score || 100}
+                            {@const currentVal = columnMaxScores[col.key] ?? defaultVal}
+                            <div class="row g-2 mb-2 align-items-center">
+                                <div class="col-6">
+                                    <label class="form-label small mb-0">
+                                        {col.label}
+                                        <span class="text-muted">(default: {defaultVal})</span>
+                                    </label>
+                                </div>
+                                <div class="col-6">
+                                    <input 
+                                        type="number" 
+                                        class="form-control form-control-sm" 
+                                        bind:value={columnMaxScores[col.key]} 
+                                        min="1"
+                                        placeholder="Max Score"
+                                    />
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
 
                 {#if !linkToProfileField}
                     {#if type === 'select'}
