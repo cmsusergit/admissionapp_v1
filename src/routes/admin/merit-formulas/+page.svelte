@@ -3,11 +3,11 @@
     import { enhance } from '$app/forms';
     import { writable } from 'svelte/store';
 
-    export let data: PageData;
+    let { data }: { data: PageData } = $props();
 
-    let showAddModal = false;
-    let showEditModal = false;
-    let showDeleteModal = false;
+    let showAddModal = $state(false);
+    let showEditModal = $state(false);
+    let showDeleteModal = $state(false);
 
     let currentMeritFormula = writable({
         id: '',
@@ -19,20 +19,62 @@
         courses: { name: '' }
     });
 
-    let selectedCourseIdForAdd = '';
-    let selectedFormTypeForAdd = 'Provisional';
-    let selectedModeForAdd = 'weighted';
-    let addExpressionStr = '';
+    let selectedCourseIdForAdd = $state('');
+    let selectedFormTypeForAdd = $state('Provisional');
+    let selectedModeForAdd = $state('weighted');
+    let addExpressionStr = $state('');
+
+    interface MeritFieldEntry {
+        key: string;
+        label: string;
+        type: 'table' | 'column';
+        sectionTitle?: string;
+        columnLabel?: string;
+    }
     
-    // Helper to get available merit fields for a course AND form type
-    $: getMeritFields = (courseId: string, formType: string) => {
+    // Helper to get ALL available merit fields for a course AND form type
+    // Handles both table layout (column-level merit) and column layout (field-level merit)
+    function getMeritFields(courseId: string, formType: string): MeritFieldEntry[] {
         const form = data.admissionForms.find(f => f.course_id === courseId && f.form_type === formType);
         if (!form || !form.schema_json || !form.schema_json.fields) return [];
-        return form.schema_json.fields.filter((f: any) => f.is_merit);
-    };
+        
+        const meritFields: MeritFieldEntry[] = [];
+        const sections = form.schema_json.sections || [];
+        
+        form.schema_json.fields.forEach((field: any) => {
+            const section = sections.find((s: any) => s.id === field.sectionId);
+            
+            if (section?.layout === 'table' && section.tableColumns) {
+                // Table Layout: Check each column for is_merit
+                section.tableColumns.forEach((col: any) => {
+                    if (col.is_merit) {
+                        // Flattened key: fieldKey_columnKey (e.g., physics_theory)
+                        const flattenedKey = `${field.key}_${col.key}`;
+                        meritFields.push({
+                            key: flattenedKey,
+                            label: `${field.label} - ${col.label}`,
+                            type: 'table',
+                            sectionTitle: section.title,
+                            columnLabel: col.label
+                        });
+                    }
+                });
+            } else if (field.is_merit) {
+                // Column Layout: Direct merit field
+                meritFields.push({
+                    key: field.key,
+                    label: field.label,
+                    type: 'column',
+                    sectionTitle: section?.title
+                });
+            }
+        });
+        
+        return meritFields;
+    }
 
-    $: addModalMeritFields = getMeritFields(selectedCourseIdForAdd, selectedFormTypeForAdd);
-    $: editModalMeritFields = getMeritFields($currentMeritFormula.course_id, $currentMeritFormula.form_type);
+    let addModalMeritFields = $derived(getMeritFields(selectedCourseIdForAdd, selectedFormTypeForAdd));
+    let editModalMeritFields = $derived(getMeritFields($currentMeritFormula.course_id, $currentMeritFormula.form_type));
 
     function openEditModal(formula: {
         id: string;
@@ -188,18 +230,23 @@
                     {#if addModalMeritFields.length > 0}
                         <div class="mb-3 p-2 bg-light border rounded">
                             <h6>Available Merit Fields (from Admission Form)</h6>
+                            <p class="small text-muted mb-2">
+                                <span class="badge bg-primary me-1">Column Layout</span> Direct merit fields
+                                <span class="badge bg-info ms-2 me-1">Table Layout</span> Nested merit columns (flattened keys)
+                            </p>
                             <div class="d-flex flex-wrap gap-2">
                                 {#each addModalMeritFields as field}
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" on:click={() => insertField(field.key, false)}>
-                                        {field.label} ({field.key}) <i class="bi bi-plus"></i>
+                                    <button type="button" class="btn btn-sm {field.type === 'table' ? 'btn-outline-info' : 'btn-outline-secondary'}" on:click={() => insertField(field.key, false)}>
+                                        {field.label} <span class="badge bg-secondary ms-1">{field.key}</span> <i class="bi bi-plus"></i>
                                     </button>
                                 {/each}
                             </div>
-                            <small class="text-muted d-block mt-1">
+                            <small class="text-muted d-block mt-2">
+                                Click a field to insert it into your formula.
                                 {#if selectedModeForAdd === 'weighted'}
-                                    Click to add generic weight to JSON.
+                                    Weight will be added to JSON.
                                 {:else}
-                                    Click to add field variable to expression.
+                                    Expression snippet will be appended to the formula.
                                 {/if}
                             </small>
                         </div>
@@ -216,7 +263,8 @@
 }`}</textarea>
                             <div class="form-text">
                                 Define weights for fields. Keys should match "weight_" + field_key.<br>
-                                Example: If field key is "hsc_marks", use "weight_hsc_marks".
+                                Example: If field key is "hsc_marks", use "weight_hsc_marks".<br>
+                                For table fields, use flattened keys like <code>weight_physics_theory</code>.
                             </div>
                         </div>
                     {:else}
@@ -224,7 +272,8 @@
                             <label for="add-expr" class="form-label">Formula Expression</label>
                             <input type="text" class="form-control" id="add-expr" name="expression_str" bind:value={addExpressionStr} placeholder="e.g. ((physics / physics_max) + (maths / maths_max)) / 2" />
                             <div class="form-text">
-                                use field keys as variables. suffix '_max' for max score. <br>
+                                Use field keys as variables. suffix '_max' for max score. <br>
+                                For table fields, flattened keys are used: <code>physics_theory</code> and <code>physics_theory_max</code>.<br>
                                 Supported: +, -, *, /, (), mean(), etc.
                             </div>
                         </div>
@@ -290,13 +339,25 @@
                     {#if editModalMeritFields.length > 0}
                         <div class="mb-3 p-2 bg-light border rounded">
                             <h6>Available Merit Fields</h6>
+                            <p class="small text-muted mb-2">
+                                <span class="badge bg-primary me-1">Column Layout</span> Direct merit fields
+                                <span class="badge bg-info ms-2 me-1">Table Layout</span> Nested merit columns (flattened keys)
+                            </p>
                             <div class="d-flex flex-wrap gap-2">
                                 {#each editModalMeritFields as field}
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" on:click={() => insertField(field.key, true)}>
-                                        {field.label} ({field.key}) <i class="bi bi-plus"></i>
+                                    <button type="button" class="btn btn-sm {field.type === 'table' ? 'btn-outline-info' : 'btn-outline-secondary'}" on:click={() => insertField(field.key, true)}>
+                                        {field.label} <span class="badge bg-secondary ms-1">{field.key}</span> <i class="bi bi-plus"></i>
                                     </button>
                                 {/each}
                             </div>
+                            <small class="text-muted d-block mt-2">
+                                Click a field to insert it into your formula.
+                                {#if $currentMeritFormula.mode === 'weighted'}
+                                    Weight will be added to JSON.
+                                {:else}
+                                    Expression snippet will be appended to the formula.
+                                {/if}
+                            </small>
                         </div>
                     {:else}
                         <div class="alert alert-warning py-2">No merit fields found for this course's form.</div>
@@ -307,7 +368,8 @@
                             <label for="edit-rules-json" class="form-label">Merit Rules (JSON)</label>
                             <textarea class="form-control" id="edit-rules-json" name="rules_json_weighted" rows="10" bind:value={$currentMeritFormula.rules_json}></textarea>
                             <div class="form-text">
-                                Define weights for fields. Keys should match "weight_" + field_key.
+                                Define weights for fields. Keys should match "weight_" + field_key.<br>
+                                For table fields, use flattened keys like <code>weight_physics_theory</code>.
                             </div>
                         </div>
                     {:else}
@@ -315,7 +377,8 @@
                             <label for="edit-expr" class="form-label">Formula Expression</label>
                             <input type="text" class="form-control" id="edit-expr" name="expression_str" bind:value={$currentMeritFormula.expression_str} />
                             <div class="form-text">
-                                use field keys as variables. suffix '_max' for max score.
+                                Use field keys as variables. suffix '_max' for max score.<br>
+                                For table fields, flattened keys are used: <code>physics_theory</code> and <code>physics_theory_max</code>.
                             </div>
                         </div>
                     {/if}

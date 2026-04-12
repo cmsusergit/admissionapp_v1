@@ -593,6 +593,9 @@
                                     <label for={fieldId} class="form-label mb-0">
                                         {field.label}
                                         {#if field.required}<span class="text-danger">*</span>{/if}
+                                        {#if field.column_max_scores && Object.keys(field.column_max_scores).length > 0}
+                                            <span class="badge bg-info ms-1" title="This row has custom max scores">Custom</span>
+                                        {/if}
                                     </label>
                                 </td>
                                 {#if isDatagrid}

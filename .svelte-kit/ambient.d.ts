@@ -41,6 +41,7 @@ declare module '$env/static/private' {
 	export const NODE: string;
 	export const LC_ADDRESS: string;
 	export const LC_NAME: string;
+	export const AGENT: string;
 	export const COLOR: string;
 	export const npm_config_local_prefix: string;
 	export const LC_MONETARY: string;
@@ -54,9 +55,11 @@ declare module '$env/static/private' {
 	export const _: string;
 	export const TERMINAL: string;
 	export const MOTD_SHOWN: string;
+	export const OPENCODE_PID: string;
 	export const HOME: string;
-	export const LANG: string;
+	export const OPENCODE: string;
 	export const LC_PAPER: string;
+	export const LANG: string;
 	export const LS_COLORS: string;
 	export const npm_package_version: string;
 	export const SSH_CONNECTION: string;
@@ -80,12 +83,10 @@ declare module '$env/static/private' {
 	export const npm_execpath: string;
 	export const XDG_RUNTIME_DIR: string;
 	export const SSH_CLIENT: string;
-	export const GEMINI_CLI: string;
 	export const DEBUGINFOD_URLS: string;
 	export const npm_package_json: string;
 	export const LC_TIME: string;
 	export const BUN_INSTALL: string;
-	export const GEMINI_CLI_NO_RELAUNCH: string;
 	export const npm_config_noproxy: string;
 	export const BROWSER: string;
 	export const PATH: string;
@@ -145,6 +146,7 @@ declare module '$env/dynamic/private' {
 		NODE: string;
 		LC_ADDRESS: string;
 		LC_NAME: string;
+		AGENT: string;
 		COLOR: string;
 		npm_config_local_prefix: string;
 		LC_MONETARY: string;
@@ -158,9 +160,11 @@ declare module '$env/dynamic/private' {
 		_: string;
 		TERMINAL: string;
 		MOTD_SHOWN: string;
+		OPENCODE_PID: string;
 		HOME: string;
-		LANG: string;
+		OPENCODE: string;
 		LC_PAPER: string;
+		LANG: string;
 		LS_COLORS: string;
 		npm_package_version: string;
 		SSH_CONNECTION: string;
@@ -184,12 +188,10 @@ declare module '$env/dynamic/private' {
 		npm_execpath: string;
 		XDG_RUNTIME_DIR: string;
 		SSH_CLIENT: string;
-		GEMINI_CLI: string;
 		DEBUGINFOD_URLS: string;
 		npm_package_json: string;
 		LC_TIME: string;
 		BUN_INSTALL: string;
-		GEMINI_CLI_NO_RELAUNCH: string;
 		npm_config_noproxy: string;
 		BROWSER: string;
 		PATH: string;
