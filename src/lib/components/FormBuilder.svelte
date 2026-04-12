@@ -23,6 +23,7 @@
     let required = false;
     let isMerit = false; 
     let maxScore = 100; 
+    let columnMaxScores: Record<string, number> = {};
     let dependsOn = '';
     let showWhen = '';
     let sectionId = schema.sections[0]?.id || 'default'; // Default to first section
@@ -393,7 +394,14 @@
                                                     <option value="calculated">Calculated</option>
                                                 </select>
                                                 {#if col.type === 'calculated'}
-                                                    <input type="text" class="form-control form-control-sm" bind:value={col.formula} placeholder="E.g. col1 + col2" on:input={notifyChange} />
+                                                    <input type="text" class="form-control form-control-sm mb-1" bind:value={col.formula} placeholder="E.g. col1 + col2" on:input={notifyChange} />
+                                                {/if}
+                                                <div class="form-check mt-1">
+                                                    <input type="checkbox" class="form-check-input" id="col-merit-{colIndex}" bind:checked={col.is_merit} on:change={notifyChange}>
+                                                    <label class="form-check-label small" for="col-merit-{colIndex}">Is Merit Score?</label>
+                                                </div>
+                                                {#if col.is_merit}
+                                                    <input type="number" class="form-control form-control-sm mt-1" bind:value={col.default_max_score} placeholder="Default Max Score (e.g. 100)" on:input={notifyChange} />
                                                 {/if}
                                             </div>
                                         {/each}

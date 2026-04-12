@@ -83,6 +83,14 @@ Once the database is initialized, you need a way to log in. Use the provided uti
 6.  Click **Save Form**.
 7.  **Publish:** Make the form active for specific courses.
 
+### Datagrid Column Mapping & Merit Scores
+When using the **Table Layout** for a form section:
+1.  **Configure Columns:** You can define columns like "Theory" or "Practical".
+2.  **Merit Columns:** Check "Is Merit Score?" on a column to designate it for merit calculation. You must also set a default "Max Score" for that column.
+3.  **Row Configuration:** When you add a subject (row) to the table, it will automatically use the default max scores defined by the merit columns.
+4.  **Row-Specific Max Scores:** If a specific subject has a different maximum score than the default, you can override the max score for that specific row/column intersection.
+5.  **Merit Calculations:** Merit Formulas will use the flattened keys from the datagrid (e.g., `subject_theory_score`) for calculations.
+
 ---
 
 ## 4. Fee Structures

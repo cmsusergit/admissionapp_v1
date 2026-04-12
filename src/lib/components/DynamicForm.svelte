@@ -14,8 +14,8 @@
         required?: boolean;
         col?: number;
         sectionId?: string;
-        is_merit?: boolean; // New: For merit calculation
-        max_score?: number; // New: Max score for merit field
+        is_merit?: boolean; // Legacy/List: For merit calculation
+        max_score?: number; // Legacy/List: Max score for merit field
         // Select specific
         options?: string[]; // Legacy
         dataSource?: {
@@ -28,6 +28,8 @@
         // Logic
         dependsOn?: string;
         showWhen?: { field: string; equals: string };
+        // Datagrid/Table specific
+        column_max_scores?: Record<string, number>;
     }
 
     interface TableColumn {
@@ -35,6 +37,8 @@
         label: string;
         type: 'number' | 'text' | 'calculated';
         formula?: string;
+        is_merit?: boolean;
+        default_max_score?: number;
     }
 
     interface FormSection {
@@ -107,10 +111,36 @@
                      // Map existing primitive value to the first datagrid column or a 'value' column if it exists
                      if (existingValue !== undefined && existingValue !== null && section.tableColumns) {
                          const targetCol = section.tableColumns.find(c => c.key === 'value')?.key || section.tableColumns[0]?.key;
-                         if (targetCol) newFormData[key][targetCol] = existingValue;
+                         if (targetCol) {
+                             const targetColumnDef = section.tableColumns.find(c => c.key === targetCol);
+                             if (targetColumnDef?.is_merit) {
+                                 newFormData[key][targetCol] = { value: existingValue, max_score: field.column_max_scores?.[targetCol] ?? targetColumnDef.default_max_score ?? 100 };
+                             } else {
+                                 newFormData[key][targetCol] = existingValue;
+                             }
+                         }
                      }
                      changed = true;
                  }
+                 
+                 // Initialize merit columns inside the datagrid
+                 section.tableColumns?.forEach(col => {
+                     if (col.is_merit) {
+                         const existingColVal = newFormData[key][col.key];
+                         if (typeof existingColVal !== 'object' || existingColVal === null || !('value' in existingColVal)) {
+                             newFormData[key][col.key] = {
+                                 value: existingColVal !== undefined ? existingColVal : undefined,
+                                 max_score: field.column_max_scores?.[col.key] ?? col.default_max_score ?? 100
+                             };
+                             changed = true;
+                         } else if (existingColVal.max_score === undefined) {
+                             newFormData[key][col.key].max_score = field.column_max_scores?.[col.key] ?? col.default_max_score ?? 100;
+                             changed = true;
+                         }
+                     }
+                 });
+                 
+                 // Legacy fallback if the row field itself is marked as is_merit (apply to the whole row generically)
                  if (field.is_merit && newFormData[key].max_score === undefined) {
                      newFormData[key].max_score = field.max_score !== undefined ? field.max_score : 100;
                      changed = true;
@@ -153,13 +183,24 @@
         );
     };
 
+    // Helper to resolve nested object paths (e.g. 'physics.theory_score')
+    function resolvePath(obj: any, path: string) {
+        return path.split('.').reduce((o, p) => o ? o[p] : undefined, obj);
+    }
+
     // Reactivity for Visibility
     $: {
         schema.fields.forEach(field => {
             const key = getKey(field);
             if (field.showWhen) {
-                const parentVal = formData[field.showWhen.field];
-                visibleFields[key] = parentVal === field.showWhen.equals;
+                const parentVal = resolvePath(formData, field.showWhen.field);
+                
+                // If it's a merit object, we likely want to check against its 'value'
+                if (parentVal && typeof parentVal === 'object' && 'value' in parentVal) {
+                    visibleFields[key] = parentVal.value == field.showWhen.equals;
+                } else {
+                    visibleFields[key] = parentVal == field.showWhen.equals;
+                }
             } else {
                 visibleFields[key] = true;
             }
@@ -529,10 +570,10 @@
                             <th style="width: 25%">{section.rowHeaderLabel || 'Field Name'}</th>
                             {#each section.tableColumns || [] as col}
                                 <th>{col.label}</th>
+                                {#if col.is_merit}
+                                    <th style="width: 15%; min-width: 100px;">{col.label} Max</th>
+                                {/if}
                             {/each}
-                            {#if hasMerit}
-                                <th style="width: 20%">Max Score</th>
-                            {/if}
                         {:else}
                             <th style="width: 30%">Field Name</th>
                             <th>Value</th>
@@ -567,29 +608,34 @@
                                                     class="form-control"
                                                     id={`${fieldId}-${col.key}`}
                                                     name={`${key}-${col.key}`}
-                                                    bind:value={formData[key][col.key]}
-                                                    on:input={() => clearError(key)}
+                                                    value={col.is_merit ? formData[key][col.key].value : formData[key][col.key]}
+                                                    on:input={(e) => {
+                                                        const targetValue = (e.target as HTMLInputElement).value;
+                                                        if (col.is_merit) {
+                                                            formData[key][col.key].value = targetValue;
+                                                        } else {
+                                                            formData[key][col.key] = targetValue;
+                                                        }
+                                                        clearError(key);
+                                                    }}
                                                     disabled={readonly}
                                                 />
                                             {/if}
                                         </td>
-                                    {/each}
-                                    {#if hasMerit}
-                                        <td>
-                                            {#if field.is_merit}
+                                        {#if col.is_merit}
+                                            <td>
                                                 <input
                                                     type="number"
-                                                    class="form-control"
-                                                    id="{fieldId}-max-score"
-                                                    name="{key}-max-score"
-                                                    placeholder="Max Score"
-                                                    bind:value={formData[key].max_score}
-                                                    on:input={() => clearError(key)}
-                                                    disabled={readonly}
+                                                    class="form-control bg-light"
+                                                    id={`${fieldId}-${col.key}-max`}
+                                                    name={`${key}-${col.key}-max`}
+                                                    bind:value={formData[key][col.key].max_score}
+                                                    disabled
+                                                    readonly
                                                 />
-                                            {/if}
-                                        </td>
-                                    {/if}
+                                            </td>
+                                        {/if}
+                                    {/each}
                                 {:else}
                                     <td>
                                         {#if field.is_merit}
