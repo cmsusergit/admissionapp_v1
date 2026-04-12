@@ -81,18 +81,23 @@ export async function calculateAndRankMerit(
                 
                 // PREFERRED: Build context from form_data directly as it has the keys
                 if (app.form_data) {
-                    for (const [key, val] of Object.entries(app.form_data)) {
-                        if (typeof val === 'object' && val !== null && 'value' in val && 'max_score' in val) {
-                            // Structured Merit Field
-                            context[key] = Number(val.value) || 0;
-                            context[`${key}_max`] = Number(val.max_score) || 1; // Avoid div/0
-                        } else if (typeof val === 'number' || (typeof val === 'string' && !isNaN(Number(val)))) {
-                            // Simple field
-                            context[key] = Number(val);
-                            // We don't have max here easily unless we look up schema.
-                            // But for expression mode, usually structured fields are used.
+                    const flattenContext = (obj: any, prefix = '') => {
+                        for (const [key, val] of Object.entries(obj)) {
+                            const newKey = prefix ? `${prefix}_${key}` : key;
+                            if (typeof val === 'object' && val !== null && 'value' in val && 'max_score' in val) {
+                                // Structured Merit Field
+                                context[newKey] = Number(val.value) || 0;
+                                context[`${newKey}_max`] = Number(val.max_score) || 1; // Avoid div/0
+                            } else if (typeof val === 'object' && val !== null) {
+                                // Nested datagrid or object
+                                flattenContext(val, newKey);
+                            } else if (typeof val === 'number' || (typeof val === 'string' && !isNaN(Number(val)))) {
+                                // Simple field
+                                context[newKey] = Number(val);
+                            }
                         }
-                    }
+                    };
+                    flattenContext(app.form_data);
                 }
 
                 score = evaluate(rules.expression, context);
