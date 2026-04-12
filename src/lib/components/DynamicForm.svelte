@@ -93,38 +93,43 @@
 
     // Reactivity for initializing formData for merit fields and datagrid
     $: {
+        let newFormData = { ...formData };
+        let changed = false;
         normalizedSchema.fields.forEach(field => {
             const key = getKey(field);
             const section = normalizedSchema.sections.find(s => s.id === field.sectionId) || normalizedSchema.sections[0];
             const isDatagrid = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0;
 
             if (isDatagrid) {
-                 if (typeof formData[key] !== 'object' || formData[key] === null) {
-                     const existingValue = formData[key];
-                     formData = { ...formData, [key]: {} };
+                 if (typeof newFormData[key] !== 'object' || newFormData[key] === null) {
+                     const existingValue = newFormData[key];
+                     newFormData[key] = {};
                      // Map existing primitive value to the first datagrid column or a 'value' column if it exists
                      if (existingValue !== undefined && existingValue !== null && section.tableColumns) {
                          const targetCol = section.tableColumns.find(c => c.key === 'value')?.key || section.tableColumns[0]?.key;
-                         if (targetCol) formData[key][targetCol] = existingValue;
+                         if (targetCol) newFormData[key][targetCol] = existingValue;
                      }
+                     changed = true;
                  }
-                 if (field.is_merit && formData[key].max_score === undefined) {
-                     formData[key].max_score = field.max_score !== undefined ? field.max_score : 100;
+                 if (field.is_merit && newFormData[key].max_score === undefined) {
+                     newFormData[key].max_score = field.max_score !== undefined ? field.max_score : 100;
+                     changed = true;
                  }
             } else if (field.is_merit) {
                 // If it's a merit field and not already an object, convert it
-                if (typeof formData[key] !== 'object' || formData[key] === null || !('value' in formData[key])) {
-                    const existingValue = formData[key]; // Might be undefined or a primitive value
-                    formData = {
-                        ...formData,
-                        [key]: {
-                            value: existingValue !== undefined ? existingValue : undefined,
-                            max_score: field.max_score !== undefined ? field.max_score : 100
-                        }
+                if (typeof newFormData[key] !== 'object' || newFormData[key] === null || !('value' in newFormData[key])) {
+                    const existingValue = newFormData[key]; // Might be undefined or a primitive value
+                    newFormData[key] = {
+                        value: existingValue !== undefined ? existingValue : undefined,
+                        max_score: field.max_score !== undefined ? field.max_score : 100
                     };
+                    changed = true;
                 }
             }
         });
+        if (changed) {
+            formData = newFormData;
+        }
     }
 
     // Normalize Schema
