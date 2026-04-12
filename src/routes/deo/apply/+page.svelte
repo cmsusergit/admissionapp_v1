@@ -169,6 +169,7 @@
     let prevCycleId = '';
     let prevFormType = '';
     let prevStudentId = '';
+    let prevBranchId = '';
 
     // Reactive statement to fetch form schema, student profile, and check for existing application
     $: {
@@ -201,16 +202,33 @@
                 // If we loaded from applicationId, skip the check since we already have the app data
                 if (isLoadedFromApplicationId) {
                     isLoadedFromApplicationId = false; // Reset the flag after first use
-                    fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, true); // Allow fallback for existing apps
+                    fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, true).then(() => {
+                         if (currentAdmissionFormSchema && loadedStudentProfile) {
+                              applicationFormData = mergeProfileData(applicationFormData, currentAdmissionFormSchema, loadedStudentProfile.profile_data);
+                         }
+                    });
                 } else {
                     // When user manually changes form type, don't allow fallback
-                    fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, isEditingExistingApplication);
+                    loadSchemaAndCheckApp();
                 }
             } else {
                 currentAdmissionFormSchema = null;
                 isSchemaAvailable = true;
                 schemaErrorMessage = '';
             }
+        }
+    }
+    
+    // Also check application when branch changes manually
+    $: {
+        if (selectedBranchId !== prevBranchId) {
+             prevBranchId = selectedBranchId;
+             if (selectedCourseId && selectedCycleId && selectedFormType && selectedBranchId) {
+                  // Only if we already have a schema loaded
+                  if (currentAdmissionFormSchema) {
+                       checkExistingApplication();
+                  }
+             }
         }
     }
 
