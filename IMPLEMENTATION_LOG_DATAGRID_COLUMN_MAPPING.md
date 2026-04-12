@@ -285,3 +285,70 @@ const { data: admissionForms, error: formsError } = await supabase
 - Row-specific overrides only saved when different from column defaults
 - Merit formulas can reference both table (flattened) and column (direct) fields
 - UI uses badges to differentiate: `btn-outline-info` for table, `btn-outline-secondary` for column
+
+---
+
+## 6. Receipt Sequence Management UI
+
+### Date: April 12, 2026
+
+Added admin UI for managing receipt sequences (edit, reset, delete).
+
+### Files Created
+
+#### `src/routes/admin/receipt-sequences/+page.server.ts`
+
+Server-side load and form actions:
+
+- **Load**: Fetches receipt_sequences with joins (colleges, courses, academic_years), plus paymentTypes list
+- **Actions**: create, update, reset, delete
+
+#### `src/routes/admin/receipt-sequences/+page.svelte`
+
+Client-side UI with:
+
+- Filter section (College, Academic Year, Payment Type, Course)
+- Table view of all sequences with preview
+- Edit modal (prefix, current sequence)
+- Reset button (to 0)
+- Delete button
+- Add modal for new sequences
+
+### Navigation Updated
+
+#### `src/lib/config/navigation.ts`
+
+Added navigation item under admin section:
+
+```typescript
+{ title: "Receipt Sequences", href: "/admin/receipt-sequences", icon: "bi-receipt" },
+```
+
+### Features
+
+- **Filter**: Filter sequences by college, year, payment type, course
+- **View**: See current sequence number and preview of next receipt
+- **Edit**: Update prefix and current sequence number
+- **Reset**: Reset sequence to 0 with confirmation
+- **Delete**: Remove sequence configuration
+- **Create**: Add new sequence configuration
+
+### Database Schema
+
+```sql
+receipt_sequences:
+  - id (UUID, PK)
+  - college_id (UUID, FK)
+  - course_id (UUID, FK) - optional
+  - payment_type (TEXT) - application_fee, provisional_fee, tuition_fee, etc.
+  - academic_year_id (UUID, FK)
+  - current_sequence (INTEGER, default 0)
+  - prefix (TEXT, default 'REC-')
+  - UNIQUE(college_id, payment_type, academic_year_id)
+```
+
+### Notes
+
+- Admin only access (same as admission-sequences)
+- Course field is optional for generic numbering
+- Preview shows what the next receipt number would look like

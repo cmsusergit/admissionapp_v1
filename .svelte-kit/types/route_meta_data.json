@@ -127,6 +127,10 @@
 		"src/routes/admin/profile-schema/+page.server.ts",
 		"src/routes/+layout.server.ts"
 	],
+	"/admin/receipt-sequences": [
+		"src/routes/admin/receipt-sequences/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
 	"/admin/report-builder": [
 		"src/routes/admin/report-builder/+page.server.ts",
 		"src/routes/+layout.server.ts"

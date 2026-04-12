@@ -41,7 +41,6 @@ declare module '$env/static/private' {
 	export const NODE: string;
 	export const LC_ADDRESS: string;
 	export const LC_NAME: string;
-	export const AGENT: string;
 	export const COLOR: string;
 	export const npm_config_local_prefix: string;
 	export const LC_MONETARY: string;
@@ -55,9 +54,7 @@ declare module '$env/static/private' {
 	export const _: string;
 	export const TERMINAL: string;
 	export const MOTD_SHOWN: string;
-	export const OPENCODE_PID: string;
 	export const HOME: string;
-	export const OPENCODE: string;
 	export const LC_PAPER: string;
 	export const LANG: string;
 	export const LS_COLORS: string;
@@ -67,8 +64,8 @@ declare module '$env/static/private' {
 	export const npm_lifecycle_script: string;
 	export const npm_config_npm_version: string;
 	export const XDG_SESSION_CLASS: string;
-	export const TERM: string;
 	export const LC_IDENTIFICATION: string;
+	export const TERM: string;
 	export const npm_package_name: string;
 	export const ZSH: string;
 	export const npm_config_prefix: string;
@@ -146,7 +143,6 @@ declare module '$env/dynamic/private' {
 		NODE: string;
 		LC_ADDRESS: string;
 		LC_NAME: string;
-		AGENT: string;
 		COLOR: string;
 		npm_config_local_prefix: string;
 		LC_MONETARY: string;
@@ -160,9 +156,7 @@ declare module '$env/dynamic/private' {
 		_: string;
 		TERMINAL: string;
 		MOTD_SHOWN: string;
-		OPENCODE_PID: string;
 		HOME: string;
-		OPENCODE: string;
 		LC_PAPER: string;
 		LANG: string;
 		LS_COLORS: string;
@@ -172,8 +166,8 @@ declare module '$env/dynamic/private' {
 		npm_lifecycle_script: string;
 		npm_config_npm_version: string;
 		XDG_SESSION_CLASS: string;
-		TERM: string;
 		LC_IDENTIFICATION: string;
+		TERM: string;
 		npm_package_name: string;
 		ZSH: string;
 		npm_config_prefix: string;
