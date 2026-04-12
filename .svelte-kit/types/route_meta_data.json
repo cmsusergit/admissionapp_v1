@@ -127,6 +127,10 @@
 		"src/routes/admin/profile-schema/+page.server.ts",
 		"src/routes/+layout.server.ts"
 	],
+	"/admin/receipt-sequences": [
+		"src/routes/admin/receipt-sequences/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
 	"/admin/report-builder": [
 		"src/routes/admin/report-builder/+page.server.ts",
 		"src/routes/+layout.server.ts"
@@ -141,6 +145,9 @@
 	],
 	"/api/admin/check-form": [
 		"src/routes/api/admin/check-form/+server.ts"
+	],
+	"/api/admin/get-form-schema": [
+		"src/routes/api/admin/get-form-schema/+server.ts"
 	],
 	"/api/deo/get-student-profile": [
 		"src/routes/api/deo/get-student-profile/+server.ts"
