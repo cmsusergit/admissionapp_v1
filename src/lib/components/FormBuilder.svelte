@@ -38,7 +38,10 @@
     let maxScore = 100; 
     let columnMaxScores: Record<string, number> = {};
     let dependsOn = '';
-    let showWhen = '';
+    let showWhenField = '';  // The field to depend on
+    let showWhenOperator = 'equals';  // equals, notEquals, in
+    let showWhenValues = '';  // Comma-separated values for 'in' operator
+    let inDatagrid = false;  // Default false - render as regular field above datagrid
     let sectionId = schema.sections[0]?.id || 'default'; // Default to first section
     $: isTableSection = schema.sections?.find(s => s.id === sectionId)?.layout === 'table';
     
@@ -121,6 +124,10 @@
 
     function openAddFieldModal() {
         clearInputs();
+        // Default to regular field (not in datagrid) for table sections
+        if (isTableSection) {
+            inDatagrid = false;
+        }
         showAddFieldModal = true;
     }
 
@@ -213,10 +220,23 @@
             }
         }
 
-        if (showWhen) {
-            const [f, v] = showWhen.split('=');
-            if (f && v) {
-                field.showWhen = { field: f.trim(), equals: v.trim() };
+        // Table Section: Save inDatagrid (only if explicitly false, otherwise undefined = default true)
+        if (isTableSection) {
+            field.inDatagrid = inDatagrid;
+        }
+
+        if (showWhenField && showWhenField.trim()) {
+            if (showWhenOperator === 'in' && showWhenValues) {
+                // Multi-value: comma-separated
+                const values = showWhenValues.split(',').map(v => v.trim()).filter(Boolean);
+                if (values.length > 0) {
+                    field.showWhen = { field: showWhenField.trim(), operator: 'in', equals: values };
+                }
+            } else if (showWhenOperator === 'notEquals' && showWhenValues) {
+                field.showWhen = { field: showWhenField.trim(), operator: 'notEquals', equals: showWhenValues.trim() };
+            } else if (showWhenValues) {
+                // Default: equals
+                field.showWhen = { field: showWhenField.trim(), operator: 'equals', equals: showWhenValues.trim() };
             }
         }
 
@@ -273,7 +293,24 @@
             isMerit = !!field.is_merit; 
             maxScore = field.max_score || 100;
             dependsOn = field.dependsOn || '';
-            showWhen = field.showWhen ? `${field.showWhen.field}=${field.showWhen.equals}` : '';
+            
+            // Load showWhen with operator support
+            if (field.showWhen) {
+                showWhenField = field.showWhen.field || '';
+                showWhenOperator = field.showWhen.operator || 'equals';
+                if (Array.isArray(field.showWhen.equals)) {
+                    showWhenValues = field.showWhen.equals.join(', ');
+                } else {
+                    showWhenValues = field.showWhen.equals || '';
+                }
+            } else {
+                showWhenField = '';
+                showWhenOperator = 'equals';
+                showWhenValues = '';
+            }
+
+            // Load inDatagrid for table sections (default false = regular field)
+            inDatagrid = field.inDatagrid === true;
 
             // Load column_max_scores for table sections
             if (isTableSection && currentSectionMeritColumns.length > 0) {
@@ -382,7 +419,10 @@
         isMerit = false; 
         maxScore = 100; 
         dependsOn = '';
-        showWhen = '';
+        showWhenField = '';
+        showWhenOperator = 'equals';
+        showWhenValues = '';
+        inDatagrid = true;
         selectSource = '';
         staticOptions = '';
         endpoint = '';
@@ -688,10 +728,55 @@
                         </div>
                     {/if}
                     
-                    <div class="mt-2">
-                        <label class="form-label">Logic (Optional)</label>
-                        <input bind:value={dependsOn} class="form-control mb-1" placeholder="Depends On (parent key)" />
-                        <input bind:value={showWhen} class="form-control" placeholder="Show When (field=value)" />
+                    <!-- Table Section: Include in Datagrid -->
+                    {#if isTableSection}
+                        <div class="form-check mt-3">
+                            <input bind:checked={inDatagrid} id="in-datagrid-check" class="form-check-input" type="checkbox">
+                            <label for="in-datagrid-check" class="form-check-label">
+                                Include in Datagrid (Table Row)
+                            </label>
+                            <small class="text-muted d-block">Uncheck to render as regular field above the datagrid table</small>
+                        </div>
+                    {/if}
+                    
+                    <div class="mt-3 p-2 border rounded bg-light">
+                        <h6><i class="bi bi-eye me-1"></i> Conditional Visibility</h6>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small">Field to Check</label>
+                                <input 
+                                    type="text" 
+                                    bind:value={showWhenField} 
+                                    list="available-fields-list-{sectionId}"
+                                    class="form-control form-control-sm" 
+                                    placeholder="Search or type field key..."
+                                />
+                                <datalist id="available-fields-list-{sectionId}">
+                                    {#each schema.fields.filter(f => f.key !== key) as field}
+                                        <option value={field.key}>{field.label} ({field.key})</option>
+                                    {/each}
+                                </datalist>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Operator</label>
+                                <select bind:value={showWhenOperator} class="form-select form-select-sm">
+                                    <option value="equals">Equals</option>
+                                    <option value="notEquals">Not Equals</option>
+                                    <option value="in">In (Multiple)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small">
+                                    Value {showWhenOperator === 'in' ? '(comma-separated)' : ''}
+                                </label>
+                                {#if showWhenOperator === 'in'}
+                                    <input bind:value={showWhenValues} class="form-control form-control-sm" placeholder="science, medical, vocational" />
+                                {:else}
+                                    <input bind:value={showWhenValues} class="form-control form-control-sm" placeholder="value" />
+                                {/if}
+                            </div>
+                        </div>
+                        <small class="text-muted">Leave empty to show always</small>
                     </div>
                 {/if}
 

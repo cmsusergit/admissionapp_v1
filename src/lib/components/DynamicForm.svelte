@@ -27,9 +27,14 @@
         };
         // Logic
         dependsOn?: string;
-        showWhen?: { field: string; equals: string };
+        showWhen?: { 
+            field: string; 
+            operator?: 'equals' | 'notEquals' | 'in';
+            equals?: string | string[];  // string[] for 'in' operator
+        };
         // Datagrid/Table specific
         column_max_scores?: Record<string, number>;
+        inDatagrid?: boolean; // true = datagrid row, false = regular field (default true for table sections)
     }
 
     interface TableColumn {
@@ -55,35 +60,46 @@
         fields: FormField[];
     }
 
-    export let schema: FormSchema = { fields: [] };
-    export let formData: Record<string, any> = {};
-    export let readonly: boolean = false; // New prop for read-only mode
+    let { schema = { fields: [] }, formData = $bindable({}), readonly = false }: { schema: FormSchema; formData: Record<string, any>; readonly: boolean } = $props();
 
-    let errors: Record<string, string> = {};
-    let uploadingFields: Record<string, boolean> = {};
-    let loadingOptions: Record<string, boolean> = {};
-    let activeTabId: string = '';
-    
-    // Debug: Track component initialization
+    let errors = $state<Record<string, string>>({});
+    let uploadingFields = $state<Record<string, boolean>>({});
+    let loadingOptions = $state<Record<string, boolean>>({});
+    let activeTabId = $state('');
+    let dynamicOptions = $state<Record<string, { value: string; label: string }[]>>({});
     let componentId = Math.random().toString(36).substring(7);
-    
-    // State for Select Options (dynamic loading)
-    let dynamicOptions: Record<string, { value: string; label: string }[]> = {};
     
     // Compute field key helper
     const getKey = (f: FormField) => f.key || f.name || '';
     
-    // Initialize visibility and dynamic options
-    let visibleFields: Record<string, boolean> = {};
+    // Visibility is computed reactively based on formData changes
+    // We'll compute it inline in templates using checkVisibility function
+    
+    // Helper to check if a field is visible - uses formData directly
+    function isFieldVisible(field: FormField): boolean {
+        if (!field.showWhen) return true;
+        const result = checkVisibility(field.showWhen, formData);
+        // Debug: log visibility changes
+        const key = getKey(field);
+        const showWhenField = field.showWhen.field;
+        const showWhenValue = formData[showWhenField];
+        console.log(`[DynamicForm] Visibility check: ${key} depends on '${showWhenField}' = '${showWhenValue}' => ${result}`);
+        return result;
+    }
     
     onMount(() => {
         console.debug(`[DynamicForm ${componentId}] Mounted with ${schema.fields?.length || 0} fields`);
+        // Debug: log fields with showWhen
+        const showWhenFields = schema.fields?.filter(f => f.showWhen) || [];
+        if (showWhenFields.length > 0) {
+            console.debug(`[DynamicForm ${componentId}] Fields with showWhen:`, showWhenFields.map(f => ({ key: f.key, showWhen: f.showWhen })));
+        }
         return () => {
             console.debug(`[DynamicForm ${componentId}] Destroyed`);
         };
     });
     
-    $: {
+    $effect(() => {
         if (schema.fields?.length > 0) {
             console.debug(`[DynamicForm ${componentId}] Schema updated: ${schema.fields.length} fields`);
             // Check for duplicate keys in the schema
@@ -93,122 +109,135 @@
                 console.warn(`[DynamicForm ${componentId}] WARNING - Duplicate field keys in database schema:`, [...new Set(duplicateKeys)]);
             }
         }
-    }
+    });
 
     // Reactivity for initializing formData for merit fields and datagrid
-    $: {
-        let newFormData = { ...formData };
-        let changed = false;
-        normalizedSchema.fields.forEach(field => {
-            const key = getKey(field);
-            const section = normalizedSchema.sections.find(s => s.id === field.sectionId) || normalizedSchema.sections[0];
-            const isDatagrid = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0;
+    // Initialize formData for datagrid/merit fields - only runs on first render
+    let initialized = false;
+    
+    $effect(() => {
+        // Only run once on initial mount
+        if (!initialized && normalizedSchema.fields.length > 0) {
+            initialized = true;
+            console.log('[DynamicForm] Initializing formData for', normalizedSchema.fields.length, 'fields');
+            
+            let newFormData = { ...formData };
+            let changed = false;
+            normalizedSchema.fields.forEach(field => {
+                const key = getKey(field);
+                const section = normalizedSchema.sections.find(s => s.id === field.sectionId) || normalizedSchema.sections[0];
+                const sectionHasTable = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0;
+                const isDatagridField = sectionHasTable && field.inDatagrid === true;
 
-            if (isDatagrid) {
-                 if (typeof newFormData[key] !== 'object' || newFormData[key] === null) {
-                     const existingValue = newFormData[key];
-                     newFormData[key] = {};
-                     // Map existing primitive value to the first datagrid column or a 'value' column if it exists
-                     if (existingValue !== undefined && existingValue !== null && section.tableColumns) {
-                         const targetCol = section.tableColumns.find(c => c.key === 'value')?.key || section.tableColumns[0]?.key;
-                         if (targetCol) {
-                             const targetColumnDef = section.tableColumns.find(c => c.key === targetCol);
-                             if (targetColumnDef?.is_merit) {
-                                 newFormData[key][targetCol] = { value: existingValue, max_score: field.column_max_scores?.[targetCol] ?? targetColumnDef.default_max_score ?? 100 };
-                             } else {
+                // Handle DATAGRID fields (inDatagrid === true)
+                if (isDatagridField) {
+                     // Only initialize if not already an object
+                     if (typeof newFormData[key] !== 'object' || newFormData[key] === null) {
+                         const existingValue = newFormData[key];
+                         newFormData[key] = {};
+                         if (existingValue !== undefined && existingValue !== null && section.tableColumns) {
+                             const targetCol = section.tableColumns[0]?.key;
+                             if (targetCol) {
                                  newFormData[key][targetCol] = existingValue;
                              }
                          }
+                         changed = true;
                      }
-                     changed = true;
-                 }
-                 
-                 // Initialize merit columns inside the datagrid
-                 section.tableColumns?.forEach(col => {
-                     if (col.is_merit) {
-                         const existingColVal = newFormData[key][col.key];
-                         if (typeof existingColVal !== 'object' || existingColVal === null || !('value' in existingColVal)) {
-                             newFormData[key][col.key] = {
-                                 value: existingColVal !== undefined ? existingColVal : undefined,
-                                 max_score: field.column_max_scores?.[col.key] ?? col.default_max_score ?? 100
-                             };
-                             changed = true;
-                         } else if (existingColVal.max_score === undefined) {
-                             newFormData[key][col.key].max_score = field.column_max_scores?.[col.key] ?? col.default_max_score ?? 100;
-                             changed = true;
+                     
+                     // Ensure merit columns have proper structure
+                     section.tableColumns?.forEach(col => {
+                         if (col.is_merit) {
+                             const existingColVal = newFormData[key]?.[col.key];
+                             if (existingColVal && typeof existingColVal === 'object' && 'value' in existingColVal) {
+                                 if (existingColVal.max_score === undefined) {
+                                     existingColVal.max_score = field.column_max_scores?.[col.key] ?? col.default_max_score ?? 100;
+                                 }
+                             } else if (existingColVal !== undefined && existingColVal !== null) {
+                                 newFormData[key][col.key] = {
+                                     value: existingColVal,
+                                     max_score: field.column_max_scores?.[col.key] ?? col.default_max_score ?? 100
+                                 };
+                                 changed = true;
+                             }
                          }
-                     }
-                 });
-                 
-                 // Legacy fallback if the row field itself is marked as is_merit (apply to the whole row generically)
-                 if (field.is_merit && newFormData[key].max_score === undefined) {
-                     newFormData[key].max_score = field.max_score !== undefined ? field.max_score : 100;
-                     changed = true;
-                 }
-            } else if (field.is_merit) {
-                // If it's a merit field and not already an object, convert it
-                if (typeof newFormData[key] !== 'object' || newFormData[key] === null || !('value' in newFormData[key])) {
-                    const existingValue = newFormData[key]; // Might be undefined or a primitive value
-                    newFormData[key] = {
-                        value: existingValue !== undefined ? existingValue : undefined,
-                        max_score: field.max_score !== undefined ? field.max_score : 100
-                    };
-                    changed = true;
+                     });
+                } else if (field.is_merit && !sectionHasTable) {
+                    // Handle MERIT fields outside datagrid (non-table sections only)
+                    const currentVal = newFormData[key];
+                    if (typeof currentVal !== 'object' || currentVal === null || !('value' in currentVal)) {
+                        const existingValue = currentVal;
+                        newFormData[key] = {
+                            value: existingValue !== undefined ? existingValue : undefined,
+                            max_score: field.max_score !== undefined ? field.max_score : 100
+                        };
+                        changed = true;
+                    }
                 }
+                // REGULAR fields (non-datagrid in table sections, or any field in non-table sections) are NOT wrapped
+            });
+            
+            if (changed) {
+                formData = newFormData;
             }
-        });
-        if (changed) {
-            formData = newFormData;
         }
-    }
+    });
 
     // Normalize Schema
-    $: normalizedSchema = {
+    let normalizedSchema = $derived({
         layout: schema.layout || 'list',
         sections: (schema.sections && schema.sections.length > 0) 
             ? schema.sections 
             : [{ id: 'default', title: 'General', layout: 'column' as const }],
         fields: schema.fields || []
-    };
+    });
 
-    $: if (!activeTabId && normalizedSchema.sections.length > 0) {
-        activeTabId = normalizedSchema.sections[0].id;
-    }
+    $effect(() => {
+        if (!activeTabId && normalizedSchema.sections.length > 0) {
+            activeTabId = normalizedSchema.sections[0].id;
+        }
+    });
 
     // Helper to get fields for a section
-    $: getFieldsForSection = (sectionId: string) => {
+    function getFieldsForSection(sectionId: string) {
         return normalizedSchema.fields.filter(f => 
             f.sectionId === sectionId || 
             (!f.sectionId && sectionId === normalizedSchema.sections[0].id)
         );
-    };
+    }
 
     // Helper to resolve nested object paths (e.g. 'physics.theory_score')
     function resolvePath(obj: any, path: string) {
         return path.split('.').reduce((o, p) => o ? o[p] : undefined, obj);
     }
 
-    // Reactivity for Visibility
-    $: {
-        schema.fields.forEach(field => {
-            const key = getKey(field);
-            if (field.showWhen) {
-                const parentVal = resolvePath(formData, field.showWhen.field);
-                
-                // If it's a merit object, we likely want to check against its 'value'
-                if (parentVal && typeof parentVal === 'object' && 'value' in parentVal) {
-                    visibleFields[key] = parentVal.value == field.showWhen.equals;
-                } else {
-                    visibleFields[key] = parentVal == field.showWhen.equals;
-                }
-            } else {
-                visibleFields[key] = true;
-            }
-        });
+    // Helper to check visibility based on showWhen condition
+    function checkVisibility(showWhen: NonNullable<FormField['showWhen']>, formData: Record<string, any>): boolean {
+        const parentVal = resolvePath(formData, showWhen.field);
+        
+        // Extract the actual value if it's a merit object
+        const checkValue = (parentVal && typeof parentVal === 'object' && 'value' in parentVal) 
+            ? parentVal.value 
+            : parentVal;
+        
+        const { operator = 'equals', equals } = showWhen;
+        
+        if (operator === 'in' && Array.isArray(equals)) {
+            return equals.includes(checkValue);
+        }
+        if (operator === 'notEquals') {
+            return checkValue !== equals;
+        }
+        // Default: equals
+        return checkValue === equals;
     }
 
-    // Reactivity for Dependent Selects
-    $: {
+    // Track formData changes for visibility - using $effect for proper Svelte 5 reactivity
+    $effect(() => {
+        // Access formData to create dependency
+        const _dep = formData;
+        console.debug(`[DynamicForm] formData updated (for reactivity):`, JSON.stringify(Object.keys(_dep || {})));
+        
+        // Also update dependent selects when formData changes
         schema.fields.forEach(field => {
             if (field.type === 'select' && field.dataSource?.type === 'rest' && field.dependsOn) {
                 const parentVal = formData[field.dependsOn];
@@ -219,7 +248,21 @@
                 }
             }
         });
-    }
+    });
+
+    // Reactivity for Dependent Selects
+    $effect(() => {
+        schema.fields.forEach(field => {
+            if (field.type === 'select' && field.dataSource?.type === 'rest' && field.dependsOn) {
+                const parentVal = formData[field.dependsOn];
+                if (parentVal) {
+                    loadDynamicOptions(field, parentVal);
+                } else {
+                    dynamicOptions[getKey(field)] = [];
+                }
+            }
+        });
+    });
 
     onMount(() => {
         // Load initial options for REST fields without dependencies
@@ -261,13 +304,14 @@
 
     function getOptions(field: FormField) {
         const key = getKey(field);
-        if (dynamicOptions[key]) return dynamicOptions[key];
         
-        if (field.dataSource?.type === 'static' && field.dataSource.options) {
+        if (dynamicOptions[key]?.length > 0) return dynamicOptions[key];
+        
+        if (field.dataSource?.options && Array.isArray(field.dataSource.options) && field.dataSource.options.length > 0) {
             return field.dataSource.options;
         }
-
-        if (field.options) {
+        
+        if (field.options && Array.isArray(field.options) && field.options.length > 0) {
             return field.options.map(o => {
                 if (typeof o === 'string') {
                     const parts = o.split('|');
@@ -275,7 +319,10 @@
                     const label = (parts[1] || parts[0])?.trim();
                     return { value: val, label: label };
                 }
-                return { value: o, label: o };
+                if (typeof o === 'object' && o !== null) {
+                    return { value: String((o as any).value ?? o), label: String((o as any).label || (o as any).value ?? o) };
+                }
+                return { value: String(o), label: String(o) };
             });
         }
 
@@ -288,7 +335,7 @@
         normalizedSchema.fields.forEach(field => {
             const key = getKey(field);
             // Only validate visible fields
-            if (visibleFields[key] && field.required) {
+            if (isFieldVisible(field) && field.required) {
                 if (field.is_merit) {
                     if (formData[key] === undefined || formData[key] === null || formData[key].value === undefined || formData[key].value === null || formData[key].value === '') {
                         errors[key] = `${field.label} is required`;
@@ -439,7 +486,7 @@
                     name="{key}-value"
                     placeholder="Score"
                     bind:value={formData[key].value}
-                    on:input={() => clearError(key)}
+                    oninput={() => clearError(key)}
                     disabled={readonly}
                 />
             </div>
@@ -451,7 +498,7 @@
                     name="{key}-max-score"
                     placeholder="Max Score"
                     bind:value={formData[key].max_score}
-                    on:input={() => clearError(key)}
+                    oninput={() => clearError(key)}
                     disabled={readonly}
                 />
             </div>
@@ -463,7 +510,7 @@
             id={fieldId}
             name={key}
             bind:value={formData[key]}
-            on:input={() => clearError(key)}
+            oninput={() => clearError(key)}
             disabled={readonly}
         />
     {:else if field.type === 'textarea'}
@@ -472,7 +519,7 @@
             id={fieldId}
             name={key}
             bind:value={formData[key]}
-            on:input={() => clearError(key)}
+            oninput={() => clearError(key)}
             disabled={readonly}
         ></textarea>
     {:else if field.type === 'select'}
@@ -481,7 +528,7 @@
             id={fieldId}
             name={key}
             bind:value={formData[key]}
-            on:change={() => clearError(key)}
+            onchange={() => clearError(key)}
             disabled={readonly || loadingOptions[key] || (!!field.dependsOn && !formData[field.dependsOn])}
         >
             {#if loadingOptions[key]}
@@ -501,7 +548,7 @@
                 id={fieldId}
                 name={key}
                 bind:checked={formData[key]}
-                on:change={() => clearError(key)}
+                onchange={() => clearError(key)}
                 disabled={readonly}
             />
             {#if !hideLabel}
@@ -516,7 +563,7 @@
                 id={fieldId}
                 name={key}
                 accept="image/*,application/pdf"
-                on:change={(e) => handleFileUpload(e, key)}
+                onchange={(e) => handleFileUpload(e, key)}
                 disabled={readonly || uploadingFields[key]}
             />
             {#if uploadingFields[key]}
@@ -541,7 +588,7 @@
                     <button 
                         type="button" 
                         class="btn btn-sm btn-outline-danger" 
-                        on:click={() => handleFileDelete(key)}
+                        onclick={() => handleFileDelete(key)}
                     >
                         Delete
                     </button>
@@ -558,137 +605,19 @@
 {/snippet}
 
 {#snippet sectionContent(section: FormSection)}
-    {#if section.layout === 'table'}
-        {@const sectionFields = getFieldsForSection(section.id)}
-        {@const hasMerit = sectionFields.some(f => f.is_merit)}
-        {@const isDatagrid = section.tableColumns && section.tableColumns.length > 0}
-        <div class="table-responsive mb-3">
-            <table class="table table-bordered align-middle">
-                <thead class="table-light">
-                    <tr>
-                        {#if isDatagrid}
-                            <th style="width: 25%">{section.rowHeaderLabel || 'Field Name'}</th>
-                            {#each section.tableColumns || [] as col}
-                                <th>{col.label}</th>
-                                {#if col.is_merit}
-                                    <th style="width: 15%; min-width: 100px;">{col.label} Max</th>
-                                {/if}
-                            {/each}
-                        {:else}
-                            <th style="width: 30%">Field Name</th>
-                            <th>Value</th>
-                            {#if hasMerit}
-                                <th style="width: 20%">Max Score</th>
-                            {/if}
-                        {/if}
-                    </tr>
-                </thead>
-                <tbody>
-                    {#each sectionFields as field, fieldIndex}
-                        {@const key = getKey(field)}
-                        {@const fieldId = `${section.id}-${key}-${fieldIndex}`}
-                        {#if visibleFields[key]}
-                            <tr>
-                                <td>
-                                    <label for={fieldId} class="form-label mb-0">
-                                        {field.label}
-                                        {#if field.required}<span class="text-danger">*</span>{/if}
-                                        {#if field.column_max_scores && Object.keys(field.column_max_scores).length > 0}
-                                            <span class="badge bg-info ms-1" title="This row has custom max scores">Custom</span>
-                                        {/if}
-                                    </label>
-                                </td>
-                                {#if isDatagrid}
-                                    {#each section.tableColumns || [] as col}
-                                        <td>
-                                            {#if col.type === 'calculated'}
-                                                {@const calcVal = getCalculatedValue(key, col.formula)}
-                                                <input type="text" class="form-control bg-light" readonly value={calcVal} />
-                                                <input type="hidden" name={`${key}-${col.key}`} value={calcVal} />
-                                            {:else}
-                                                <input
-                                                    type={col.type === 'number' ? 'number' : 'text'}
-                                                    class="form-control"
-                                                    id={`${fieldId}-${col.key}`}
-                                                    name={`${key}-${col.key}`}
-                                                    value={col.is_merit ? formData[key][col.key].value : formData[key][col.key]}
-                                                    on:input={(e) => {
-                                                        const targetValue = (e.target as HTMLInputElement).value;
-                                                        if (col.is_merit) {
-                                                            formData[key][col.key].value = targetValue;
-                                                        } else {
-                                                            formData[key][col.key] = targetValue;
-                                                        }
-                                                        clearError(key);
-                                                    }}
-                                                    disabled={readonly}
-                                                />
-                                            {/if}
-                                        </td>
-                                        {#if col.is_merit}
-                                            <td>
-                                                <input
-                                                    type="number"
-                                                    class="form-control bg-light"
-                                                    id={`${fieldId}-${col.key}-max`}
-                                                    name={`${key}-${col.key}-max`}
-                                                    bind:value={formData[key][col.key].max_score}
-                                                    disabled
-                                                    readonly
-                                                />
-                                            </td>
-                                        {/if}
-                                    {/each}
-                                {:else}
-                                    <td>
-                                        {#if field.is_merit}
-                                            <input
-                                                type="number"
-                                                class="form-control"
-                                                id="{fieldId}-value"
-                                                name="{key}-value"
-                                                placeholder="Score"
-                                                bind:value={formData[key].value}
-                                                on:input={() => clearError(key)}
-                                                disabled={readonly}
-                                            />
-                                        {:else}
-                                            {@render fieldControl(field, fieldId, key, true)}
-                                        {/if}
-                                        {#if errors[key]}
-                                            <div class="text-danger mt-1">{errors[key]}</div>
-                                        {/if}
-                                    </td>
-                                    {#if hasMerit}
-                                        <td>
-                                            {#if field.is_merit}
-                                                <input
-                                                    type="number"
-                                                    class="form-control"
-                                                    id="{fieldId}-max-score"
-                                                    name="{key}-max-score"
-                                                    placeholder="Max Score"
-                                                    bind:value={formData[key].max_score}
-                                                    on:input={() => clearError(key)}
-                                                    disabled={readonly}
-                                                />
-                                            {/if}
-                                        </td>
-                                    {/if}
-                                {/if}
-                            </tr>
-                        {/if}
-                    {/each}
-                </tbody>
-            </table>
-        </div>
-    {:else}
-        <div class="row">
-            {#each getFieldsForSection(section.id) as field, fieldIndex}
+    {@const sectionFields = getFieldsForSection(section.id)}
+    {@const isTableLayout = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0}
+    {@const regularFields = isTableLayout ? sectionFields.filter(f => !f.inDatagrid) : sectionFields}
+    {@const datagridFields = isTableLayout ? sectionFields.filter(f => f.inDatagrid) : []}
+    
+    <!-- Regular Fields -->
+    {#if regularFields.length > 0}
+        <div class="row mb-3">
+            {#each regularFields as field, fieldIndex}
                 {@const key = getKey(field)}
                 {@const fieldId = `${section.id}-${key}-${fieldIndex}`}
-                {#if visibleFields[key]}
-                    <div class="{`col-md-${field.col || 12}`} mb-3">
+                {#if isFieldVisible(field)}
+                    <div class="{`col-md-${field.col || 12}`} mb-2">
                         <label for={fieldId} class="form-label">
                             {field.label}
                             {#if field.required}<span class="text-danger">*</span>{/if}
@@ -702,6 +631,91 @@
             {/each}
         </div>
     {/if}
+    
+    <!-- Datagrid Table (only for table layout) -->
+    {#if isTableLayout && datagridFields.length > 0}
+        <div class="table-responsive mb-3">
+            <table class="table table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 25%">{section.rowHeaderLabel || 'Field Name'}</th>
+                        {#each section.tableColumns || [] as col}
+                            <th>{col.label}</th>
+                            {#if col.is_merit}
+                                <th style="width: 15%; min-width: 100px;">{col.label} Max</th>
+                            {/if}
+                        {/each}
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each datagridFields as field, fieldIndex}
+                        {@const key = getKey(field)}
+                        {@const fieldId = `${section.id}-${key}-${fieldIndex}`}
+                        {#if isFieldVisible(field)}
+                            <tr>
+                                <td>
+                                    <label for={fieldId} class="form-label mb-0 fw-semibold">
+                                        {field.label}
+                                        {#if field.required}<span class="text-danger">*</span>{/if}
+                                    </label>
+                                </td>
+                                {#each section.tableColumns || [] as col}
+                                    {@const cellId = `${fieldId}-${col.key}`}
+                                    {@const maxScoreId = `${fieldId}-${col.key}-max`}
+                                    <td>
+                                        {#if col.type === 'calculated'}
+                                            {@const calcVal = getCalculatedValue(key, col.formula)}
+                                            <input type="text" class="form-control bg-light" readonly value={calcVal} />
+                                            <input type="hidden" name={`${key}-${col.key}`} value={calcVal} />
+                                        {:else}
+                                            <input
+                                                type={col.type === 'number' ? 'number' : 'text'}
+                                                class="form-control"
+                                                id={cellId}
+                                                name={`${key}-${col.key}`}
+                                                value={col.is_merit ? formData[key]?.[col.key]?.value : formData[key]?.[col.key]}
+                                                oninput={(e) => {
+                                                    const targetValue = (e.target as HTMLInputElement).value;
+                                                    if (col.is_merit) {
+                                                        if (!formData[key]) formData[key] = {};
+                                                        if (!formData[key][col.key]) formData[key][col.key] = {};
+                                                        formData[key][col.key].value = targetValue;
+                                                    } else {
+                                                        formData[key][col.key] = targetValue;
+                                                    }
+                                                    clearError(key);
+                                                }}
+                                                disabled={readonly}
+                                            />
+                                        {/if}
+                                    </td>
+                                    {#if col.is_merit}
+                                        <td>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id={maxScoreId}
+                                                name={`${key}-${col.key}-max`}
+                                                value={formData[key]?.[col.key]?.max_score ?? field.column_max_scores?.[col.key] ?? col.default_max_score ?? 100}
+                                                min="1"
+                                                oninput={(e) => {
+                                                    const targetValue = (e.target as HTMLInputElement).value;
+                                                    if (!formData[key]) formData[key] = {};
+                                                    if (!formData[key][col.key]) formData[key][col.key] = {};
+                                                    formData[key][col.key].max_score = parseFloat(targetValue) || 100;
+                                                }}
+                                                disabled={readonly}
+                                            />
+                                        </td>
+                                    {/if}
+                                {/each}
+                            </tr>
+                        {/if}
+                    {/each}
+                </tbody>
+            </table>
+        </div>
+    {/if}
 {/snippet}
 
 <div class="dynamic-form-container">
@@ -711,7 +725,7 @@
                 <li class="nav-item">
                     <button 
                         class="nav-link {activeTabId === section.id ? 'active' : ''}"
-                        on:click={() => activeTabId = section.id}
+                        onclick={() => activeTabId = section.id}
                         type="button"
                     >
                         {section.title}
@@ -746,7 +760,7 @@
             {#each schema.fields as field, fieldIndex}
                 {@const key = getKey(field)}
                 {@const fieldId = `${key}-${fieldIndex}`} 
-                {#if visibleFields[key]}
+                {#if isFieldVisible(field)}
                     <div class="{`col-md-${field.col || 12}`} mb-3">
                         <label for={fieldId} class="form-label">
                             {field.label}

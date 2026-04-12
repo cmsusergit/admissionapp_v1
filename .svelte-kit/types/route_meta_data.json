@@ -146,6 +146,9 @@
 	"/api/admin/check-form": [
 		"src/routes/api/admin/check-form/+server.ts"
 	],
+	"/api/admin/get-form-schema": [
+		"src/routes/api/admin/get-form-schema/+server.ts"
+	],
 	"/api/deo/get-student-profile": [
 		"src/routes/api/deo/get-student-profile/+server.ts"
 	],
