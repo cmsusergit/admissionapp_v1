@@ -22,6 +22,35 @@
     let currentApplicationId: string | null = null;
     let applicationFormData: Record<string, any> = {};
 
+    // Helper: Merge autofill data from profile and inquiry
+    function mergeAutofillData(schema: any) {
+        if (!schema || !schema.fields) return {};
+        
+        const merged: Record<string, any> = {};
+        const profileData = data.studentProfile?.profile_data || {};
+        const inquiryData = data.inquiryAutofillData || {};
+
+        schema.fields.forEach((field: any) => {
+            // 1. Priority: Profile Data (Linked by key)
+            if (field.profileFieldKey && profileData[field.profileFieldKey] !== undefined) {
+                merged[field.key] = profileData[field.profileFieldKey];
+            }
+            // 2. Secondary: Inquiry Data (Linked by key)
+            else if (inquiryData[field.key] !== undefined) {
+                merged[field.key] = inquiryData[field.key];
+            }
+            // 3. Special mapping for names/phone if linked
+            else if (field.profileFieldKey === 'full_name' && data.studentProfile?.full_name) {
+                merged[field.key] = data.studentProfile.full_name;
+            }
+            else if (field.profileFieldKey === 'phone' && data.studentProfile?.phone) {
+                merged[field.key] = data.studentProfile.phone;
+            }
+        });
+
+        return merged;
+    }
+
     let currentAdmissionFormSchema: any = null;
     let isLoadingSchema = false;
     let uiMessage: { type: 'success' | 'danger' | 'info' | 'warning', text: string } | null = null;
@@ -163,26 +192,28 @@
         await checkExistingApplication();
     }
 
-    // Helper to merge profile data into form data based on schema
+    // Helper to merge profile and inquiry data into form data based on schema
     function mergeProfileData(formData: any, schema: any, profileData: any) {
         console.log('--- mergeProfileData ---');
-        console.log('Initial formData:', formData);
-        console.log('Schema provided:', !!schema);
-        console.log('Profile data provided:', !!profileData);
-        if (!schema || !schema.fields || !profileData) return formData;
+        const inquiryData = data.inquiryAutofillData || {};
+        
+        if (!schema || !schema.fields) return formData;
         
         const merged = { ...formData };
         schema.fields.forEach((field: any) => {
-            if (field.profileFieldKey && profileData[field.profileFieldKey] !== undefined) {
+            // 1. Priority: Profile Data (Linked by key)
+            if (field.profileFieldKey && profileData?.[field.profileFieldKey] !== undefined) {
                 merged[field.key] = profileData[field.profileFieldKey];
-                console.log(`Merged profile field: ${field.key} <- ${profileData[field.profileFieldKey]}`);
             }
-            else if (profileData[field.key] !== undefined && (merged[field.key] === undefined || merged[field.key] === '')) {
+            // 2. Secondary: Inquiry Data (Linked by key)
+            else if (inquiryData[field.key] !== undefined && (merged[field.key] === undefined || merged[field.key] === '')) {
+                merged[field.key] = inquiryData[field.key];
+            }
+            // 3. Fallback: Direct key match in profile
+            else if (profileData?.[field.key] !== undefined && (merged[field.key] === undefined || merged[field.key] === '')) {
                 merged[field.key] = profileData[field.key];
-                console.log(`Merged fallback profile field: ${field.key} <- ${profileData[field.key]}`);
             }
         });
-        console.log('Merged formData:', merged);
         return merged;
     }
 

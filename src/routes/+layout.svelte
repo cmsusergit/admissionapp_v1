@@ -81,11 +81,12 @@
     }
   });
 
-  // Determine if we are on the home page or login page (no sidebar)
+  // Determine if we are on a public landing page (no sidebar)
   let isHomePage = $derived(
     $page.url.pathname === "/" ||
       $page.url.pathname === "/login" ||
-      $page.url.pathname === "/register",
+      $page.url.pathname === "/register" ||
+      $page.url.pathname.startsWith("/inquiry"),
   );
 
   // Determine if we are on a print route (no header, footer, or sidebar)

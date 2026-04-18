@@ -25,7 +25,8 @@ export const load = async ({ url, locals: { supabase, getSession, userProfile } 
         { data: allCourses },
         { data: allBranches },
         { data: distinctTypes },
-        { data: allAppBranches }
+        { data: allAppBranches },
+        { data: activeYear }
     ] = await Promise.all([
         supabase.rpc('get_application_status_counts'),
         supabase.rpc('get_application_course_counts'),
@@ -35,8 +36,29 @@ export const load = async ({ url, locals: { supabase, getSession, userProfile } 
         supabase.from('courses').select('id, name, code').order('name'),
         supabase.from('branches').select('id, name, course_id, courses(name)').order('name'),
         supabase.from('applications').select('form_type').limit(100),
-        supabase.from('applications').select('branch_id, form_type')
+        supabase.from('applications').select('branch_id, form_type'),
+        supabase.from('academic_years').select('id, name').eq('is_active', true).maybeSingle()
     ]);
+
+    // Fetch Inquiry counts for the active year
+    let totalInquiries = 0;
+    let processedInquiries = 0;
+    
+    if (activeYear?.data?.id) {
+        const [totalRes, processedRes] = await Promise.all([
+            supabase.from('inquiries').select('*', { count: 'exact', head: true }).eq('academic_year_id', activeYear.data.id),
+            supabase.from('inquiries').select('*', { count: 'exact', head: true }).eq('academic_year_id', activeYear.data.id).eq('is_processed', true)
+        ]);
+        totalInquiries = totalRes.count || 0;
+        processedInquiries = processedRes.count || 0;
+    } else {
+        const [totalRes, processedRes] = await Promise.all([
+            supabase.from('inquiries').select('*', { count: 'exact', head: true }),
+            supabase.from('inquiries').select('*', { count: 'exact', head: true }).eq('is_processed', true)
+        ]);
+        totalInquiries = totalRes.count || 0;
+        processedInquiries = processedRes.count || 0;
+    }
 
     if (statusError) console.error('Error fetching application status counts:', statusError.message);
     if (courseError) console.error('Error fetching application course counts:', courseError.message);
@@ -174,6 +196,9 @@ export const load = async ({ url, locals: { supabase, getSession, userProfile } 
         totalAmountCollected: totalAmountCollected,
         totalProvFeesCollected: totalProvFeesCollected,
         totalApplications: totalApplications || 0,
+        totalInquiries: totalInquiries,
+        processedInquiries: processedInquiries,
+        activeYearName: activeYear?.data?.name || 'Current Year',
         filteredApplications: filteredApplications || [],
         recentApplications: recentApplications || [], // Pass recent apps to UI
         filters: {

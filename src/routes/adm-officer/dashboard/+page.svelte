@@ -139,28 +139,43 @@
     <!-- Top Stats Rows -->
     <div class="row">
         <div class="col-md-3 mb-4">
-            <div class="card text-white bg-primary mb-3">
-                <div class="card-header">Total Applications</div>
+            <div class="card text-white bg-primary mb-3 shadow-sm h-100">
+                <div class="card-header fw-bold">Total Applications</div>
                 <div class="card-body">
-                    <h5 class="card-title">{data.totalApplications}</h5>
+                    <h5 class="card-title display-6">{data.totalApplications}</h5>
                 </div>
             </div>
         </div>
         <div class="col-md-3 mb-4">
-            <div class="card text-white bg-success mb-3">
-                <div class="card-header">Total App Fees Collected</div>
+            <div class="card text-white bg-success mb-3 shadow-sm h-100">
+                <div class="card-header fw-bold">App Fees Collected</div>
                 <div class="card-body">
-                    <h5 class="card-title">{data.totalAmountCollected.toFixed(2)}</h5>
+                    <h5 class="card-title display-6">₹{data.totalAmountCollected.toLocaleString()}</h5>
                 </div>
             </div>
         </div>
         <div class="col-md-3 mb-4">
-            <div class="card text-white bg-info mb-3">
-                <div class="card-header">Total Prov Fees Collected</div>
+            <div class="card text-white bg-info mb-3 shadow-sm h-100">
+                <div class="card-header fw-bold">Prov. Fees Collected</div>
                 <div class="card-body">
-                    <h5 class="card-title">{data.totalProvFeesCollected?.toFixed(2) || '0.00'}</h5>
+                    <h5 class="card-title display-6">₹{data.totalProvFeesCollected?.toLocaleString() || '0'}</h5>
                 </div>
             </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <a href="/adm-officer/inquiries" class="text-decoration-none">
+                <div class="card text-white bg-secondary mb-3 shadow-sm h-100">
+                    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                        <span>Inquiry Conversion</span>
+                        <i class="bi bi-chat-left-dots"></i>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title display-6">{data.processedInquiries} / {data.totalInquiries}</h5>
+                        <p class="card-text small opacity-75 mb-0">Processed in {data.activeYearName}</p>
+                        <p class="card-text smaller opacity-50">{data.totalInquiries - data.processedInquiries} students remaining</p>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
 
