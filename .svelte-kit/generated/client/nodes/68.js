@@ -1,1 +1,1 @@
-export { default as component } from "../../../../src/routes/student/payments/+page.svelte";
+export { default as component } from "../../../../src/routes/student/apply/+page.svelte";

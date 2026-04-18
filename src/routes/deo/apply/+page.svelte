@@ -1,14 +1,13 @@
 <script lang="ts">
     import type { PageData, ActionData } from './$types';
     import { enhance, deserialize } from '$app/forms'; // Import deserialize
-    import { goto } from '$app/navigation';
+    import { goto, invalidateAll } from '$app/navigation';
     import { onMount } from 'svelte';
     import DynamicForm from '$lib/components/DynamicForm.svelte';
     import { supabase } from '$lib/supabase'; // Client-side supabase client
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; // Import loading controls
 
-    export let data: PageData;
-    export let form: ActionData; // To get messages from form actions
+    let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
     let studentSearchContainer: HTMLElement;
 
@@ -24,144 +23,339 @@
         };
     });
 
-    let selectedStudentId: string = data.selectedStudent?.id || '';
-    let showCreateStudentForm = false;
+    let selectedStudentId = $state(data.selectedStudent?.id || '');
+    let showCreateStudentForm = $state(false);
 
-    let selectedCourseId: string = data.selectedCourse?.id || '';
-    let selectedCycleId: string = '';
-    let selectedBranchId: string = ''; // Branch Selection
-    let selectedFormType: string = 'Provisional'; // Form Type Selection
+    let selectedCourseId = $state(data.selectedCourse?.id || '');
+    let selectedCycleId = $state('');
+    let selectedBranchId = $state(''); // Branch Selection
+    let selectedFormType = $state('Provisional'); // Form Type Selection
     
-    let currentApplicationId: string | null = null;
-    let applicationFormData: Record<string, any> = {};
+    let currentApplicationId = $state<string | null>(null);
+    let applicationFormData = $state<Record<string, any>>({});
     
     // Error handling for applicationId loading
-    let applicationLoadError: string | null = null;
-    let isLoadingApplication: boolean = false;
-    let isLoadedFromApplicationId: boolean = false; // Track if we loaded from URL param
+    let applicationLoadError = $state<string | null>(null);
+    let isLoadingApplication = $state(false);
+    let isLoadedFromApplicationId = $state(false); // Track if we loaded from URL param
     
     // Track if we're editing an existing application (vs creating new)
-    let isEditingExistingApplication: boolean = false;
+    let isEditingExistingApplication = $state(false);
 
-    let currentAdmissionFormSchema: any = null;
-    let isLoadingSchema = false;
-    let loadedStudentProfile: any = null; // Store fetched student profile
+    let currentAdmissionFormSchema = $state<any>(null);
+    let isLoadingSchema = $state(false);
+    let loadedStudentProfile = $state<any>(null); // Store fetched student profile
     
     // Track schema availability
-    let isSchemaAvailable: boolean = true;
-    let schemaErrorMessage: string = '';
+    let isSchemaAvailable = $state(true);
+    let schemaErrorMessage = $state('');
 
     // Profile Editing State
-    let showEditProfileModal = false;
-    let profileFormSchema: any = null;
-    let profileFormData: Record<string, any> = {};
+    let showEditProfileModal = $state(false);
+    let profileFormData = $state<Record<string, any>>({});
     let profileForm: DynamicForm;
 
     // New student form fields
-    let newStudentFullName = '';
-    let newStudentEmail = '';
-    let newStudentPassword = '';
-    let newStudentConfirmPassword = '';
+    let newStudentFullName = $state('');
+    let newStudentEmail = $state('');
+    let newStudentPhone = $state(''); // Added phone field
+    let newStudentPassword = $state('');
+    let newStudentConfirmPassword = $state('');
 
-    // Function to generate a random password
-    
-    // Convert raw profile schema to DynamicForm schema format
-    $: if (data.profileSchema) {
-        profileFormSchema = {
-            fields: data.profileSchema.map((field: any) => {
-                let parsedOptions = undefined;
-                if (field.options && Array.isArray(field.options) && field.options.length > 0) {
-                    parsedOptions = field.options.map((opt: any) => {
-                        if (typeof opt === 'string' && opt.includes('|')) {
-                            const [val, lbl] = opt.split('|');
-                            return { value: val.trim(), label: lbl.trim() };
-                        }
-                        // Handle case where it might already be an object (though DB seems to store strings)
-                        if (typeof opt === 'object' && opt.value) return opt;
-                        return { value: opt, label: opt };
-                    });
+    // Inquiry detection state
+    let matchingInquiry = $state<any>(null);
+    let isCheckingInquiry = $state(false);
+    let inquiryEmailSuggestions = $state<string[]>([]);
+    let inquirySuggestions = $state<any[]>([]); // New: Full inquiry objects
+    let lastLoadedInquiryData = $state<any>(null);
+    let isProgrammaticUpdate = false;
+
+    // Debounced inquiry search for autocomplete
+    let searchTimeout: any;
+    async function searchInquiries(query: string) {
+        if (!query || query.length < 2) {
+            inquirySuggestions = [];
+            return;
+        }
+
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`/api/inquiry/search?q=${encodeURIComponent(query)}`);
+                inquirySuggestions = await res.json();
+                
+                // If there's an exact match in the suggestions, we can show the "Inquiry Found" alert
+                const exactMatch = inquirySuggestions.find((s: any) => 
+                    s.email.toLowerCase() === query.toLowerCase() || 
+                    s.full_name.toLowerCase() === query.toLowerCase()
+                );
+                
+                if (exactMatch) {
+                    performInquiryCheck(exactMatch.email, 'email');
                 }
-
-                return {
-                    key: field.key,
-                    label: field.label,
-                    type: field.type,
-                    required: field.is_required,
-                    // Use dataSource for structured options to avoid DynamicForm re-mapping string[]
-                    dataSource: parsedOptions ? {
-                        type: 'static',
-                        options: parsedOptions
-                    } : undefined,
-                    col: 12
-                };
-            })
-        };
+            } catch (e) {
+                console.error('Inquiry search failed:', e);
+            }
+        }, 300);
     }
 
-    // Search state
-    let studentSearchTerm = '';
-    let isStudentListExpanded = false;
-
-    // Helper to merge profile data into form data based on schema
-    function mergeProfileData(formData: any, schema: any, profileData: any) {
-        if (!schema || !schema.fields || !profileData) return formData;
+    async function performInquiryCheck(val: string, type: 'email' | 'name' | 'phone') {
+        if (!val || val.length < 3 || isProgrammaticUpdate) return;
         
-        console.log('Merging Profile Data:', profileData);
-        const merged = { ...formData };
-        
-        schema.fields.forEach((field: any) => {
-            let profileVal = undefined;
-            let source = '';
-
-            // 1. Try explicit profile mapping
-            if (field.profileFieldKey && profileData[field.profileFieldKey] !== undefined) {
-                profileVal = profileData[field.profileFieldKey];
-                source = `profileFieldKey: ${field.profileFieldKey}`;
+        isCheckingInquiry = true;
+        startLoading();
+        try {
+            const res = await fetch(`/api/inquiry/check?q=${encodeURIComponent(val)}`);
+            const result = await res.json();
+            if (result.found) {
+                matchingInquiry = result;
             }
-            // 2. Try implicit key matching
-            else if (profileData[field.key] !== undefined) {
-                profileVal = profileData[field.key];
-                source = `key: ${field.key}`;
-            }
-
-            // Apply if we found a value (even if it overwrites)
-            if (profileVal !== undefined && profileVal !== null && profileVal !== '') {
-                console.log(`Field [${field.key}]: Merging '${profileVal}' from ${source}`);
-                merged[field.key] = profileVal;
-            }
-        });
-        return merged;
-    }
-
-    $: console.log('Client-side disableBranchSelection:', data.disableBranchSelection);
-
-    // Reactive: Determine if branch selection should be disabled based on currently loaded schema
-    // Property is 'enableBranchSelection'. If missing or false, it's disabled.
-    $: isBranchSelectionDisabled = currentAdmissionFormSchema ? !currentAdmissionFormSchema.enableBranchSelection : data.disableBranchSelection;
-
-    // Reactive: Get branches for the selected course
-    $: branchesForSelectedCourse = selectedCourseId 
-        ? data.courses.find(c => c.id === selectedCourseId)?.branches || []
-        : [];
-
-    // Reactive: Reset branch if course changes or if branch selection is disabled
-    $: if (selectedCourseId) {
-        if (selectedBranchId && (!branchesForSelectedCourse.some(b => b.id === selectedBranchId) || isBranchSelectionDisabled)) {
-            selectedBranchId = '';
+        } catch (e) {
+            console.error('Inquiry check failed:', e);
+        } finally {
+            isCheckingInquiry = false;
+            stopLoading();
         }
     }
 
-    // Reactive: Auto-select active cycle if none selected
-    $: if (!selectedCycleId && data.availableCycles.length > 0) {
-        selectedCycleId = data.availableCycles[0].id;
+    function loadInquiryData() {
+        if (!matchingInquiry) return;
+        
+        console.log('>>> [DIAGNOSTIC] loadInquiryData START');
+        isProgrammaticUpdate = true;
+        
+        const nextName = matchingInquiry.fullName || '';
+        const nextEmail = matchingInquiry.email || '';
+        const nextPhone = matchingInquiry.phone || '';
+
+        newStudentFullName = nextName;
+        newStudentEmail = nextEmail;
+        newStudentPhone = nextPhone;
+        
+        lastLoadedInquiryData = {
+            ...(matchingInquiry.mappedData || {}),
+            full_name: nextName,
+            email: nextEmail,
+            contact: nextPhone,
+            phone: nextPhone
+        };
+        
+        if (currentAdmissionFormSchema) {
+            applicationFormData = mergeProfileData(
+                { ...applicationFormData }, 
+                currentAdmissionFormSchema, 
+                null
+            );
+        }
+        
+        matchingInquiry = null; 
+        
+        setTimeout(() => { isProgrammaticUpdate = false; }, 1000);
+        alert('Data from inquiry has been loaded successfully.');
     }
 
-    // Reactive: Filtered students based on search term
-    $: filteredStudents = data.students.filter(student => {
-        if (!studentSearchTerm) return true;
+    $effect(() => {
+        if (showCreateStudentForm && !isProgrammaticUpdate) {
+            if (newStudentEmail) performInquiryCheck(newStudentEmail, 'email');
+            else if (newStudentFullName) performInquiryCheck(newStudentFullName, 'name');
+            else if (newStudentPhone) performInquiryCheck(newStudentPhone, 'phone');
+        }
+    });
+
+    // Convert raw profile schema to DynamicForm schema format
+    let profileFormSchema = $derived(data.profileSchema ? {
+        fields: data.profileSchema.map((field: any) => {
+            let parsedOptions = undefined;
+            if (field.options && Array.isArray(field.options) && field.options.length > 0) {
+                parsedOptions = field.options.map((opt: any) => {
+                    if (typeof opt === 'string' && opt.includes('|')) {
+                        const [val, lbl] = opt.split('|');
+                        return { value: val.trim(), label: lbl.trim() };
+                    }
+                    if (typeof opt === 'object' && opt.value) return opt;
+                    return { value: opt, label: opt };
+                });
+            }
+
+            return {
+                key: field.key,
+                label: field.label,
+                type: field.type,
+                required: field.is_required,
+                dataSource: parsedOptions ? {
+                    type: 'static',
+                    options: parsedOptions
+                } : undefined,
+                col: 12
+            };
+        })
+    } : null);
+
+    // Search state
+    let studentSearchTerm = $state('');
+    let isStudentListExpanded = $state(false);
+
+    // Reactive: Combined search results (Students + Inquiries)
+    let searchResults = $derived.by(() => {
+        if (!studentSearchTerm || studentSearchTerm.length < 2) return [];
         const term = studentSearchTerm.toLowerCase();
-        return (student.full_name?.toLowerCase().includes(term) || 
-                student.email?.toLowerCase().includes(term));
+        
+        // 1. Existing Students
+        const students = data.students
+            .filter((s: any) => s.full_name?.toLowerCase().includes(term) || s.email?.toLowerCase().includes(term))
+            .map((s: any) => ({ ...s, type: 'student' }));
+
+        // 2. Add Inquiry suggestions
+        const inquiryMatches = inquirySuggestions
+            .filter((s: any) => !students.some((st: any) => st.email === s.email))
+            .map((s: any) => ({ ...s, type: 'inquiry' }));
+
+        return [...students, ...inquiryMatches];
+    });
+
+    async function handleSelectResult(item: any) {
+        if (item.type === 'student') {
+            await selectStudent(item);
+        } else {
+            showCreateStudentForm = true;
+            newStudentEmail = item.email;
+            newStudentFullName = item.full_name;
+            newStudentPhone = item.phone || '';
+            isStudentListExpanded = false;
+            await performInquiryCheck(item.email, 'email');
+            if (matchingInquiry) {
+                loadInquiryData();
+            }
+        }
+    }
+
+    async function selectStudent(student: any) {
+        console.log('>>> [SELECT-STUDENT] Initializing selection for:', student.email);
+        startLoading();
+        
+        try {
+            // 1. Reset states to prevent old data leaks
+            loadedStudentProfile = null;
+            lastLoadedInquiryData = null; 
+            
+            selectedStudentId = student.id;
+            studentSearchTerm = `${student.full_name} (${student.email})`;
+            isStudentListExpanded = false;
+            
+            // 2. Fetch Inquiry Data first (The "Lead" data)
+            const inquiryRes = await fetch(`/api/inquiry/check?q=${encodeURIComponent(student.email)}`);
+            const inquiryResult = await inquiryRes.json();
+            
+            if (inquiryResult.found) {
+                console.log('>>> [AUTO-FETCH] Inquiry match found. Buffering data.');
+                lastLoadedInquiryData = {
+                    ...(inquiryResult.mappedData || {}),
+                    full_name: inquiryResult.fullName,
+                    email: inquiryResult.email,
+                    contact: inquiryResult.phone,
+                    phone: inquiryResult.phone
+                };
+            }
+
+            // 3. Fetch Official Profile
+            const profileRes = await fetch(`/api/deo/get-student-profile?student_id=${student.id}`);
+            if (profileRes.ok) {
+                const profileResult = await profileRes.json();
+                loadedStudentProfile = profileResult.profile;
+            }
+
+            // 4. If a form is already visible, trigger the merge now that BOTH sources are ready
+            if (currentAdmissionFormSchema) {
+                applicationFormData = mergeProfileData(
+                    { ...applicationFormData }, 
+                    currentAdmissionFormSchema, 
+                    loadedStudentProfile?.profile_data
+                );
+            }
+        } catch (e) {
+            console.error('Failed to fully initialize student selection:', e);
+        } finally {
+            stopLoading();
+        }
+    }
+
+    function clearStudentSelection() {
+        selectedStudentId = '';
+        studentSearchTerm = '';
+        isStudentListExpanded = true;
+        loadedStudentProfile = null;
+        lastLoadedInquiryData = null; // Clear inquiry buffer too
+    }
+
+    // Helper to merge profile and inquiry data into form data based on schema
+    function mergeProfileData(formData: any, schema: any, profileData: any) {
+        console.log('>>> [DIAGNOSTIC] mergeProfileData START');
+        if (!schema || !schema.fields) {
+            console.warn('>>> mergeProfileData: Missing schema fields. Aborting.');
+            return formData;
+        }
+        
+        const merged = { ...formData };
+        const inquiryData = lastLoadedInquiryData || {};
+        const pData = profileData || {};
+
+        console.log('>>> Available Profile Data:', pData);
+        console.log('>>> Available Inquiry Data:', inquiryData);
+
+        schema.fields.forEach((field: any) => {
+            let val = undefined;
+            let source = '';
+
+            // 1. Priority: Official Profile Data
+            if (field.profileFieldKey && pData[field.profileFieldKey] !== undefined && pData[field.profileFieldKey] !== '') {
+                val = pData[field.profileFieldKey];
+                source = 'PROFILE_KEY:' + field.profileFieldKey;
+            }
+            // 2. Secondary: Inquiry Data (if profile is empty for this field)
+            else if (inquiryData[field.key] !== undefined && inquiryData[field.key] !== '') {
+                val = inquiryData[field.key];
+                source = 'INQUIRY_DIRECT_KEY:' + field.key;
+            }
+            else if (field.profileFieldKey && inquiryData[field.profileFieldKey] !== undefined && inquiryData[field.profileFieldKey] !== '') {
+                val = inquiryData[field.profileFieldKey];
+                source = 'INQUIRY_PROFILE_KEY:' + field.profileFieldKey;
+            }
+
+            if (val !== undefined && val !== null && val !== '') {
+                console.log(`>>> MAPPED: Field [${field.key}] from source [${source}] = [${val}]`);
+                merged[field.key] = val;
+            }
+        });
+        console.log('>>> [DIAGNOSTIC] mergeProfileData END. New state:', merged);
+        return merged;
+    }
+
+    $effect(() => {
+        console.log('Client-side disableBranchSelection:', data.disableBranchSelection);
+    });
+
+    // Property is 'enableBranchSelection'. If missing or false, it's disabled.
+    let isBranchSelectionDisabled = $derived(currentAdmissionFormSchema ? !currentAdmissionFormSchema.enableBranchSelection : data.disableBranchSelection);
+
+    // Reactive: Get branches for the selected course
+    let branchesForSelectedCourse = $derived(selectedCourseId 
+        ? data.courses.find((c: any) => c.id === selectedCourseId)?.branches || []
+        : []);
+
+    // Reactive: Reset branch if course changes or if branch selection is disabled
+    $effect(() => {
+        if (selectedCourseId) {
+            if (selectedBranchId && (!branchesForSelectedCourse.some((b: any) => b.id === selectedBranchId) || isBranchSelectionDisabled)) {
+                selectedBranchId = '';
+            }
+        }
+    });
+
+    // Reactive: Auto-select active cycle if none selected
+    $effect(() => {
+        if (!selectedCycleId && data.availableCycles.length > 0) {
+            selectedCycleId = data.availableCycles[0].id;
+        }
     });
 
     // Track previous values to prevent duplicate fetches
@@ -172,7 +366,7 @@
     let prevBranchId = '';
 
     // Reactive statement to fetch form schema, student profile, and check for existing application
-    $: {
+    $effect(() => {
         if (selectedStudentId && selectedStudentId !== prevStudentId) {
              prevStudentId = selectedStudentId;
              // If student changes, fetch their profile
@@ -217,10 +411,10 @@
                 schemaErrorMessage = '';
             }
         }
-    }
+    });
     
     // Also check application when branch changes manually
-    $: {
+    $effect(() => {
         if (selectedBranchId !== prevBranchId) {
              prevBranchId = selectedBranchId;
              if (selectedCourseId && selectedCycleId && selectedFormType && selectedBranchId) {
@@ -230,7 +424,7 @@
                   }
              }
         }
-    }
+    });
 
     async function fetchStudentProfile(studentId: string) {
         try {
@@ -263,9 +457,6 @@
     }
 
     async function checkExistingApplication() {
-        // If we are already editing an app matching these criteria, do nothing?
-        // No, if the user CHANGED criteria (e.g. branch), we must switch context.
-        
         startLoading();
         
         let query = supabase
@@ -287,24 +478,18 @@
         if (error) {
             console.error('Error checking for existing application:', error.message);
         } else if (existingApp) {
-            // Found existing application -> Switch to Edit Mode
             console.log('Found existing application:', existingApp.id);
             currentApplicationId = existingApp.id;
-            
-            // Merge profile data even for existing apps (live update of mapped fields)
             applicationFormData = mergeProfileData(
                 existingApp.form_data || {}, 
                 currentAdmissionFormSchema, 
                 loadedStudentProfile?.profile_data
             );
         } else {
-            // No existing application -> Switch to Create Mode (New Draft)
-            // If currentApplicationId WAS set, and now we found nothing, it means we switched to a new unique combo.
             if (currentApplicationId) {
                 currentApplicationId = null;
                 applicationFormData = {}; // Reset form for new entry
             }
-            // Auto-fill new form
             applicationFormData = mergeProfileData(
                 applicationFormData, 
                 currentAdmissionFormSchema, 
@@ -315,39 +500,210 @@
         stopLoading();
     }
 
-    onMount(async () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const appId = urlParams.get('applicationId');
-        if (appId) {
-            currentApplicationId = appId;
-            await fetchExistingApplication(appId);
-        }
-        
-        // Initialize search term if student is pre-selected
-        if (selectedStudentId) {
-            const student = data.students.find(s => s.id === selectedStudentId);
-            if (student) {
-                studentSearchTerm = `${student.full_name} (${student.email})`;
+    async function fetchAdmissionFormSchema(courseId: string, cycleId: string, formType: string, allowFallback: boolean = true) {
+        isLoadingSchema = true;
+        startLoading();
+        const { data: formResult, error } = await supabase
+            .from('admission_forms')
+            .select('schema_json')
+            .eq('course_id', courseId)
+            .eq('cycle_id', cycleId)
+            .eq('form_type', formType)
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error fetching admission form schema:', error.message);
+            currentAdmissionFormSchema = null;
+            isSchemaAvailable = false;
+            schemaErrorMessage = `Error loading form schema: ${error.message}`;
+            applicationFormData = {};
+        } else if (formResult) {
+            currentAdmissionFormSchema = formResult.schema_json;
+            isSchemaAvailable = true;
+            schemaErrorMessage = '';
+        } else {
+            if (allowFallback && formType !== 'Provisional') {
+                 const { data: defaultForm, error: defaultError } = await supabase
+                    .from('admission_forms')
+                    .select('schema_json')
+                    .eq('course_id', courseId)
+                    .eq('cycle_id', cycleId)
+                    .eq('form_type', 'Provisional')
+                    .limit(1)
+                    .maybeSingle();
+                
+                if (defaultForm) {
+                    currentAdmissionFormSchema = defaultForm.schema_json;
+                    isSchemaAvailable = true;
+                    schemaErrorMessage = '';
+                } else {
+                    currentAdmissionFormSchema = null;
+                    isSchemaAvailable = false;
+                    schemaErrorMessage = `No admission form configuration found for <strong>${formType}</strong> or <strong>Provisional</strong> in the selected course/cycle.`;
+                    applicationFormData = {};
+                }
+            } else {
+                currentAdmissionFormSchema = null;
+                isSchemaAvailable = false;
+                schemaErrorMessage = `No admission form configuration found for <strong>${formType}</strong> in the selected course/cycle. Please contact the administrator to create a form for this seat type.`;
+                applicationFormData = {};
             }
         }
-    });
-
-    function selectStudent(student: any) {
-        selectedStudentId = student.id;
-        studentSearchTerm = `${student.full_name} (${student.email})`;
-        isStudentListExpanded = false;
+        isLoadingSchema = false;
+        stopLoading();
     }
 
-    function clearStudentSelection() {
-        selectedStudentId = '';
-        studentSearchTerm = '';
-        isStudentListExpanded = true;
-        loadedStudentProfile = null;
+    async function fetchExistingApplication(appId: string) {
+        isLoadingApplication = true;
+        applicationLoadError = null;
+        
+        const { data: application, error } = await supabase
+            .from('applications')
+            .select('form_data, course_id, cycle_id, branch_id, form_type, student_id, status')
+            .eq('id', appId)
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            applicationLoadError = `Failed to load application: ${error.message}`;
+            isLoadingApplication = false;
+            return;
+        }
+        
+        if (!application) {
+            applicationLoadError = `Application not found.`;
+            isLoadingApplication = false;
+            return;
+        }
+        
+        selectedStudentId = application.student_id;
+        selectedCourseId = application.course_id;
+        selectedCycleId = application.cycle_id;
+        selectedBranchId = application.branch_id || '';
+        selectedFormType = application.form_type || 'Provisional';
+        applicationFormData = application.form_data || {};
+        isLoadedFromApplicationId = true;
+        isEditingExistingApplication = true;
+
+        const student = data.students.find((s: any) => s.id === selectedStudentId);
+        if (student) {
+            studentSearchTerm = `${student.full_name} (${student.email})`;
+        }
+        isLoadingApplication = false;
+    }
+
+    let dynamicForm: DynamicForm;
+
+    async function handleSaveDraft() {
+        if (!selectedStudentId) {
+            alert('Please select or create a student first.');
+            return;
+        }
+        if (branchesForSelectedCourse.length > 0 && !selectedBranchId) {
+            alert('Please select a Branch for this course.');
+            return;
+        }
+        
+        const formPayload = new FormData();
+        formPayload.append('student_id', selectedStudentId);
+        formPayload.append('course_id', selectedCourseId);
+        formPayload.append('cycle_id', selectedCycleId);
+        formPayload.append('form_type', selectedFormType);
+        if (selectedBranchId) formPayload.append('branch_id', selectedBranchId);
+        formPayload.append('form_data', JSON.stringify(applicationFormData));
+        if (currentApplicationId) formPayload.append('application_id', currentApplicationId);
+
+        const response = await fetch('?/saveApplication', { method: 'POST', body: formPayload });
+        const result = deserialize(await response.text());
+        if (result.type === 'success' && result.data?.success) {
+            if (!currentApplicationId && result.data.applicationId) {
+                await goto(`/deo/apply?studentId=${selectedStudentId}&applicationId=${result.data.applicationId}`, { replaceState: true });
+                currentApplicationId = result.data.applicationId;
+            }
+        }
+    }
+
+    async function handleSubmitApplication() {
+        if (!currentApplicationId || !selectedStudentId) {
+            alert('Cannot submit without saving as draft first.');
+            return;
+        }
+        if (dynamicForm && !dynamicForm.validate()) {
+            alert('Please fill in all required fields.');
+            return;
+        }
+
+        startLoading();
+        try {
+            await handleSaveDraft();
+            const formPayload = new FormData();
+            formPayload.append('student_id', selectedStudentId);
+            formPayload.append('application_id', currentApplicationId);
+
+            const response = await fetch('?/submitApplication', { method: 'POST', body: formPayload });
+            const result = deserialize(await response.text());
+            if (result.type === 'success' && result.data?.success) {
+                if (result.data.feeStatus === 'pending' && result.data.feeAmount > 0) {
+                    if (confirm(`Application Submitted. Fee of ₹${result.data.feeAmount} is pending. Record payment now?`)) {
+                        currentFeeAmount = result.data.feeAmount;
+                        showPaymentModal = true;
+                    } else {
+                        await goto('/deo/dashboard');
+                    }
+                } else {
+                    await goto('/deo/dashboard'); 
+                }
+            }
+        } finally {
+            stopLoading();
+        }
+    }
+
+    let showPaymentModal = $state(false);
+    let currentFeeAmount = $state(0);
+    let paymentMode = $state('cash');
+    let transactionRef = $state('');
+
+    async function handleRecordPayment() {
+        if (!currentApplicationId) return;
+        startLoading();
+        const formData = new FormData();
+        formData.append('application_id', currentApplicationId);
+        formData.append('amount', currentFeeAmount.toString());
+        formData.append('payment_mode', paymentMode);
+        formData.append('transaction_ref', transactionRef || `OFFLINE-${Date.now()}`);
+
+        const response = await fetch('?/recordPayment', { method: 'POST', body: formData });
+        const result = deserialize(await response.text());
+        stopLoading();
+
+        if (result.type === 'success') {
+            alert('Payment recorded successfully!');
+            showPaymentModal = false;
+            await goto('/deo/dashboard');
+        }
+    }
+
+    async function handleDeleteDraft() {
+        if (!currentApplicationId) return;
+        if (!confirm('Are you sure?')) return;
+
+        startLoading();
+        const formData = new FormData();
+        formData.append('application_id', currentApplicationId);
+        const response = await fetch('?/deleteDraft', { method: 'POST', body: formData });
+        const result = deserialize(await response.text());
+        stopLoading();
+
+        if (result.type === 'success') {
+            alert('Draft deleted successfully.');
+            await goto('/deo/dashboard');
+        }
     }
 
     function openEditProfile() {
         if (!selectedStudentId) return;
-        // Populate profile form data from loaded profile
         profileFormData = loadedStudentProfile?.profile_data || {};
         showEditProfileModal = true;
     }
@@ -373,7 +729,6 @@
             if (result.type === 'success') {
                 alert('Profile updated successfully!');
                 showEditProfileModal = false;
-                // Refresh profile data and re-merge
                 await fetchStudentProfile(selectedStudentId);
             } else {
                 alert(result.data?.message || 'Failed to update profile.');
@@ -386,274 +741,21 @@
         }
     }
 
-    async function fetchAdmissionFormSchema(courseId: string, cycleId: string, formType: string, allowFallback: boolean = true) {
-        isLoadingSchema = true;
-        startLoading(); // Show overlay while fetching schema
-        // Fetch specific schema for type
-        const { data: formResult, error } = await supabase
-            .from('admission_forms')
-            .select('schema_json')
-            .eq('course_id', courseId)
-            .eq('cycle_id', cycleId)
-            .eq('form_type', formType)
-            .limit(1)
-            .maybeSingle();
+    function handleStudentCreated(event: any) {
+        if (event.detail?.studentId) {
+             selectedStudentId = event.detail.studentId;
+             showCreateStudentForm = false;
+             
+             const newStudent = { 
+                 id: event.detail.studentId, 
+                 full_name: event.detail.full_name || '', 
+                 email: event.detail.email || ''
+             };
+             
+             studentSearchTerm = `${newStudent.full_name} (${newStudent.email})`.trim();
+             if (studentSearchTerm === '()') studentSearchTerm = '';
 
-        if (error) {
-            console.error('Error fetching admission form schema:', error.message);
-            currentAdmissionFormSchema = null;
-            isSchemaAvailable = false;
-            schemaErrorMessage = `Error loading form schema: ${error.message}`;
-            applicationFormData = {}; // Reset form data on error
-        } else if (formResult) {
-            currentAdmissionFormSchema = formResult.schema_json;
-            isSchemaAvailable = true;
-            schemaErrorMessage = '';
-        } else {
-            // Schema not found
-            if (allowFallback && formType !== 'Provisional') {
-                 const { data: defaultForm, error: defaultError } = await supabase
-                    .from('admission_forms')
-                    .select('schema_json')
-                    .eq('course_id', courseId)
-                    .eq('cycle_id', cycleId)
-                    .eq('form_type', 'Provisional')
-                    .limit(1)
-                    .maybeSingle();
-                
-                if (defaultForm) {
-                    console.warn(`No schema found for ${formType}, using Provisional schema.`);
-                    currentAdmissionFormSchema = defaultForm.schema_json;
-                    isSchemaAvailable = true;
-                    schemaErrorMessage = '';
-                } else {
-                    currentAdmissionFormSchema = null;
-                    isSchemaAvailable = false;
-                    schemaErrorMessage = `No admission form configuration found for <strong>${formType}</strong> or <strong>Provisional</strong> in the selected course/cycle.`;
-                    applicationFormData = {}; // Reset form data when schema is not available
-                }
-            } else {
-                currentAdmissionFormSchema = null;
-                isSchemaAvailable = false;
-                schemaErrorMessage = `No admission form configuration found for <strong>${formType}</strong> in the selected course/cycle. Please contact the administrator to create a form for this seat type.`;
-                applicationFormData = {}; // Reset form data when schema is not available
-            }
-        }
-        isLoadingSchema = false;
-        stopLoading(); // Hide overlay
-    }
-
-    async function fetchExistingApplication(appId: string) {
-        isLoadingApplication = true;
-        applicationLoadError = null;
-        
-        const { data: application, error } = await supabase
-            .from('applications')
-            .select('form_data, course_id, cycle_id, branch_id, form_type, student_id, status')
-            .eq('id', appId)
-            .limit(1)
-            .maybeSingle();
-
-        if (error) {
-            console.error('Error fetching existing application:', error.message);
-            applicationLoadError = `Failed to load application: ${error.message}`;
-            isLoadingApplication = false;
-            return;
-        }
-        
-        if (!application) {
-            applicationLoadError = `Application not found. The applicationId "${appId}" does not exist or you don't have access to it.`;
-            isLoadingApplication = false;
-            return;
-        }
-        
-        try {
-            console.log('[DEO Apply] Raw application data from DB:', JSON.stringify(application.form_data, null, 2));
-            
-            selectedStudentId = application.student_id;
-            selectedCourseId = application.course_id;
-            selectedCycleId = application.cycle_id;
-            selectedBranchId = application.branch_id || '';
-            selectedFormType = application.form_type || 'Provisional';
-            applicationFormData = application.form_data || {};
-            console.log('[DEO Apply] applicationFormData after loading:', JSON.stringify(applicationFormData, null, 2));
-            isLoadedFromApplicationId = true; // Mark that we loaded from URL param
-            isEditingExistingApplication = true; // Mark that we're editing an existing application
-
-            // Update search box display
-            const student = data.students.find(s => s.id === selectedStudentId);
-            if (student) {
-                studentSearchTerm = `${student.full_name} (${student.email})`;
-            } else {
-                console.warn(`Student with ID ${selectedStudentId} not found in data.`);
-            }
-        } catch (e) {
-            console.error('Error processing application data:', e);
-            applicationLoadError = 'Failed to process application data. Please try again.';
-        } finally {
-            isLoadingApplication = false;
-        }
-    }
-
-    let dynamicForm: DynamicForm;
-
-    async function handleSaveDraft() {
-        if (!selectedStudentId) {
-            alert('Please select or create a student first.');
-            return;
-        }
-        
-        if (branchesForSelectedCourse.length > 0 && !selectedBranchId) {
-            alert('Please select a Branch for this course.');
-            return;
-        }
-
-        console.log('[DEO Apply] Saving applicationFormData:', JSON.stringify(applicationFormData, null, 2));
-        
-        const formPayload = new FormData();
-        formPayload.append('student_id', selectedStudentId);
-        formPayload.append('course_id', selectedCourseId);
-        formPayload.append('cycle_id', selectedCycleId);
-        formPayload.append('form_type', selectedFormType);
-        if (selectedBranchId) {
-             formPayload.append('branch_id', selectedBranchId);
-        }
-        formPayload.append('form_data', JSON.stringify(applicationFormData));
-        if (currentApplicationId) {
-            formPayload.append('application_id', currentApplicationId);
-        }
-
-        const response = await fetch('?/saveApplication', {
-            method: 'POST',
-            body: formPayload
-        });
-
-        const result = deserialize(await response.text());
-        if (result.type === 'success' && result.data?.success) {
-            console.log(result.data.message);
-            if (!currentApplicationId && result.data.applicationId) {
-                await goto(`/deo/apply?studentId=${selectedStudentId}&applicationId=${result.data.applicationId}`, { replaceState: true });
-                currentApplicationId = result.data.applicationId;
-            }
-        } else {
-            console.error('Failed to save draft:', result);
-        }
-    }
-
-    async function handleSubmitApplication() {
-        if (!currentApplicationId || !selectedStudentId) {
-            alert('Cannot submit without saving as draft first and selecting a student.');
-            return;
-        }
-
-        if (branchesForSelectedCourse.length > 0 && !selectedBranchId) {
-            alert('Please select a Branch for this course.');
-            return;
-        }
-
-        if (dynamicForm && !dynamicForm.validate()) {
-            alert('Please fill in all required fields.');
-            return;
-        }
-
-        startLoading(); // Start loading overlay
-
-        try {
-            await handleSaveDraft();
-
-            const formPayload = new FormData();
-            formPayload.append('student_id', selectedStudentId);
-            formPayload.append('application_id', currentApplicationId);
-
-            const response = await fetch('?/submitApplication', {
-                method: 'POST',
-                body: formPayload
-            });
-
-            const result = deserialize(await response.text());
-            if (result.type === 'success' && result.data?.success) {
-                console.log(result.data.message);
-                if (result.data.feeStatus === 'pending' && result.data.feeAmount > 0) {
-                    // Show payment modal instead of redirecting immediately
-                    if (confirm(`Application Submitted. Fee of ₹${result.data.feeAmount} is pending. Record payment now?`)) {
-                        // Open modal or just redirect to a payment page?
-                        // For simplicity in this iteration, let's redirect to dashboard but maybe with a flag.
-                        // Or better, implement the modal right here.
-                        // Let's implement the modal.
-                        currentFeeAmount = result.data.feeAmount;
-                        showPaymentModal = true;
-                    } else {
-                        await goto('/deo/dashboard');
-                    }
-                } else {
-                    await goto('/deo/dashboard'); 
-                }
-            } else {
-                console.error('Submission failed:', result);
-                alert('Submission failed. Please try again.'); // User feedback
-            }
-        } catch (error) {
-            console.error('An error occurred:', error);
-            alert('An unexpected error occurred.');
-        } finally {
-            stopLoading(); // Ensure overlay is hidden
-        }
-    }
-
-    // Payment Logic
-    let showPaymentModal = false;
-    let currentFeeAmount = 0;
-    let paymentMode = 'cash';
-    let transactionRef = '';
-
-    async function handleRecordPayment() {
-        if (!currentApplicationId) return;
-        startLoading();
-        const formData = new FormData();
-        formData.append('application_id', currentApplicationId);
-        formData.append('amount', currentFeeAmount.toString());
-        formData.append('payment_mode', paymentMode);
-        formData.append('transaction_ref', transactionRef || `OFFLINE-${Date.now()}`);
-
-        const response = await fetch('?/recordPayment', {
-            method: 'POST',
-            body: formData
-        });
-        const result = deserialize(await response.text());
-        stopLoading();
-
-        if (result.type === 'success') {
-            alert('Payment recorded successfully!');
-            showPaymentModal = false;
-            await goto('/deo/dashboard');
-        } else {
-            alert('Failed to record payment.');
-        }
-    }
-
-    async function handleDeleteDraft() {
-        if (!currentApplicationId) return;
-        
-        if (!confirm('Are you sure you want to delete this draft? This action cannot be undone.')) {
-            return;
-        }
-
-        startLoading();
-        const formData = new FormData();
-        formData.append('application_id', currentApplicationId);
-
-        const response = await fetch('?/deleteDraft', {
-            method: 'POST',
-            body: formData
-        });
-        const result = deserialize(await response.text());
-        stopLoading();
-
-        if (result.type === 'success') {
-            alert('Draft deleted successfully.');
-            await goto('/deo/dashboard');
-        } else {
-            alert(result.data?.message || 'Failed to delete draft.');
+             fetchStudentProfile(newStudent.id);
         }
     }
 </script>
@@ -663,28 +765,11 @@
 
     {#if applicationLoadError}
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <strong>Error loading application:</strong> {applicationLoadError}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" on:click={() => applicationLoadError = null}></button>
+            <strong>Error:</strong> {applicationLoadError}
+            <button type="button" class="btn btn-close" onclick={() => applicationLoadError = null}></button>
         </div>
     {/if}
 
-    {#if isLoadingApplication}
-        <div class="alert alert-info">
-            <div class="spinner-border spinner-border-sm me-2" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            Loading application details...
-        </div>
-    {/if}
-
-    {#if form?.message}
-        <div class="alert {form.error ? 'alert-danger' : 'alert-success'} alert-dismissible fade show" role="alert">
-            {form.message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    {/if}
-
-    <!-- Student Selection -->
     <div class="card mb-4">
         <div class="card-body">
             <h5 class="card-title">Select or Create Student</h5>
@@ -698,12 +783,13 @@
                         id="student-search" 
                         placeholder="Type name or email..." 
                         bind:value={studentSearchTerm}
-                        on:focus={() => isStudentListExpanded = true}
+                        oninput={(e) => { searchInquiries(e.currentTarget.value); isStudentListExpanded = true; }}
+                        onfocus={() => isStudentListExpanded = true}
                         disabled={!!currentApplicationId || isLoadingApplication}
                         autocomplete="off"
                     />
                     {#if selectedStudentId && !currentApplicationId}
-                        <button class="btn btn-outline-secondary" type="button" on:click={clearStudentSelection}>
+                        <button class="btn btn-outline-secondary" type="button" onclick={clearStudentSelection}>
                             <i class="bi bi-x-lg"></i> Clear
                         </button>
                     {/if}
@@ -711,53 +797,117 @@
                 
                 {#if isStudentListExpanded && !selectedStudentId && !currentApplicationId}
                     <div class="list-group position-absolute w-100 shadow" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
-                        {#each filteredStudents as student}
+                        {#each searchResults as item}
                             <button 
                                 type="button" 
-                                class="list-group-item list-group-item-action" 
-                                on:click={() => selectStudent(student)}
+                                class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                                onclick={() => handleSelectResult(item)}
                             >
-                                {student.full_name} <small class="text-muted">({student.email})</small>
+                                <div>
+                                    {item.full_name} <small class="text-muted">({item.email})</small>
+                                </div>
+                                {#if item.type === 'inquiry'}
+                                    <span class="badge bg-info text-dark small">From Inquiry</span>
+                                {/if}
                             </button>
                         {:else}
-                            <div class="list-group-item text-muted">No students found matching "{studentSearchTerm}"</div>
+                            <div class="list-group-item text-muted">No results found matching "{studentSearchTerm}"</div>
                         {/each}
                     </div>
-                {/if}
-                
-                {#if currentApplicationId}
-                    <div class="form-text">Student cannot be changed while editing an existing application.</div>
                 {/if}
             </div>
             
             {#if !currentApplicationId}
-                <button class="btn btn-secondary" on:click={() => (showCreateStudentForm = !showCreateStudentForm)}>
-                    {#if showCreateStudentForm}Hide Create Student Form{:else}Create New Student{/if}
+                <button class="btn btn-secondary" onclick={() => (showCreateStudentForm = !showCreateStudentForm)}>
+                    {showCreateStudentForm ? 'Hide Create Student Form' : 'Create New Student'}
                 </button>
             {/if}
 
             {#if showCreateStudentForm && !currentApplicationId}
                 <div class="card mt-3 p-3">
                     <h6 class="card-subtitle mb-2 text-muted">New Student Details</h6>
-                    <form method="POST" action="?/createStudent" use:enhance={() => { return async ({ update, result }) => {
-                        if (result.type === 'success' && result.data?.studentId) {
-                            // If successful, reset local form fields
-                            newStudentFullName = '';
-                            newStudentEmail = '';
-                            newStudentPassword = '';
-                            newStudentConfirmPassword = '';
 
-                            handleStudentCreated({ target: document.getElementById('create-student-form') } as any);
-                        }
-                        await update();
-                    }}} id="create-student-form">
-                        <div class="mb-3">
-                            <label for="new-student-full-name" class="form-label">Full Name</label>
-                            <input type="text" class="form-control" id="new-student-full-name" name="full_name" required bind:value={newStudentFullName} />
+                    {#if matchingInquiry}
+                        <div class="alert alert-success d-flex justify-content-between align-items-center py-2 px-3 mb-3">
+                            <div class="small">
+                                <i class="bi bi-lightbulb-fill me-1"></i>
+                                Inquiry found for <strong>{matchingInquiry.fullName}</strong>!
+                            </div>
+                            <button class="btn btn-sm btn-success" onclick={loadInquiryData}>
+                                <i class="bi bi-download me-1"></i> Load Data
+                            </button>
                         </div>
-                        <div class="mb-3">
-                            <label for="new-student-email" class="form-label">Email</label>
-                            <input type="email" class="form-control" id="new-student-email" name="email" required bind:value={newStudentEmail} />
+                    {/if}
+
+                    <form method="POST" action="?/createStudent" use:enhance={() => { 
+                        startLoading();
+                        const identityToPreserve = {
+                            full_name: newStudentFullName,
+                            email: newStudentEmail
+                        };
+
+                        return async ({ update, result }) => {
+                            if (result.type === 'success' && result.data?.studentId) {
+                                const sid = result.data.studentId;
+                                handleStudentCreated({ detail: { studentId: sid, ...identityToPreserve } });
+                                
+                                newStudentFullName = ''; newStudentEmail = ''; newStudentPhone = '';
+                                newStudentPassword = ''; newStudentConfirmPassword = '';
+                            }
+                            await update();
+                            stopLoading();
+                        };
+                    }} id="create-student-form">
+                        <div class="row g-3">
+                            <div class="col-md-6 mb-3">
+                                <label for="new-student-full-name" class="form-label">Full Name</label>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    id="new-student-full-name" 
+                                    name="full_name" 
+                                    required 
+                                    bind:value={newStudentFullName} 
+                                    oninput={(e) => searchInquiries(e.currentTarget.value)}
+                                    onchange={(e) => performInquiryCheck(e.currentTarget.value, 'name')}
+                                    list="inquiry-datalist"
+                                    autocomplete="off"
+                                />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="new-student-email" class="form-label">Email</label>
+                                <input 
+                                    type="email" 
+                                    class="form-control" 
+                                    id="new-student-email" 
+                                    name="email" 
+                                    required 
+                                    bind:value={newStudentEmail} 
+                                    oninput={(e) => searchInquiries(e.currentTarget.value)}
+                                    onchange={(e) => performInquiryCheck(e.currentTarget.value, 'email')}
+                                    list="inquiry-datalist"
+                                    autocomplete="off"
+                                />
+                                <datalist id="inquiry-datalist">
+                                    {#each inquirySuggestions as sug}
+                                        <option value={sug.email}>{sug.full_name} ({sug.email})</option>
+                                        <option value={sug.full_name}>{sug.full_name}</option>
+                                    {/each}
+                                </datalist>
+                            </div>
+                            <div class="col-md-12 mb-3">
+                                <label for="new-student-phone" class="form-label">Phone Number</label>
+                                <input 
+                                    type="tel" 
+                                    class="form-control" 
+                                    id="new-student-phone" 
+                                    name="phone" 
+                                    bind:value={newStudentPhone} 
+                                    oninput={(e) => searchInquiries(e.currentTarget.value)}
+                                    onchange={(e) => performInquiryCheck(e.currentTarget.value, 'phone')}
+                                    placeholder="Optional mobile number" 
+                                />
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label for="new-student-password" class="form-label">Password</label>
@@ -768,17 +918,16 @@
                             <input type="password" class="form-control" id="new-student-confirm-password" name="confirm_password" required bind:value={newStudentConfirmPassword} />
                         </div>
                         <button type="submit" class="btn btn-primary">Create Student</button>
-
+                    </form>
                 </div>
             {/if}
         </div>
     </div>
 
-    <!-- Application Form Area -->
     {#if selectedStudentId}
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h3 class="mb-0">Application for: {studentSearchTerm}</h3>
-            <button class="btn btn-outline-primary btn-sm" on:click={openEditProfile}>
+            <button class="btn btn-outline-primary btn-sm" onclick={openEditProfile}>
                 <i class="bi bi-person-lines-fill"></i> Edit Student Profile
             </button>
         </div>
@@ -796,7 +945,6 @@
                             {/each}
                         </select>
                     </div>
-
                     <div class="col-md-6 mb-3">
                         <label for="cycle-select" class="form-label">Admission Cycle</label>
                         <select class="form-select" id="cycle-select" bind:value={selectedCycleId} disabled={!!currentApplicationId || isLoadingApplication}>
@@ -809,24 +957,14 @@
                 </div>
 
                 <div class="row">
-                    <!-- Form Type Selection -->
                     <div class="col-md-6 mb-3">
                         <label for="form-type-select" class="form-label">Form Type</label>
                         <select class="form-select" id="form-type-select" bind:value={selectedFormType} disabled={isEditingExistingApplication}>
-                            {#if data.formTypes}
-                                {#each data.formTypes as ft}
-                                    <option value={ft.name}>{ft.name}</option>
-                                {/each}
-                            {:else}
-                                <option value="Provisional">Provisional</option>
-                            {/if}
+                            {#each data.formTypes as ft}
+                                <option value={ft.name}>{ft.name}</option>
+                            {/each}
                         </select>
-                        {#if isEditingExistingApplication}
-                            <div class="form-text">Form type cannot be changed for existing applications. Create a new application if you need a different form type.</div>
-                        {/if}
                     </div>
-
-                    <!-- Branch Selection -->
                     {#if branchesForSelectedCourse.length > 0 && !isBranchSelectionDisabled}
                         <div class="col-md-6 mb-3">
                             <label for="branch-select" class="form-label">Branch</label>
@@ -847,103 +985,76 @@
                 <div class="card-body">
                     <h5 class="card-title">Application Form ({selectedFormType})</h5>
                     {#if isLoadingSchema}
-                        <div class="text-center p-3">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        </div>
+                        <div class="text-center p-3"><div class="spinner-border text-primary" role="status"></div></div>
                     {:else if !isSchemaAvailable}
-                        <div class="alert alert-warning">
-                            {@html schemaErrorMessage}
-                        </div>
+                        <div class="alert alert-warning">{@html schemaErrorMessage}</div>
                     {:else if currentAdmissionFormSchema && currentAdmissionFormSchema.fields && currentAdmissionFormSchema.fields.length > 0}
                         {#key `${currentAdmissionFormSchema.id || selectedCourseId}-${selectedCycleId}-${selectedFormType}`}
-                            <DynamicForm 
-                                schema={currentAdmissionFormSchema} 
-                                bind:formData={applicationFormData} 
-                                bind:this={dynamicForm}
-                            />
+                            <DynamicForm schema={currentAdmissionFormSchema} bind:formData={applicationFormData} bind:this={dynamicForm} />
                         {/key}
                         <div class="mt-3">
-                            <button class="btn btn-secondary me-2" on:click={handleSaveDraft}>Save as Draft</button>
-                            <button class="btn btn-success" on:click={handleSubmitApplication} disabled={!currentApplicationId}>Submit Application</button>
+                            <button class="btn btn-secondary me-2" onclick={handleSaveDraft}>Save as Draft</button>
+                            <button class="btn btn-success" onclick={handleSubmitApplication} disabled={!currentApplicationId}>Submit Application</button>
                             {#if currentApplicationId}
-                                <button class="btn btn-danger float-end" on:click={handleDeleteDraft}>Delete Draft</button>
+                                <button class="btn btn-danger float-end" onclick={handleDeleteDraft}>Delete Draft</button>
                             {/if}
-                        </div>
-                    {:else}
-                        <div class="alert alert-warning">
-                            No admission form configuration found for <strong>{selectedFormType}</strong> in the selected course/cycle. 
-                            Please contact the administrator to create a form for this seat type.
                         </div>
                     {/if}
                 </div>
             </div>
-        {:else}
-            <p class="text-info">Please select a Course and an Admission Cycle to view the application form.</p>
         {/if}
-    {:else}
-        <p class="text-info">Please select or create a student to proceed with application.</p>
     {/if}
 </div>
 
-<!-- Payment Modal -->
+<!-- Modals -->
 <div class="modal" tabindex="-1" style="display: {showPaymentModal ? 'block' : 'none'}; background-color: rgba(0,0,0,0.5);">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Record Payment</h5>
-                <button type="button" class="btn-close" on:click={() => (showPaymentModal = false)}></button>
+                <button type="button" class="btn-close" onclick={() => (showPaymentModal = false)}></button>
             </div>
             <div class="modal-body">
-                <p>Application Submitted. Please record the payment.</p>
                 <h4 class="text-primary mb-3">Amount: ₹ {currentFeeAmount}</h4>
-                
                 <div class="mb-3">
                     <label class="form-label">Payment Mode</label>
                     <select class="form-select" bind:value={paymentMode}>
                         <option value="cash">Cash</option>
                         <option value="cheque">Cheque</option>
-                        <option value="online_transfer">Online Transfer (Reference)</option>
+                        <option value="online_transfer">Online Transfer</option>
                     </select>
                 </div>
-                
                 <div class="mb-3">
-                    <label class="form-label">Reference / Receipt No.</label>
-                    <input type="text" class="form-control" bind:value={transactionRef} placeholder="Enter receipt no..." />
+                    <label class="form-label">Reference No.</label>
+                    <input type="text" class="form-control" bind:value={transactionRef} />
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" on:click={() => (showPaymentModal = false)}>Close</button>
-                <button type="button" class="btn btn-success" on:click={handleRecordPayment}>Record Payment</button>
+                <button type="button" class="btn btn-success" onclick={handleRecordPayment}>Record Payment</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Edit Profile Modal -->
 <div class="modal" tabindex="-1" style="display: {showEditProfileModal ? 'block' : 'none'}; background-color: rgba(0,0,0,0.5);">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Edit Student Profile</h5>
-                <button type="button" class="btn-close" on:click={() => (showEditProfileModal = false)}></button>
+                <button type="button" class="btn-close" onclick={() => (showEditProfileModal = false)}></button>
             </div>
             <div class="modal-body">
-                {#if profileFormSchema && profileFormSchema.fields.length > 0}
-                    <DynamicForm 
-                        schema={profileFormSchema} 
-                        bind:formData={profileFormData} 
-                        bind:this={profileForm}
-                    />
-                {:else}
-                    <p class="text-muted">No profile fields defined in the system.</p>
+                {#if profileFormSchema}
+                    <DynamicForm schema={profileFormSchema} bind:formData={profileFormData} bind:this={profileForm} />
                 {/if}
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" on:click={() => (showEditProfileModal = false)}>Cancel</button>
-                <button type="button" class="btn btn-primary" on:click={handleUpdateProfile}>Save Profile</button>
+                <button type="button" class="btn btn-primary" onclick={handleUpdateProfile}>Save Profile</button>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+    .border-dashed { border-style: dashed !important; }
+</style>

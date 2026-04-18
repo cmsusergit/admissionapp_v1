@@ -216,6 +216,13 @@ export const load = async ({
     console.error("Error fetching enabled forms:", enabledFormsError.message);
   }
 
+  // --- Autofill Logic ---
+  let inquiryAutofillData = {};
+  const unprocessedInquiry = await getUnprocessedInquiry(supabase, userProfile.email);
+  if (unprocessedInquiry) {
+    inquiryAutofillData = await mapInquiryToProfile(unprocessedInquiry);
+  }
+
   return {
     courses: courses || [],
     availableCycles: availableCycles,
@@ -226,6 +233,7 @@ export const load = async ({
     formTypes: formTypes || [],
     studentProfile: parentData.studentProfile, // Get from layout
     enabledForms: enabledForms || [],
+    inquiryAutofillData
   };
 };
 

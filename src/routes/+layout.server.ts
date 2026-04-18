@@ -16,7 +16,7 @@ export const load: LayoutServerLoad = async ({ locals: { getAuthenticatedUser, s
         : supabase.from('universities').select('id').limit(1).maybeSingle().then(({ data }) => data?.id);
 
     // 3. Fetch Avatar if student
-    const avatarPromise = userProfile?.role === 'student'
+    const avatarPromise = userProfile?.role === 'student' && userProfile?.id
         ? supabase.from('student_profiles').select('profile_data').eq('user_id', userProfile.id).maybeSingle().then(({ data }) => data?.profile_data?.photo || null)
         : Promise.resolve(null);
 

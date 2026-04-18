@@ -1,1 +1,1 @@
-export { default as component } from "../../../../src/routes/admin/payment-gateways/+page.svelte";
+export { default as component } from "../../../../src/routes/admin/merit-calculation/+page.svelte";

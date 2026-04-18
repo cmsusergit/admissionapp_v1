@@ -31,6 +31,10 @@
 	"/adm-officer/help": [
 		"src/routes/+layout.server.ts"
 	],
+	"/adm-officer/inquiries": [
+		"src/routes/adm-officer/inquiries/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
 	"/adm-officer/merit-list": [
 		"src/routes/adm-officer/merit-list/+page.server.ts",
 		"src/routes/+layout.server.ts"
@@ -112,6 +116,9 @@
 	"/admin/help": [
 		"src/routes/+layout.server.ts"
 	],
+	"/admin/inquiry-forms": [
+		"src/routes/+layout.server.ts"
+	],
 	"/admin/merit-calculation": [
 		"src/routes/admin/merit-calculation/+page.server.ts",
 		"src/routes/+layout.server.ts"
@@ -151,6 +158,15 @@
 	],
 	"/api/deo/get-student-profile": [
 		"src/routes/api/deo/get-student-profile/+server.ts"
+	],
+	"/api/inquiry/check": [
+		"src/routes/api/inquiry/check/+server.ts"
+	],
+	"/api/inquiry/emails": [
+		"src/routes/api/inquiry/emails/+server.ts"
+	],
+	"/api/inquiry/search": [
+		"src/routes/api/inquiry/search/+server.ts"
 	],
 	"/api/payment/callback": [
 		"src/routes/api/payment/callback/+server.ts"
@@ -252,6 +268,10 @@
 	],
 	"/fee-collector/saved-reports/[id]": [
 		"src/routes/fee-collector/saved-reports/[id]/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/inquiry/[slug]": [
+		"src/routes/inquiry/[slug]/+page.server.ts",
 		"src/routes/+layout.server.ts"
 	],
 	"/login": [
