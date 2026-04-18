@@ -10,24 +10,28 @@ dns.setDefaultResultOrder('ipv4first');
 
 // Bypass ISP DNS blocks (e.g., Reliance Jio) by forcing resolution to Cloudflare IPs
 // We only do this in development mode so production servers use standard DNS.
+let supabaseIp = '104.18.38.10'; 
+let dnsResolved = false;
+
+async function resolveSupabaseDns() {
+    if (dnsResolved || !dev || !PUBLIC_SUPABASE_URL) return;
+    
+    const supabaseUrlObj = new URL(PUBLIC_SUPABASE_URL);
+    try {
+        const res = await fetch(`https://dns.google/resolve?name=${supabaseUrlObj.hostname}&type=A`);
+        const data = await res.json();
+        if (data && data.Answer && data.Answer.length > 0) {
+            supabaseIp = data.Answer[0].data;
+            console.log(`[Dev] Resolved Supabase URL to ${supabaseIp} via DoH`);
+            dnsResolved = true;
+        }
+    } catch (err) {
+        console.error('[Dev] Failed to resolve Supabase IP via DoH, using fallback.', err);
+    }
+}
+
 if (dev && PUBLIC_SUPABASE_URL) {
     const supabaseUrlObj = new URL(PUBLIC_SUPABASE_URL);
-    
-    // Default known working Cloudflare IP for Supabase
-    let supabaseIp = '104.18.38.10'; 
-    
-    // Attempt to resolve it securely via Google's DNS-over-HTTPS (DoH) to bypass local ISP blocks
-    // This makes it work even if you change your Supabase project URL
-    fetch(`https://dns.google/resolve?name=${supabaseUrlObj.hostname}&type=A`)
-        .then(res => res.json())
-        .then(data => {
-            if (data && data.Answer && data.Answer.length > 0) {
-                supabaseIp = data.Answer[0].data;
-                console.log(`[Dev] Resolved Supabase URL to ${supabaseIp} via DoH`);
-            }
-        })
-        .catch(err => console.error('[Dev] Failed to resolve Supabase IP via DoH, using fallback.', err));
-
     const originalLookup = dns.lookup;
     // @ts-ignore - Type overriding simplified for intercepting
     dns.lookup = function(hostname: string, options: any, callback: any) {
@@ -43,11 +47,12 @@ if (dev && PUBLIC_SUPABASE_URL) {
         }
         return originalLookup(hostname, options, callback);
     };
-} else if (dev && !PUBLIC_SUPABASE_URL) {
-    console.warn('[Dev] PUBLIC_SUPABASE_URL is not set. Skipping Supabase DNS override.');
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+    // Resolve Supabase DNS lazily in development
+    if (dev) resolveSupabaseDns();
+
 	if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
 		throw new Error('Missing required public environment variables: PUBLIC_SUPABASE_URL and/or PUBLIC_SUPABASE_ANON_KEY.');
 	}

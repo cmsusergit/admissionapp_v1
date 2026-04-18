@@ -72,6 +72,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         icon: "bi-lightning",
       },
       {
+        title: "Inquiry Forms",
+        href: "/admin/inquiry-forms",
+        icon: "bi-question-square",
+      },
+      {
         title: "Report Builder",
         href: "/admin/report-builder",
         icon: "bi-tools",
@@ -107,6 +112,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         title: "Merit List",
         href: "/adm-officer/merit-list",
         icon: "bi-list-ol",
+      },
+      {
+        title: "Public Inquiries",
+        href: "/adm-officer/inquiries",
+        icon: "bi-chat-left-dots",
       },
       {
         title: "Reports (Custom)",
