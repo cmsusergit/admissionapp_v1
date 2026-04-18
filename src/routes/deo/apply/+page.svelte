@@ -2,7 +2,7 @@
     import type { PageData, ActionData } from './$types';
     import { enhance, deserialize } from '$app/forms'; // Import deserialize
     import { goto, invalidateAll } from '$app/navigation';
-    import { onMount } from 'svelte';
+    import { onMount, tick } from 'svelte';
     import DynamicForm from '$lib/components/DynamicForm.svelte';
     import { supabase } from '$lib/supabase'; // Client-side supabase client
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; // Import loading controls
@@ -25,6 +25,7 @@
 
     let selectedStudentId = $state(data.selectedStudent?.id || '');
     let showCreateStudentForm = $state(false);
+    let isInquiryFormFilled = $state(false);
 
     let selectedCourseId = $state(data.selectedCourse?.id || '');
     let selectedCycleId = $state('');
@@ -73,7 +74,7 @@
     // Debounced inquiry search for autocomplete
     let searchTimeout: any;
     async function searchInquiries(query: string) {
-        if (!query || query.length < 2) {
+        if (!query || query.length < 2 || !isInquiryFormFilled) {
             inquirySuggestions = [];
             return;
         }
@@ -100,7 +101,7 @@
     }
 
     async function performInquiryCheck(val: string, type: 'email' | 'name' | 'phone') {
-        if (!val || val.length < 3 || isProgrammaticUpdate) return;
+        if (!val || val.length < 3 || isProgrammaticUpdate || !isInquiryFormFilled) return;
         
         isCheckingInquiry = true;
         startLoading();
@@ -118,7 +119,7 @@
         }
     }
 
-    function loadInquiryData() {
+    async function loadInquiryData() {
         if (!matchingInquiry) return;
         
         console.log('>>> [DIAGNOSTIC] loadInquiryData START');
@@ -131,6 +132,9 @@
         newStudentFullName = nextName;
         newStudentEmail = nextEmail;
         newStudentPhone = nextPhone;
+        
+        // Wait for Svelte to apply updates
+        await tick();
         
         lastLoadedInquiryData = {
             ...(matchingInquiry.mappedData || {}),
@@ -242,19 +246,21 @@
             studentSearchTerm = `${student.full_name} (${student.email})`;
             isStudentListExpanded = false;
             
-            // 2. Fetch Inquiry Data first (The "Lead" data)
-            const inquiryRes = await fetch(`/api/inquiry/check?q=${encodeURIComponent(student.email)}`);
-            const inquiryResult = await inquiryRes.json();
-            
-            if (inquiryResult.found) {
-                console.log('>>> [AUTO-FETCH] Inquiry match found. Buffering data.');
-                lastLoadedInquiryData = {
-                    ...(inquiryResult.mappedData || {}),
-                    full_name: inquiryResult.fullName,
-                    email: inquiryResult.email,
-                    contact: inquiryResult.phone,
-                    phone: inquiryResult.phone
-                };
+            // 2. Fetch Inquiry Data first ONLY if toggle is ON
+            if (isInquiryFormFilled) {
+                const inquiryRes = await fetch(`/api/inquiry/check?q=${encodeURIComponent(student.email)}`);
+                const inquiryResult = await inquiryRes.json();
+                
+                if (inquiryResult.found) {
+                    console.log('>>> [AUTO-FETCH] Inquiry match found. Buffering data.');
+                    lastLoadedInquiryData = {
+                        ...(inquiryResult.mappedData || {}),
+                        full_name: inquiryResult.fullName,
+                        email: inquiryResult.email,
+                        contact: inquiryResult.phone,
+                        phone: inquiryResult.phone
+                    };
+                }
             }
 
             // 3. Fetch Official Profile
@@ -825,7 +831,13 @@
 
             {#if showCreateStudentForm && !currentApplicationId}
                 <div class="card mt-3 p-3">
-                    <h6 class="card-subtitle mb-2 text-muted">New Student Details</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="card-subtitle text-muted mb-0">New Student Details</h6>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="inquiry-toggle-modal" bind:checked={isInquiryFormFilled}>
+                            <label class="form-check-label small fw-bold text-primary" for="inquiry-toggle-modal">Is Inquiry Form Filled?</label>
+                        </div>
+                    </div>
 
                     {#if matchingInquiry}
                         <div class="alert alert-success d-flex justify-content-between align-items-center py-2 px-3 mb-3">
