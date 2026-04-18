@@ -305,6 +305,7 @@ export const actions = {
     const password = formData.get("password") as string;
     const confirm_password = formData.get("confirm_password") as string;
     const full_name = formData.get("full_name") as string;
+    const phone = formData.get("phone") as string;
 
     // 1. Validate input
     if (password !== confirm_password) {
@@ -328,14 +329,15 @@ export const actions = {
       SUPABASE_SERVICE_ROLE_KEY,
     );
 
-    // 2. Create user using Admin API (bypasses email confirmation for DEO-created users)
+    // 2. Create user using Admin API
     const { data: userData, error: createError } =
       await supabaseAdmin.auth.admin.createUser({
         email: parsed.data.email,
         password: parsed.data.password,
-        email_confirm: true, // Auto-confirm email
+        email_confirm: true,
         user_metadata: {
           full_name: parsed.data.full_name,
+          phone: phone, // Store phone in metadata
           role: "student",
         },
       });

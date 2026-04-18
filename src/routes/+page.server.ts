@@ -87,4 +87,15 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 break;
         }
     }
+
+    // 3. For Unauthenticated Users: Fetch Inquiry Forms
+    const { data: inquiryForms } = await supabase
+        .from('inquiry_forms')
+        .select('name, slug, description')
+        .eq('is_active', true)
+        .order('name');
+
+    return {
+        inquiryForms: inquiryForms || []
+    };
 };
