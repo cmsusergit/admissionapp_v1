@@ -51,6 +51,35 @@
     let isSchemaAvailable = $state(true);
     let schemaErrorMessage = $state('');
 
+    // Create lookup for profile field defaults (for backward compatibility)
+    let profileFieldDefaults = $derived(Object.fromEntries(
+        (data.profileSchema || []).map((f: any) => [f.key, f.default_value])
+    ));
+
+    // Initialize from preloaded application data (if loading from applicationId)
+    $effect(() => {
+        if (data.preloadedApplicationData) {
+            const appData = data.preloadedApplicationData;
+            console.log('[DEO] Loading preloaded application data:', appData);
+            
+            // Set form data
+            applicationFormData = appData.form_data || {};
+            currentApplicationId = appData.id;
+            isEditingExistingApplication = true;
+            
+            // Pre-select course, cycle, form type
+            if (appData.course_id) selectedCourseId = appData.course_id;
+            if (appData.cycle_id) selectedCycleId = appData.cycle_id;
+            if (appData.form_type) selectedFormType = appData.form_type;
+            if (appData.branch_id) selectedBranchId = appData.branch_id;
+            
+            // If student is preloaded from server
+            if (data.selectedStudent) {
+                selectedStudentId = data.selectedStudent.id;
+            }
+        }
+    });
+
     // Profile Editing State
     let showEditProfileModal = $state(false);
     let profileFormData = $state<Record<string, any>>({});
@@ -307,6 +336,7 @@
 
         console.log('>>> Available Profile Data:', pData);
         console.log('>>> Available Inquiry Data:', inquiryData);
+        console.log('>>> Profile Field Defaults:', profileFieldDefaults);
 
         schema.fields.forEach((field: any) => {
             let val = undefined;
@@ -325,6 +355,16 @@
             else if (field.profileFieldKey && inquiryData[field.profileFieldKey] !== undefined && inquiryData[field.profileFieldKey] !== '') {
                 val = inquiryData[field.profileFieldKey];
                 source = 'INQUIRY_PROFILE_KEY:' + field.profileFieldKey;
+            }
+            // 3. Default value from admission form schema
+            else if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
+                val = field.defaultValue;
+                source = 'FORM_SCHEMA_DEFAULT';
+            }
+            // 4. Default value from linked profile field schema (backward compatible)
+            else if (field.profileFieldKey && profileFieldDefaults[field.profileFieldKey] !== undefined && profileFieldDefaults[field.profileFieldKey] !== null && profileFieldDefaults[field.profileFieldKey] !== '') {
+                val = profileFieldDefaults[field.profileFieldKey];
+                source = 'PROFILE_FIELD_DEFAULT';
             }
 
             if (val !== undefined && val !== null && val !== '') {

@@ -9,6 +9,8 @@
             title: string; 
             layout?: 'column' | 'table'; 
             rowHeaderLabel?: string; 
+            showSummaryRow?: boolean;
+            summaryRowLabel?: string;
             tableColumns?: { 
                 key: string; 
                 label: string; 
@@ -16,6 +18,7 @@
                 formula?: string;
                 is_merit?: boolean;
                 default_max_score?: number;
+                aggregate?: 'sum' | 'mean' | 'max' | 'min' | 'count';
             }[] 
         }[];
         fields: any[];
@@ -42,6 +45,7 @@
     let showWhenOperator = 'equals';  // equals, notEquals, in
     let showWhenValues = '';  // Comma-separated values for 'in' operator
     let inDatagrid = false;  // Default false - render as regular field above datagrid
+    let defaultValue: string | boolean = '';  // Default value for the field
     let sectionId = schema.sections[0]?.id || 'default'; // Default to first section
     $: isTableSection = schema.sections?.find(s => s.id === sectionId)?.layout === 'table';
     
@@ -225,6 +229,15 @@
             field.inDatagrid = inDatagrid;
         }
 
+        // Default Value
+        if (defaultValue !== undefined && defaultValue !== '') {
+            if (type === 'checkbox') {
+                field.defaultValue = Boolean(defaultValue);
+            } else {
+                field.defaultValue = String(defaultValue);
+            }
+        }
+
         if (showWhenField && showWhenField.trim()) {
             if (showWhenOperator === 'in' && showWhenValues) {
                 // Multi-value: comma-separated
@@ -311,6 +324,17 @@
 
             // Load inDatagrid for table sections (default false = regular field)
             inDatagrid = field.inDatagrid === true;
+
+            // Load defaultValue
+            if (field.defaultValue !== undefined && field.defaultValue !== null) {
+                if (field.type === 'checkbox') {
+                    defaultValue = Boolean(field.defaultValue);
+                } else {
+                    defaultValue = String(field.defaultValue);
+                }
+            } else {
+                defaultValue = '';
+            }
 
             // Load column_max_scores for table sections
             if (isTableSection && currentSectionMeritColumns.length > 0) {
@@ -422,7 +446,7 @@
         showWhenField = '';
         showWhenOperator = 'equals';
         showWhenValues = '';
-        inDatagrid = true;
+        inDatagrid = false;
         selectSource = '';
         staticOptions = '';
         endpoint = '';
@@ -430,6 +454,7 @@
         labelField = '';
         linkToProfileField = false;
         selectedProfileFieldKey = '';
+        defaultValue = '';
         isEditing = false;
         editingIndex = -1;
         editingField = null;
@@ -462,10 +487,10 @@
                         <button type="button" class="btn btn-outline-primary" on:click={() => showAddSectionModal = true}>Add</button>
                     </div>
                     <ul class="list-group list-group-flush">
-                        {#each schema.sections || [] as section}
-                            <li class="list-group-item">
+                        {#each schema.sections || [] as section, sectionIndex}
+                            <li class="list-group-item {sectionIndex % 2 === 0 ? 'bg-light' : ''}">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span>{section.title}</span>
+                                    <span class="fw-semibold">{section.title}</span>
                                     {#if (schema.sections || []).length > 1}
                                         <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
                                     {/if}
@@ -484,7 +509,7 @@
                                             <div class="border p-2 mb-2 bg-white rounded small">
                                                 <div class="d-flex justify-content-between mb-1">
                                                     <strong>Col {colIndex + 1}</strong>
-                                                    <button type="button" class="btn btn-sm btn-link text-danger p-0" on:click={() => { if(section.tableColumns) { section.tableColumns.splice(colIndex, 1); section.tableColumns = section.tableColumns; notifyChange(); } }}>Remove</button>
+                                                    <button type="button" class="btn btn-sm btn-link text-danger p-0" on:click={() => { if(section.tableColumns) { section.tableColumns.splice(colIndex, 1); section.tableColumns = section.tableColumns; notifyChange(); } }} title="Remove"><i class="bi bi-x-lg"></i></button>
                                                 </div>
                                                 <input type="text" class="form-control form-control-sm mb-1" bind:value={col.label} placeholder="Label" on:input={notifyChange} />
                                                 <input type="text" class="form-control form-control-sm mb-1" bind:value={col.key} placeholder="Key" on:input={notifyChange} />
@@ -503,9 +528,30 @@
                                                 {#if col.is_merit}
                                                     <input type="number" class="form-control form-control-sm mt-1" bind:value={col.default_max_score} placeholder="Default Max Score (e.g. 100)" on:input={notifyChange} />
                                                 {/if}
+                                                {#if section.showSummaryRow}
+                                                    <select class="form-select form-select-sm mt-2" bind:value={col.aggregate} on:change={notifyChange}>
+                                                        <option value="">-- Aggregate --</option>
+                                                        <option value="sum">Sum</option>
+                                                        <option value="mean">Mean</option>
+                                                        <option value="max">Max</option>
+                                                        <option value="min">Min</option>
+                                                        <option value="count">Count</option>
+                                                    </select>
+                                                {/if}
                                             </div>
                                         {/each}
-                                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" on:click={() => { section.tableColumns = [...(section.tableColumns || []), { key: '', label: '', type: 'number' }]; notifyChange(); }}>+ Add Column</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" on:click={() => { section.tableColumns = [...(section.tableColumns || []), { key: '', label: '', type: 'number' }]; notifyChange(); }}><i class="bi bi-plus-lg"></i> Add Column</button>
+                                        
+                                        <!-- Summary Row Settings -->
+                                        <div class="border p-2 mt-3 rounded">
+                                            <div class="form-check">
+                                                <input type="checkbox" class="form-check-input" id="show-summary-{section.id}" bind:checked={section.showSummaryRow} on:change={notifyChange}>
+                                                <label class="form-check-label" for="show-summary-{section.id}">Show Summary Row</label>
+                                            </div>
+                                            {#if section.showSummaryRow}
+                                                <input type="text" class="form-control form-control-sm mt-2" bind:value={section.summaryRowLabel} placeholder="Label (e.g., Total, Average)" on:input={notifyChange} />
+                                            {/if}
+                                        </div>
                                     </div>
                                 {/if}
                             </li>
@@ -529,8 +575,8 @@
                             <strong>{section.title}</strong>
                         </div>
                         <ul class="list-group list-group-flush mb-3">
-                            {#each sectionFields as field}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                            {#each sectionFields as field, fieldIdx}
+                                <li class="list-group-item d-flex justify-content-between align-items-center {fieldIdx % 2 === 0 ? 'bg-light' : ''}">
                                     <div>
                                         {field.label} <small class="text-muted">({field.key})</small>
                                         <span class="badge bg-secondary">{field.type}</span>
@@ -545,13 +591,13 @@
                                         <button type="button" class="btn btn-sm btn-outline-secondary me-1" 
                                                 on:click={() => moveFieldUp(schema.fields.indexOf(field))}
                                                 disabled={sectionFields.indexOf(field) === 0}
-                                                title="Move Up">&uarr;</button>
+                                                title="Move Up"><i class="bi bi-arrow-up"></i></button>
                                         <button type="button" class="btn btn-sm btn-outline-secondary me-1" 
                                                 on:click={() => moveFieldDown(schema.fields.indexOf(field))}
                                                 disabled={sectionFields.indexOf(field) === sectionFields.length - 1}
-                                                title="Move Down">&darr;</button>
-                                        <button type="button" class="btn btn-sm btn-outline-primary me-1" on:click={() => editField(schema.fields.indexOf(field))}>Edit</button>
-                                        <button type="button" class="btn btn-sm btn-danger" on:click={() => removeField(schema.fields.indexOf(field))}>Remove</button>
+                                                title="Move Down"><i class="bi bi-arrow-down"></i></button>
+                                        <button type="button" class="btn btn-sm btn-outline-primary me-1" on:click={() => editField(schema.fields.indexOf(field))} title="Edit"><i class="bi bi-pencil-square"></i></button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeField(schema.fields.indexOf(field))} title="Remove"><i class="bi bi-trash"></i></button>
                                     </div>
                                 </li>
                             {/each}
@@ -728,16 +774,72 @@
                         </div>
                     {/if}
                     
-                    <!-- Table Section: Include in Datagrid -->
+<!-- Table Section: Include in Datagrid -->
                     {#if isTableSection}
                         <div class="form-check mt-3">
                             <input bind:checked={inDatagrid} id="in-datagrid-check" class="form-check-input" type="checkbox">
-                            <label for="in-datagrid-check" class="form-check-label">
+                            <label for="in-datagrid-check" class="form-label">
                                 Include in Datagrid (Table Row)
                             </label>
                             <small class="text-muted d-block">Uncheck to render as regular field above the datagrid table</small>
                         </div>
                     {/if}
+                    
+                    <!-- Default Value -->
+                    <div class="mt-3 p-2 border rounded bg-light">
+                        <h6><i class="bi bi-cursor-text me-1"></i> Default Value</h6>
+                        <p class="small text-muted mb-2">Pre-populate this field with a default value.</p>
+                        
+                        {#if type === 'select'}
+                            <select bind:value={defaultValue} class="form-select">
+                                <option value="">-- No Default --</option>
+                                {#if selectSource === 'static' && staticOptions}
+                                    {#each staticOptions.split('\n').filter(Boolean) as opt}
+                                        {@const parts = opt.split('|')}
+                                        {@const val = parts[0]?.trim()}
+                                        <option value={val}>{parts[1]?.trim() || val}</option>
+                                    {/each}
+                                {:else}
+                                    <option value="">Configure select options above first</option>
+                                {/if}
+                            </select>
+                        {:else if type === 'checkbox'}
+                            <div class="form-check">
+                                <input bind:checked={defaultValue} id="default-checkbox" class="form-check-input" type="checkbox">
+                                <label for="default-checkbox" class="form-check-label">Checked by default</label>
+                            </div>
+                        {:else if type === 'number'}
+                            <input 
+                                type="number" 
+                                bind:value={defaultValue} 
+                                class="form-control" 
+                                placeholder="Default number"
+                            />
+                        {:else if type === 'date'}
+                            <input 
+                                type="date" 
+                                bind:value={defaultValue} 
+                                class="form-control" 
+                            />
+                        {:else}
+                            <input 
+                                type="text" 
+                                bind:value={defaultValue} 
+                                class="form-control" 
+                                placeholder="Default value"
+                            />
+                        {/if}
+                        
+                        {#if defaultValue}
+                            <button 
+                                type="button" 
+                                class="btn btn-link btn-sm text-danger p-0 mt-1" 
+                                on:click={() => defaultValue = ''}
+                            >
+                                Clear default
+                            </button>
+                        {/if}
+                    </div>
                     
                     <div class="mt-3 p-2 border rounded bg-light">
                         <h6><i class="bi bi-eye me-1"></i> Conditional Visibility</h6>

@@ -16,6 +16,8 @@
         sectionId?: string;
         is_merit?: boolean; // Legacy/List: For merit calculation
         max_score?: number; // Legacy/List: Max score for merit field
+        // Default Value
+        defaultValue?: string | number | boolean; // Admin-defined default value
         // Select specific
         options?: string[]; // Legacy
         dataSource?: {
@@ -44,6 +46,7 @@
         formula?: string;
         is_merit?: boolean;
         default_max_score?: number;
+        aggregate?: 'sum' | 'mean' | 'max' | 'min' | 'count';
     }
 
     interface FormSection {
@@ -52,6 +55,8 @@
         layout?: 'column' | 'table';
         rowHeaderLabel?: string;
         tableColumns?: TableColumn[];
+        showSummaryRow?: boolean;
+        summaryRowLabel?: string;
     }
 
     interface FormSchema {
@@ -114,6 +119,7 @@
     // Reactivity for initializing formData for merit fields and datagrid
     // Initialize formData for datagrid/merit fields - only runs on first render
     let initialized = false;
+    let defaultsInitialized = false;
     
     $effect(() => {
         // Only run once on initial mount
@@ -177,6 +183,52 @@
             });
             
             if (changed) {
+                formData = newFormData;
+            }
+        }
+    });
+
+    // Initialize DEFAULT VALUES for empty fields (after merit/datagrid init)
+    // Priority: existing saved data > autofill > default value
+    $effect(() => {
+        if (!defaultsInitialized && initialized && normalizedSchema.fields.length > 0) {
+            defaultsInitialized = true;
+            
+            let newFormData = { ...formData };
+            let changed = false;
+            
+            normalizedSchema.fields.forEach(field => {
+                const key = getKey(field);
+                
+                // Check if field has defaultValue defined in schema
+                if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
+                    const currentValue = newFormData[key];
+                    
+                    // Only apply default if current value is empty/undefined
+                    // Don't overwrite existing data (saved in DB or autofilled)
+                    const isEmpty = currentValue === undefined || currentValue === null || currentValue === '';
+                    
+                    if (isEmpty) {
+                        // Handle merit fields (wrapped in object)
+                        if (field.is_merit) {
+                            if (!newFormData[key] || typeof newFormData[key] !== 'object') {
+                                newFormData[key] = { value: '', max_score: field.max_score ?? 100 };
+                            }
+                            if (newFormData[key].value === undefined || newFormData[key].value === null || newFormData[key].value === '') {
+                                newFormData[key].value = field.defaultValue;
+                                changed = true;
+                            }
+                        } else {
+                            // Regular fields
+                            newFormData[key] = field.defaultValue;
+                            changed = true;
+                        }
+                    }
+                }
+            });
+            
+            if (changed) {
+                console.log('[DynamicForm] Applied default values');
                 formData = newFormData;
             }
         }
@@ -320,7 +372,7 @@
                     return { value: val, label: label };
                 }
                 if (typeof o === 'object' && o !== null) {
-                    return { value: String((o as any).value ?? o), label: String((o as any).label || (o as any).value ?? o) };
+                    return { value: String((o as any).value ?? o), label: String(((o as any).label || ((o as any).value ?? o))) };
                 }
                 return { value: String(o), label: String(o) };
             });
@@ -485,8 +537,13 @@
                     id="{fieldId}-value"
                     name="{key}-value"
                     placeholder="Score"
-                    bind:value={formData[key].value}
-                    oninput={() => clearError(key)}
+                    value={formData[key]?.value ?? ''}
+                    oninput={(e) => {
+                        const val = (e.target as HTMLInputElement).value;
+                        if (!formData[key]) formData[key] = { value: '', max_score: field.max_score ?? 100 };
+                        formData[key].value = val;
+                        clearError(key);
+                    }}
                     disabled={readonly}
                 />
             </div>
@@ -497,8 +554,13 @@
                     id="{fieldId}-max-score"
                     name="{key}-max-score"
                     placeholder="Max Score"
-                    bind:value={formData[key].max_score}
-                    oninput={() => clearError(key)}
+                    value={formData[key]?.max_score ?? 100}
+                    oninput={(e) => {
+                        const val = (e.target as HTMLInputElement).value;
+                        if (!formData[key]) formData[key] = { value: '', max_score: 100 };
+                        formData[key].max_score = parseFloat(val) || 100;
+                        clearError(key);
+                    }}
                     disabled={readonly}
                 />
             </div>
@@ -713,6 +775,57 @@
                         {/if}
                     {/each}
                 </tbody>
+                <!-- Summary Row -->
+                {#if isTableLayout && section.showSummaryRow && datagridFields.length > 0}
+                    <tfoot class="table-light">
+                        <tr>
+                            <td><strong>{section.summaryRowLabel || 'Total'}</strong></td>
+                            {#each section.tableColumns || [] as col}
+                                <td>
+                                    {#if col.aggregate}
+                                        {@const values = datagridFields.map(f => {
+                                            const fkey = getKey(f);
+                                            const val = formData[fkey]?.[col.key]?.value ?? formData[fkey]?.[col.key];
+                                            return val ? Number(val) : 0;
+                                        }).filter(v => !isNaN(v))}
+                                        <strong>
+                                        {#if col.aggregate === 'sum'}
+                                            {values.reduce((a, b) => a + b, 0)}
+                                        {:else if col.aggregate === 'mean'}
+                                            {values.length > 0 ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(2) : 0}
+                                        {:else if col.aggregate === 'max'}
+                                            {Math.max(...values)}
+                                        {:else if col.aggregate === 'min'}
+                                            {Math.min(...values)}
+                                        {:else if col.aggregate === 'count'}
+                                            {values.length}
+                                        {/if}
+                                        </strong>
+                                        {#if col.is_merit && values.length > 0}
+                                            {@const maxScores = datagridFields.map(f => {
+                                                const fkey = getKey(f);
+                                                const ms = formData[fkey]?.[col.key]?.max_score ?? 
+                                                         f.column_max_scores?.[col.key] ?? 
+                                                         col.default_max_score ?? 100;
+                                                return ms ? Number(ms) : 0;
+                                            }).filter(v => !isNaN(v) && v > 0)}
+                                            {@const totalMax = maxScores.reduce((a, b) => a + b, 0)}
+                                            {@const percentage = ((values.reduce((a, b) => a + b, 0) / totalMax) * 100).toFixed(1)}
+                                            <small class="text-muted d-block">
+                                                Max: {totalMax} | {percentage}%
+                                            </small>
+                                        {/if}
+                                    {:else}
+                                        -
+                                    {/if}
+                                </td>
+                                {#if col.is_merit}
+                                    <td></td>
+                                {/if}
+                            {/each}
+                        </tr>
+                    </tfoot>
+                {/if}
             </table>
         </div>
     {/if}
