@@ -87,11 +87,11 @@ export const actions: Actions = {
         }
 
         // 1. Fetch source details
-    const { data: sourceForm, error: sourceError } = await supabase
-        .from('admission_forms')
-        .select('course_id, cycle_id, form_type, is_enabled, schema_json, form_fee, prov_fee')
-        .eq('id', id)
-        .single();
+        const { data: sourceForm, error: sourceError } = await supabase
+            .from('admission_forms')
+            .select('course_id, cycle_id, form_type, is_enabled, schema_json, form_fee, prov_fee')
+            .eq('id', source_id)
+            .single();
 
         if (sourceError || !sourceForm) {
             return { success: false, message: 'Source admission form not found.' };
@@ -116,6 +116,7 @@ export const actions: Actions = {
             cycle_id: target_cycle_id,
             form_type: target_form_type,
             form_fee: sourceForm.form_fee,
+            prov_fee: sourceForm.prov_fee,
             schema_json: sourceForm.schema_json,
             is_enabled: sourceForm.is_enabled // Can default to false or keep same
         });

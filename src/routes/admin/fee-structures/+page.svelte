@@ -1,72 +1,75 @@
 <script lang="ts">
-    import type { PageData } from './$types';
+    import type { PageData, ActionData } from './$types';
     import { enhance } from '$app/forms';
-    import { writable } from 'svelte/store';
     import FeeStructureBuilder from '$lib/components/FeeStructureBuilder.svelte';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
 
-    export let data: PageData;
+    let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
-    let showAddModal = false;
-    let showEditModal = false;
-    let showDeleteModal = false;
-    let showCopyModal = false;
+    let showAddModal = $state(false);
+    let showEditModal = $state(false);
+    let showDeleteModal = $state(false);
+    let showCopyModal = $state(false);
 
-    let targetCopyValues = {
+    let targetCopyValues = $state({
         source_id: '',
         target_course_id: '',
         target_academic_year_id: '',
-        target_form_type: 'Provisional'
-    };
+        target_form_type: 'Provisional',
+        target_fee_scheme_id: ''
+    });
 
-    let currentFeeStructure = writable({
+    let currentFeeStructure = $state<any>({
         id: '',
         course_id: '',
         academic_year_id: '',
         form_type: 'Provisional',
+        fee_scheme_id: '',
         total_fee: 0,
         installment_json: '[]',
-        fee_components: [] as any[], // Array of sections
+        fee_components: [],
         courses: { name: '' },
-        academic_years: { name: '' }
+        academic_years: { name: '' },
+        fee_schemes: { name: '' }
     });
 
-    let newFeeComponents: any[] = [];
-    let newTotalFee = 0;
+    let newFeeComponents = $state<any[]>([]);
+    let newTotalFee = $state(0);
 
     function openEditModal(feeStructure: any) {
-        currentFeeStructure.set({
+        currentFeeStructure = {
             ...feeStructure,
             installment_json: typeof feeStructure.installment_json === 'string' 
                 ? feeStructure.installment_json 
                 : JSON.stringify(feeStructure.installment_json, null, 2),
-            fee_components: feeStructure.fee_components || []
-        });
+            fee_components: feeStructure.fee_components || [],
+            fee_scheme_id: feeStructure.fee_scheme_id || ''
+        };
         showEditModal = true;
     }
 
     function openDeleteModal(feeStructure: any) {
-        currentFeeStructure.set(feeStructure);
+        currentFeeStructure = { ...feeStructure };
         showDeleteModal = true;
     }
 
     function openCopyModal(feeStructure: any) {
-        currentFeeStructure.set(feeStructure);
+        currentFeeStructure = { ...feeStructure };
         targetCopyValues = {
             source_id: feeStructure.id,
-            target_course_id: feeStructure.course_id, // Default to same course
-            target_academic_year_id: feeStructure.academic_year_id, // Default to same year
-            target_form_type: feeStructure.form_type // Default to same type
+            target_course_id: feeStructure.course_id,
+            target_academic_year_id: feeStructure.academic_year_id,
+            target_form_type: feeStructure.form_type,
+            target_fee_scheme_id: feeStructure.fee_scheme_id
         };
         showCopyModal = true;
     }
 
-    function handleTotalChange(e: CustomEvent) {
-        // Update the total fee when components change
+    function handleTotalChange(total: number) {
         if (showAddModal) {
-            newTotalFee = e.detail;
+            newTotalFee = total;
         } else if (showEditModal) {
-            $currentFeeStructure.total_fee = e.detail;
+            currentFeeStructure.total_fee = total;
         }
     }
 </script>
@@ -74,7 +77,7 @@
 <div class="container-fluid">
     <h1 class="mb-4">Fee Structure Management</h1>
 
-    <button class="btn btn-primary mb-3" on:click={() => {
+    <button class="btn btn-primary mb-3" onclick={() => {
         newFeeComponents = [];
         newTotalFee = 0;
         showAddModal = true;
@@ -99,6 +102,7 @@
                             <td>{fs.courses?.name || 'N/A'}</td>
                             <td>{fs.academic_years?.name || 'N/A'}</td>
                             <td><span class="badge bg-secondary">{fs.form_type || 'Provisional'}</span></td>
+                            <td><span class="badge bg-info text-dark">{fs.fee_schemes?.name || 'N/A'}</span></td>
                             <td>{fs.total_fee}</td>
                             <td>
                                 <small>
@@ -110,9 +114,9 @@
                                 </small>
                             </td>
                             <td>
-                                <button class="btn btn-sm btn-info me-2" on:click={() => openEditModal(fs)}>Edit</button>
-                                <button class="btn btn-sm btn-secondary me-2" on:click={() => openCopyModal(fs)}>Copy</button>
-                                <button class="btn btn-sm btn-danger" on:click={() => openDeleteModal(fs)}>Delete</button>
+                                <button class="btn btn-sm btn-info me-2" onclick={() => openEditModal(fs)}>Edit</button>
+                                <button class="btn btn-sm btn-secondary me-2" onclick={() => openCopyModal(fs)}>Copy</button>
+                                <button class="btn btn-sm btn-danger" onclick={() => openDeleteModal(fs)}>Delete</button>
                             </td>
                         </tr>
                     {/each}
@@ -125,12 +129,13 @@
 </div>
 
 <!-- Add Fee Structure Modal -->
-<div class="modal" tabindex="-1" style="display: {showAddModal ? 'block' : 'none'};">
+{#if showAddModal}
+<div class="modal d-block" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add New Fee Structure</h5>
-                <button type="button" class="btn-close" on:click={() => (showAddModal = false)}></button>
+                <button type="button" class="btn-close" onclick={() => (showAddModal = false)}></button>
             </div>
             <form method="POST" action="?/create" use:enhance={() => { 
                 showAddModal = false; 
@@ -172,6 +177,15 @@
                                 {/if}
                             </select>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="add-fee-scheme-id" class="form-label">Fee Scheme</label>
+                            <select class="form-select" id="add-fee-scheme-id" name="fee_scheme_id" required>
+                                <option value="">Select Scheme</option>
+                                {#each data.feeSchemes as scheme}
+                                    <option value={scheme.id}>{scheme.name}</option>
+                                {/each}
+                            </select>
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -179,7 +193,7 @@
                         <div class="border p-2 rounded bg-light">
                             <FeeStructureBuilder 
                                 bind:value={newFeeComponents} 
-                                on:totalChange={handleTotalChange} 
+                                onTotalChange={handleTotalChange} 
                             />
                         </div>
                         <input type="hidden" name="fee_components" value={JSON.stringify(newFeeComponents)} />
@@ -192,26 +206,28 @@
                     
                     <div class="mb-3">
                         <label for="add-installment-json" class="form-label">Installment Details (JSON)</label>
-                        <textarea class="form-control" id="add-installment-json" name="installment_json" rows="3" value="[]"></textarea>
+                        <textarea class="form-control" id="add-installment-json" name="installment_json" rows="3">[]</textarea>
                         <div class="form-text">e.g., `[&#123; "amount": {newTotalFee}, "due_date": "2026-06-15" &#125;]`.</div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" on:click={() => (showAddModal = false)}>Close</button>
+                    <button type="button" class="btn btn-secondary" onclick={() => (showAddModal = false)}>Close</button>
                     <button type="submit" class="btn btn-primary">Create Fee Structure</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
+{/if}
 
 <!-- Edit Fee Structure Modal -->
-<div class="modal" tabindex="-1" style="display: {showEditModal ? 'block' : 'none'};">
+{#if showEditModal}
+<div class="modal d-block" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Edit Fee Structure</h5>
-                <button type="button" class="btn-close" on:click={() => (showEditModal = false)}></button>
+                <button type="button" class="btn-close" onclick={() => (showEditModal = false)}></button>
             </div>
             <form method="POST" action="?/update" use:enhance={() => { 
                 showEditModal = false; 
@@ -222,11 +238,11 @@
                 } 
             }}>
                 <div class="modal-body">
-                    <input type="hidden" name="id" value={$currentFeeStructure.id} />
+                    <input type="hidden" name="id" value={currentFeeStructure.id} />
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="edit-course-id" class="form-label">Course</label>
-                            <select class="form-select" id="edit-course-id" name="course_id" bind:value={$currentFeeStructure.course_id} required>
+                            <select class="form-select" id="edit-course-id" name="course_id" bind:value={currentFeeStructure.course_id} required>
                                 <option value="">Select Course</option>
                                 {#each data.courses as course}
                                     <option value={course.id}>{course.name}</option>
@@ -235,7 +251,7 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="edit-academic-year-id" class="form-label">Academic Year</label>
-                            <select class="form-select" id="edit-academic-year-id" name="academic_year_id" bind:value={$currentFeeStructure.academic_year_id} required>
+                            <select class="form-select" id="edit-academic-year-id" name="academic_year_id" bind:value={currentFeeStructure.academic_year_id} required>
                                 <option value="">Select Academic Year</option>
                                 {#each data.academicYears as year}
                                     <option value={year.id}>{year.name}</option>
@@ -244,7 +260,7 @@
                         </div>
                          <div class="col-md-6 mb-3">
                             <label for="edit-form-type" class="form-label">Form Type</label>
-                            <select class="form-select" id="edit-form-type" name="form_type" bind:value={$currentFeeStructure.form_type} required>
+                            <select class="form-select" id="edit-form-type" name="form_type" bind:value={currentFeeStructure.form_type} required>
                                 {#if data.formTypes}
                                     {#each data.formTypes as ft}
                                         <option value={ft.name}>{ft.name}</option>
@@ -254,47 +270,56 @@
                                 {/if}
                             </select>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-fee-scheme-id" class="form-label">Fee Scheme</label>
+                            <select class="form-select" id="edit-fee-scheme-id" name="fee_scheme_id" bind:value={currentFeeStructure.fee_scheme_id} required>
+                                <option value="">Select Scheme</option>
+                                {#each data.feeSchemes as scheme}
+                                    <option value={scheme.id}>{scheme.name}</option>
+                                {/each}
+                            </select>
+                        </div>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label">Fee Components Breakdown</label>
                          <div class="border p-2 rounded bg-light">
                             <FeeStructureBuilder 
-                                bind:value={$currentFeeStructure.fee_components} 
-                                on:totalChange={handleTotalChange} 
+                                bind:value={currentFeeStructure.fee_components} 
+                                onTotalChange={handleTotalChange} 
                             />
                         </div>
-                        <input type="hidden" name="fee_components" value={JSON.stringify($currentFeeStructure.fee_components)} />
+                        <input type="hidden" name="fee_components" value={JSON.stringify(currentFeeStructure.fee_components)} />
                     </div>
 
                     <div class="mb-3">
                         <label for="edit-total-fee" class="form-label">Total Fee (Calculated)</label>
-                        <input type="number" step="0.01" class="form-control" id="edit-total-fee" name="total_fee" bind:value={$currentFeeStructure.total_fee} readonly />
+                        <input type="number" step="0.01" class="form-control" id="edit-total-fee" name="total_fee" bind:value={currentFeeStructure.total_fee} readonly />
                     </div>
 
                     <div class="mb-3">
                         <label for="edit-installment-json" class="form-label">Installment Details (JSON)</label>
-                        <textarea class="form-control" id="edit-installment-json" name="installment_json" rows="3" bind:value={$currentFeeStructure.installment_json}></textarea>
+                        <textarea class="form-control" id="edit-installment-json" name="installment_json" rows="3" bind:value={currentFeeStructure.installment_json}></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" on:click={() => (showEditModal = false)}>Close</button>
+                    <button type="button" class="btn btn-secondary" onclick={() => (showEditModal = false)}>Close</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
+{/if}
 
 <!-- Delete Fee Structure Modal -->
-
-<!-- Delete Fee Structure Modal -->
-<div class="modal" tabindex="-1" style="display: {showDeleteModal ? 'block' : 'none'};">
+{#if showDeleteModal}
+<div class="modal d-block" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Delete Fee Structure</h5>
-                <button type="button" class="btn-close" on:click={() => (showDeleteModal = false)}></button>
+                <button type="button" class="btn-close" onclick={() => (showDeleteModal = false)}></button>
             </div>
             <form method="POST" action="?/delete" use:enhance={() => { 
                 showDeleteModal = false; 
@@ -305,25 +330,27 @@
                 } 
             }}>
                 <div class="modal-body">
-                    <input type="hidden" name="id" value={$currentFeeStructure.id} />
+                    <input type="hidden" name="id" value={currentFeeStructure.id} />
                     <p>Are you sure you want to delete this fee structure?</p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" on:click={() => (showDeleteModal = false)}>Cancel</button>
+                    <button type="button" class="btn btn-secondary" onclick={() => (showDeleteModal = false)}>Cancel</button>
                     <button type="submit" class="btn btn-danger">Delete</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
+{/if}
 
 <!-- Copy Fee Structure Modal -->
-<div class="modal" tabindex="-1" style="display: {showCopyModal ? 'block' : 'none'};">
+{#if showCopyModal}
+<div class="modal d-block" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Copy Fee Structure</h5>
-                <button type="button" class="btn-close" on:click={() => (showCopyModal = false)}></button>
+                <button type="button" class="btn-close" onclick={() => (showCopyModal = false)}></button>
             </div>
             <form method="POST" action="?/copy" use:enhance={() => { 
                 showCopyModal = false; 
@@ -338,10 +365,10 @@
                     
                     <div class="alert alert-info">
                         <strong>Source:</strong><br>
-                        Course: {$currentFeeStructure.courses?.name}<br>
-                        Year: {$currentFeeStructure.academic_years?.name}<br>
-                        Type: <span class="badge bg-secondary">{$currentFeeStructure.form_type}</span><br>
-                        Total: {$currentFeeStructure.total_fee}
+                        Course: {currentFeeStructure.courses?.name}<br>
+                        Year: {currentFeeStructure.academic_years?.name}<br>
+                        Type: <span class="badge bg-secondary">{currentFeeStructure.form_type}</span><br>
+                        Total: {currentFeeStructure.total_fee}
                     </div>
 
                     <h6 class="mb-3">Target Configuration</h6>
@@ -372,21 +399,32 @@
                             {#if data.formTypes}
                                 {#each data.formTypes as ft}
                                     <option value={ft.name}>{ft.name}</option>
-                                {/each}
+                                    {/each}
                             {:else}
                                 <option value="Provisional">Provisional</option>
                             {/if}
                         </select>
                     </div>
+
+                    <div class="mb-3">
+                        <label for="copy-fee-scheme-id" class="form-label">Target Fee Scheme</label>
+                        <select class="form-select" id="copy-fee-scheme-id" name="target_fee_scheme_id" bind:value={targetCopyValues.target_fee_scheme_id} required>
+                            <option value="">Select Scheme</option>
+                            {#each data.feeSchemes as scheme}
+                                <option value={scheme.id}>{scheme.name}</option>
+                            {/each}
+                        </select>
+                    </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" on:click={() => (showCopyModal = false)}>Cancel</button>
+                    <button type="button" class="btn btn-secondary" onclick={() => (showCopyModal = false)}>Cancel</button>
                     <button type="submit" class="btn btn-primary">Copy & Create</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
+{/if}
 
 <style lang="scss">
     .modal {

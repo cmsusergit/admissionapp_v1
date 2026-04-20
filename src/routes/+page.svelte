@@ -65,7 +65,7 @@
 
 <style lang="scss">
     .landing-page {
-        background-image: url('https://images.unsplash.com/photo-1562774053-701939374585?w=1920&auto=format&fit=crop&q=80');
+        background-image: url('/images/hero-bg.jpg');
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;

@@ -110,7 +110,7 @@
 
 <style>
     .login-page {
-        background-image: url('https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1920&auto=format&fit=crop&q=80');
+        background-image: url('/images/login-bg.jpg');
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;

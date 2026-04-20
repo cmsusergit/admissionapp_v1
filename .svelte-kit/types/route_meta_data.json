@@ -89,6 +89,10 @@
 	"/admin/docs": [
 		"src/routes/+layout.server.ts"
 	],
+	"/admin/fee-schemes": [
+		"src/routes/admin/fee-schemes/+page.server.ts",
+		"src/routes/+layout.server.ts"
+	],
 	"/admin/fee-structures": [
 		"src/routes/admin/fee-structures/+page.server.ts",
 		"src/routes/+layout.server.ts"

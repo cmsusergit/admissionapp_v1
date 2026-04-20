@@ -1,1 +1,1 @@
-export { default as component } from "../../../../src/routes/admin/merit-calculation/+page.svelte";
+export { default as component } from "../../../../src/routes/admin/inquiry-forms/+page.svelte";
