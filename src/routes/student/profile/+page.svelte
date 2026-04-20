@@ -100,7 +100,7 @@
                                     </label>
 
                                     {#if field.type === 'select'}
-                                        <select class="form-select" name={field.key} value={profileData[field.key] || ''} required={!isDraft && field.is_required}>
+                                        <select class="form-select" name={field.key} value={profileData[field.key] ?? field.default_value ?? ''} required={!isDraft && field.is_required}>
                                             <option value="">-- Select --</option>
                                             {#each field.options || [] as opt}
                                                 {@const parts = typeof opt === 'string' ? opt.split('|') : [opt]}
@@ -110,9 +110,9 @@
                                             {/each}
                                         </select>
                                     {:else if field.type === 'textarea'}
-                                        <textarea class="form-control" name={field.key} value={profileData[field.key] || ''} required={!isDraft && field.is_required}></textarea>
+                                        <textarea class="form-control" name={field.key} value={profileData[field.key] ?? field.default_value ?? ''} required={!isDraft && field.is_required}></textarea>
                                     {:else if field.type === 'file'}
-                                        <input type="hidden" name={field.key} value={profileData[field.key] || ''}>
+                                        <input type="hidden" name={field.key} value={profileData[field.key] ?? field.default_value ?? ''}>
                                         <div class="input-group">
                                             <input 
                                                 type="file" 
@@ -139,7 +139,7 @@
                                             type={field.type} 
                                             class="form-control" 
                                             name={field.key} 
-                                            value={profileData[field.key] || ''}
+                                            value={profileData[field.key] ?? field.default_value ?? ''}
                                             required={!isDraft && field.is_required}
                                         >
                                     {/if}

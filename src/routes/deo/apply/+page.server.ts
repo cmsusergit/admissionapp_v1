@@ -158,9 +158,44 @@ export const load: PageServerLoad = async ({
   }
 
   const studentId = url.searchParams.get("studentId");
+  const applicationId = url.searchParams.get("applicationId");
+
   let selectedStudent: { id: string; email: string; full_name: string } | null =
     null;
-  if (studentId) {
+  let preloadedApplicationData: any = null;
+
+  // If applicationId is provided, load existing application
+  if (applicationId) {
+    const { data: app, error: appError } = await supabase
+      .from("applications")
+      .select(
+        "*, student:users!applications_student_id_fkey(id, email, full_name)",
+      )
+      .eq("id", applicationId)
+      .single();
+
+    if (app && !appError) {
+      preloadedApplicationData = {
+        id: app.id,
+        form_data: app.form_data || {},
+        course_id: app.course_id,
+        cycle_id: app.cycle_id,
+        form_type: app.form_type,
+        branch_id: app.branch_id,
+        status: app.status,
+      };
+      // Pre-select the student from the application
+      if (app.student) {
+        selectedStudent = {
+          id: app.student.id,
+          email: app.student.email,
+          full_name: app.student.full_name,
+        };
+      }
+    }
+  }
+
+  if (studentId && !selectedStudent) {
     selectedStudent = students?.find((s) => s.id === studentId) || null;
   }
 
@@ -285,7 +320,8 @@ export const load: PageServerLoad = async ({
     admissionFormSchema: admissionFormSchema,
     formTypes: formTypes || [],
     profileSchema: profileSchema || [],
-    disableBranchSelection: disableBranchSelection, // New flag
+    disableBranchSelection: disableBranchSelection,
+    preloadedApplicationData: preloadedApplicationData,
   };
 };
 
@@ -843,14 +879,16 @@ export const actions: Actions = {
     // Fetch application details to get course and cycle info for receipt generation
     const { data: application, error: appError } = await supabase
       .from("applications")
-      .select(`
+      .select(
+        `
         id,
         course_id,
         cycle_id,
         form_type,
         courses(college_id),
         admission_cycles(academic_year_id, academic_years(name))
-      `)
+      `,
+      )
       .eq("id", application_id)
       .single();
 
@@ -872,7 +910,7 @@ export const actions: Actions = {
         console.error("Missing required parameters for receipt generation:", {
           academicYearId,
           collegeId,
-          courseId
+          courseId,
         });
         receipt_number = `REC-${Date.now()}`;
       } else {
@@ -881,7 +919,7 @@ export const actions: Actions = {
           academicYearId,
           yearName,
           collegeId,
-          courseId
+          courseId,
         });
 
         receipt_number = await generateReceiptNumber(
@@ -890,7 +928,7 @@ export const actions: Actions = {
           academicYearId,
           yearName,
           collegeId,
-          courseId
+          courseId,
         );
 
         console.log("Generated receipt number:", receipt_number);

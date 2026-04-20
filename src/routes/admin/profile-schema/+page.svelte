@@ -8,28 +8,41 @@
 
     let isSubmitting = false;
     let editingId: string | null = null;
+    let defaultCheckboxValue = false;
     let newField = {
         key: '',
         label: '',
         type: 'text',
         is_required: false,
-        options: ''
+        options: '',
+        default_value: ''
     };
 
     function resetForm() {
         editingId = null;
-        newField = { key: '', label: '', type: 'text', is_required: false, options: '' };
+        newField = { key: '', label: '', type: 'text', is_required: false, options: '', default_value: '' };
+        defaultCheckboxValue = false;
     }
 
     function editField(field: any) {
         editingId = field.id;
+        if (field.type === 'checkbox') {
+            defaultCheckboxValue = field.default_value === true || field.default_value === 'true' || field.default_value === 'on';
+        }
         newField = {
             key: field.key,
             label: field.label,
             type: field.type,
             is_required: field.is_required,
-            options: field.options ? field.options.join('\n') : ''
+            options: field.options ? field.options.join('\n') : '',
+            default_value: field.type === 'checkbox' ? '' : (field.default_value || '')
         };
+    }
+
+    function handleDefaultValueChange() {
+        if (newField.type === 'checkbox') {
+            newField.default_value = defaultCheckboxValue ? 'true' : '';
+        }
     }
 </script>
 
@@ -91,6 +104,62 @@
                                 <div class="form-text">Format: <code>value|Label</code> or just <code>Label</code></div>
                             </div>
                         {/if}
+
+                        <!-- Default Value -->
+                        <div class="p-2 border rounded bg-light mb-3">
+                            <label class="form-label"><i class="bi bi-cursor-text me-1"></i> Default Value</label>
+                            <p class="small text-muted mb-2">Pre-populate this field with a default value.</p>
+                            
+                            {#if newField.type === 'select'}
+                                <select name="default_value" bind:value={newField.default_value} class="form-select">
+                                    <option value="">-- No Default --</option>
+                                    {#if newField.options && typeof newField.options === 'string'}
+                                        {#each newField.options.split('\n').filter(Boolean) as opt}
+                                            {@const parts = opt.split('|')}
+                                            {@const val = parts[0]?.trim()}
+                                            <option value={val}>{parts[1]?.trim() || val}</option>
+                                        {/each}
+                                    {:else}
+                                        <option value="">Add options above first</option>
+                                    {/if}
+                                </select>
+                            {:else if newField.type === 'checkbox'}
+                                <div class="form-check">
+                                    <input name="default_value_cb" type="checkbox" bind:checked={defaultCheckboxValue} id="default-checkbox" class="form-check-input" on:change={handleDefaultValueChange}>
+                                    <label for="default-checkbox" class="form-check-label">Checked by default</label>
+                                </div>
+                            {:else if newField.type === 'number'}
+                                <input 
+                                    type="number" 
+                                    bind:value={newField.default_value} 
+                                    class="form-control" 
+                                    placeholder="Default number"
+                                />
+                            {:else if newField.type === 'date'}
+                                <input 
+                                    type="date" 
+                                    bind:value={newField.default_value} 
+                                    class="form-control" 
+                                />
+                            {:else}
+                                <input 
+                                    type="text" 
+                                    bind:value={newField.default_value} 
+                                    class="form-control" 
+                                    placeholder="Default value"
+                                />
+                            {/if}
+                            
+                            {#if newField.default_value}
+                                <button 
+                                    type="button" 
+                                    class="btn btn-link btn-sm text-danger p-0 mt-1" 
+                                    on:click={() => { newField.default_value = ''; defaultCheckboxValue = false; }}
+                                >
+                                    Clear default
+                                </button>
+                            {/if}
+                        </div>
 
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" name="is_required" id="req" bind:checked={newField.is_required}>

@@ -6,19 +6,18 @@
 </script>
 
 <div class="landing-page">
-    <div class="overlay"></div>
     <div class="content container py-5">
         <div class="row align-items-center g-5">
             <!-- Welcome Section -->
             <div class="col-lg-6 text-center text-lg-start">
                 <div class="p-4 p-md-5 mb-4 rounded-4 shadow-lg welcome-card">
-                    <h1 class="display-4 fw-bold text-white mb-3">University Admission Portal</h1>
-                    <p class="fs-5 text-white-50 mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
+                    <h1 class="display-4 fw-bold text-dark mb-3">University Admission Portal</h1>
+                    <p class="fs-5 text-secondary mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
                     <div class="d-flex flex-wrap justify-content-center justify-content-lg-start gap-3 mt-4">
                         <a href="/login" class="btn btn-primary btn-lg px-4 shadow-sm fw-bold">
                             <i class="bi bi-box-arrow-in-right me-2"></i> Login to Dashboard
                         </a>
-                        <a href="/register" class="btn btn-outline-light btn-lg px-4 fw-bold">
+                        <a href="/register" class="btn btn-outline-primary btn-lg px-4 fw-bold">
                             <i class="bi bi-person-plus me-2"></i> Create Account
                         </a>
                     </div>
@@ -66,7 +65,7 @@
 
 <style lang="scss">
     .landing-page {
-        background-image: url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=1920&auto=format&fit=crop');
+        background-image: url('https://images.unsplash.com/photo-1562774053-701939374585?w=1920&auto=format&fit=crop&q=80');
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
@@ -82,7 +81,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: rgba(0, 0, 0, 0.7);
+        background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(245,245,250,0.7) 100%);
         z-index: 1;
     }
 
@@ -92,14 +91,16 @@
     }
 
     .welcome-card {
-        background-color: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.85) !important;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1) !important;
     }
 
     .inquiry-panel {
-        background-color: rgba(255, 255, 255, 0.95);
+        background: rgba(255, 255, 255, 0.85) !important;
         backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
     }
 
     .inquiry-list {

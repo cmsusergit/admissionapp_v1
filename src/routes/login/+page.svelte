@@ -110,7 +110,7 @@
 
 <style>
     .login-page {
-        background-image: url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=1920&auto=format&fit=crop');
+        background-image: url('https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1920&auto=format&fit=crop&q=80');
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
@@ -127,7 +127,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: rgba(0, 0, 0, 0.6);
+        background: linear-gradient(135deg, rgba(255,252,245,0.85) 0%, rgba(250,245,230,0.85) 100%);
         z-index: 1;
     }
 
