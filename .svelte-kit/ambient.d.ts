@@ -41,12 +41,14 @@ declare module '$env/static/private' {
 	export const SSH_TTY: string;
 	export const npm_package_json: string;
 	export const NVM_INC: string;
+	export const PAGER: string;
 	export const npm_config_userconfig: string;
 	export const npm_config_local_prefix: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
 	export const COLOR: string;
 	export const NVM_DIR: string;
 	export const LOGNAME: string;
+	export const GEMINI_CLI: string;
 	export const _: string;
 	export const npm_config_prefix: string;
 	export const npm_config_npm_version: string;
@@ -56,6 +58,7 @@ declare module '$env/static/private' {
 	export const npm_config_cache: string;
 	export const npm_config_node_gyp: string;
 	export const PATH: string;
+	export const GEMINI_CLI_NO_RELAUNCH: string;
 	export const NODE: string;
 	export const npm_package_name: string;
 	export const XDG_RUNTIME_DIR: string;
@@ -66,6 +69,7 @@ declare module '$env/static/private' {
 	export const npm_package_version: string;
 	export const npm_lifecycle_event: string;
 	export const LESSCLOSE: string;
+	export const GIT_PAGER: string;
 	export const npm_config_globalconfig: string;
 	export const npm_config_init_module: string;
 	export const PWD: string;
@@ -125,12 +129,14 @@ declare module '$env/dynamic/private' {
 		SSH_TTY: string;
 		npm_package_json: string;
 		NVM_INC: string;
+		PAGER: string;
 		npm_config_userconfig: string;
 		npm_config_local_prefix: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
 		COLOR: string;
 		NVM_DIR: string;
 		LOGNAME: string;
+		GEMINI_CLI: string;
 		_: string;
 		npm_config_prefix: string;
 		npm_config_npm_version: string;
@@ -140,6 +146,7 @@ declare module '$env/dynamic/private' {
 		npm_config_cache: string;
 		npm_config_node_gyp: string;
 		PATH: string;
+		GEMINI_CLI_NO_RELAUNCH: string;
 		NODE: string;
 		npm_package_name: string;
 		XDG_RUNTIME_DIR: string;
@@ -150,6 +157,7 @@ declare module '$env/dynamic/private' {
 		npm_package_version: string;
 		npm_lifecycle_event: string;
 		LESSCLOSE: string;
+		GIT_PAGER: string;
 		npm_config_globalconfig: string;
 		npm_config_init_module: string;
 		PWD: string;
