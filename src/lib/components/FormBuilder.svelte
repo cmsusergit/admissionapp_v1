@@ -510,10 +510,13 @@
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <span class="fw-semibold">{section.title}</span>
 <<<<<<< HEAD
+<<<<<<< HEAD
                                     {#if (schema.sections || []).length > 1}
                                         <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
                                     {/if}
 =======
+=======
+>>>>>>> test-branch
                                     <div class="d-flex align-items-center gap-1">
                                         <button type="button" class="btn btn-sm btn-outline-secondary" 
                                                 on:click={() => moveSectionUp(sectionIndex)}
@@ -527,6 +530,9 @@
                                             <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
                                         {/if}
                                     </div>
+<<<<<<< HEAD
+>>>>>>> test-branch
+=======
 >>>>>>> test-branch
                                 </div>
                                 <select bind:value={section.layout} class="form-select form-select-sm" on:change={notifyChange}>

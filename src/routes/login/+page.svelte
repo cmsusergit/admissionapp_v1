@@ -113,7 +113,11 @@
 <style>
     .login-page {
 <<<<<<< HEAD
+<<<<<<< HEAD
         background-image: url('https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1920&auto=format&fit=crop&q=80');
+=======
+        background-color: #0d6efd;
+>>>>>>> test-branch
 =======
         background-color: #0d6efd;
 >>>>>>> test-branch
@@ -134,7 +138,11 @@
         right: 0;
         bottom: 0;
 <<<<<<< HEAD
+<<<<<<< HEAD
         background: linear-gradient(135deg, rgba(255,252,245,0.85) 0%, rgba(250,245,230,0.85) 100%);
+=======
+        background: transparent;
+>>>>>>> test-branch
 =======
         background: transparent;
 >>>>>>> test-branch

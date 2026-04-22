@@ -2,6 +2,10 @@
     import { onMount } from 'svelte';
     import { fade } from 'svelte/transition';
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+    import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';
+>>>>>>> test-branch
 =======
     import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';
 >>>>>>> test-branch
@@ -11,6 +15,10 @@
 
 <div class="landing-page">
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+    <CrystalAnimation />
+>>>>>>> test-branch
 =======
     <CrystalAnimation />
 >>>>>>> test-branch
@@ -20,8 +28,13 @@
             <div class="col-lg-6 text-center text-lg-start">
                 <div class="p-4 p-md-5 mb-4 rounded-4 shadow-lg welcome-card">
 <<<<<<< HEAD
+<<<<<<< HEAD
                     <h1 class="display-4 fw-bold text-dark mb-3">University Admission Portal</h1>
                     <p class="fs-5 text-secondary mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
+=======
+                    <h1 class="display-4 fw-bold text-dark mb-3">SVIT Admission Portal</h1>
+                    <p class="fs-5 text-dark mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
+>>>>>>> test-branch
 =======
                     <h1 class="display-4 fw-bold text-dark mb-3">SVIT Admission Portal</h1>
                     <p class="fs-5 text-dark mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
@@ -43,7 +56,11 @@
                     <div class="card-header bg-white p-4 border-0">
                         <h3 class="fw-bold text-primary mb-1">Quick Inquiry</h3>
 <<<<<<< HEAD
+<<<<<<< HEAD
                         <p class="text-muted small mb-0">No login required to share your interest.</p>
+=======
+                        <p class="text-dark small mb-0">No login required to share your interest.</p>
+>>>>>>> test-branch
 =======
                         <p class="text-dark small mb-0">No login required to share your interest.</p>
 >>>>>>> test-branch
@@ -58,7 +75,11 @@
                                     </div>
                                     {#if form.description}
 <<<<<<< HEAD
+<<<<<<< HEAD
                                         <p class="mb-2 text-muted small text-truncate">{form.description}</p>
+=======
+                                        <p class="mb-2 text-dark small text-truncate">{form.description}</p>
+>>>>>>> test-branch
 =======
                                         <p class="mb-2 text-dark small text-truncate">{form.description}</p>
 >>>>>>> test-branch
@@ -69,8 +90,13 @@
                                 </a>
                             {:else}
 <<<<<<< HEAD
+<<<<<<< HEAD
                                 <div class="p-5 text-center text-muted">
                                     <i class="bi bi-info-circle display-6 d-block mb-3 opacity-25"></i>
+=======
+                                <div class="p-5 text-center text-dark">
+                                    <i class="bi bi-info-circle display-6 d-block mb-3"></i>
+>>>>>>> test-branch
 =======
                                 <div class="p-5 text-center text-dark">
                                     <i class="bi bi-info-circle display-6 d-block mb-3"></i>
@@ -82,7 +108,11 @@
                     </div>
                     <div class="card-footer bg-light p-3 text-center border-0">
 <<<<<<< HEAD
+<<<<<<< HEAD
                         <span class="text-muted small">Already filled a form? Login to see your pre-filled profile.</span>
+=======
+                        <span class="text-dark small">Already filled a form? Login to see your pre-filled profile.</span>
+>>>>>>> test-branch
 =======
                         <span class="text-dark small">Already filled a form? Login to see your pre-filled profile.</span>
 >>>>>>> test-branch
@@ -96,7 +126,11 @@
 <style lang="scss">
     .landing-page {
 <<<<<<< HEAD
+<<<<<<< HEAD
         background-image: url('https://images.unsplash.com/photo-1562774053-701939374585?w=1920&auto=format&fit=crop&q=80');
+=======
+        background-color: #0d6efd;
+>>>>>>> test-branch
 =======
         background-color: #0d6efd;
 >>>>>>> test-branch
@@ -116,7 +150,11 @@
         right: 0;
         bottom: 0;
 <<<<<<< HEAD
+<<<<<<< HEAD
         background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(245,245,250,0.7) 100%);
+=======
+        background: transparent;
+>>>>>>> test-branch
 =======
         background: transparent;
 >>>>>>> test-branch
@@ -130,8 +168,13 @@
 
     .welcome-card {
 <<<<<<< HEAD
+<<<<<<< HEAD
         background: rgba(255, 255, 255, 0.85) !important;
         backdrop-filter: blur(10px);
+=======
+        background: #ffffff !important;
+        backdrop-filter: none;
+>>>>>>> test-branch
 =======
         background: #ffffff !important;
         backdrop-filter: none;
@@ -142,8 +185,13 @@
 
     .inquiry-panel {
 <<<<<<< HEAD
+<<<<<<< HEAD
         background: rgba(255, 255, 255, 0.85) !important;
         backdrop-filter: blur(10px);
+=======
+        background: #ffffff !important;
+        backdrop-filter: none;
+>>>>>>> test-branch
 =======
         background: #ffffff !important;
         backdrop-filter: none;
