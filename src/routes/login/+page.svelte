@@ -2,6 +2,7 @@
     import { supabase } from '$lib/supabase'; 
     import { PUBLIC_APP_URL, PUBLIC_SUPABASE_URL } from '$env/static/public';
     import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';
+    import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';
 
     // DEBUG: Check Supabase Configuration
     console.log('Login Page Debug:');
@@ -64,10 +65,14 @@
 
 <div class="login-page">
     <CrystalAnimation />
+    <CrystalAnimation />
     <div class="overlay"></div>
     <div class="content container d-flex justify-content-center align-items-center">
         <div class="card shadow-lg p-4 border-0" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 1rem; border: 1px solid rgba(0,0,0,0.1);">
+        <div class="card shadow-lg p-4 border-0" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 1rem; border: 1px solid rgba(0,0,0,0.1);">
             <div class="text-center mb-4">
+                <h2 class="fw-bold text-dark">Login</h2>
+                <p class="text-dark small">Access your dashboard</p>
                 <h2 class="fw-bold text-dark">Login</h2>
                 <p class="text-dark small">Access your dashboard</p>
             </div>
@@ -81,9 +86,11 @@
             <form on:submit|preventDefault={signInWithEmail}>
                 <div class="mb-3">
                     <label for="email" class="form-label text-dark">Email address</label>
+                    <label for="email" class="form-label text-dark">Email address</label>
                     <input type="email" class="form-control" id="email" bind:value={email} required placeholder="name@example.com">
                 </div>
                 <div class="mb-3">
+                    <label for="password" class="form-label text-dark">Password</label>
                     <label for="password" class="form-label text-dark">Password</label>
                     <input type="password" class="form-control" id="password" bind:value={password} required placeholder="********">
                 </div>
@@ -97,13 +104,18 @@
                     <hr class="flex-grow-1 border-dark">
                     <span class="px-2 text-dark small">OR</span>
                     <hr class="flex-grow-1 border-dark">
+                    <hr class="flex-grow-1 border-dark">
+                    <span class="px-2 text-dark small">OR</span>
+                    <hr class="flex-grow-1 border-dark">
                 </div>
+                <button type="button" class="btn btn-light border w-100 fw-bold" on:click={signInWithGoogle}>
                 <button type="button" class="btn btn-light border w-100 fw-bold" on:click={signInWithGoogle}>
                     <i class="bi bi-google me-2 text-danger"></i> Sign in with Google
                 </button>
             </div>
 
             <div class="mt-4 text-center">
+                <p class="mb-0 text-dark">Don't have an account? <a href="/register" class="fw-bold link-primary">Register here</a></p>
                 <p class="mb-0 text-dark">Don't have an account? <a href="/register" class="fw-bold link-primary">Register here</a></p>
             </div>
         </div>

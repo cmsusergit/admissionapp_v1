@@ -1,4 +1,5 @@
 <script lang="ts">
+<script lang="ts">
     import { onMount } from 'svelte';
     import { fade } from 'svelte/transition';
 <<<<<<< HEAD
@@ -124,6 +125,7 @@
 </div>
 
 <style lang="scss">
+<style lang="scss">
     .landing-page {
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -137,6 +139,7 @@
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
+        min-height: calc(100vh - 60px);
         min-height: calc(100vh - 60px);
         position: relative;
         display: flex;
