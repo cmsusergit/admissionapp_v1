@@ -124,6 +124,24 @@
         notifyChange();
     }
 
+    function moveSectionUp(index: number) {
+        if (index > 0 && schema.sections) {
+            const temp = schema.sections[index];
+            schema.sections[index] = schema.sections[index - 1];
+            schema.sections[index - 1] = temp;
+            notifyChange();
+        }
+    }
+
+    function moveSectionDown(index: number) {
+        if (schema.sections && index < schema.sections.length - 1) {
+            const temp = schema.sections[index];
+            schema.sections[index] = schema.sections[index + 1];
+            schema.sections[index + 1] = temp;
+            notifyChange();
+        }
+    }
+
     // --- Field Management ---
 
     function openAddFieldModal() {
@@ -491,9 +509,25 @@
                             <li class="list-group-item {sectionIndex % 2 === 0 ? 'bg-light' : ''}">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <span class="fw-semibold">{section.title}</span>
+<<<<<<< HEAD
                                     {#if (schema.sections || []).length > 1}
                                         <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
                                     {/if}
+=======
+                                    <div class="d-flex align-items-center gap-1">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                                on:click={() => moveSectionUp(sectionIndex)}
+                                                disabled={sectionIndex === 0}
+                                                title="Move Up"><i class="bi bi-arrow-up"></i></button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                                on:click={() => moveSectionDown(sectionIndex)}
+                                                disabled={sectionIndex === (schema.sections || []).length - 1}
+                                                title="Move Down"><i class="bi bi-arrow-down"></i></button>
+                                        {#if (schema.sections || []).length > 1}
+                                            <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(section.id)}>&times;</button>
+                                        {/if}
+                                    </div>
+>>>>>>> test-branch
                                 </div>
                                 <select bind:value={section.layout} class="form-select form-select-sm" on:change={notifyChange}>
                                     <option value="column">Column Layout</option>

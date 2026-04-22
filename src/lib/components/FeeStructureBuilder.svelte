@@ -1,39 +1,49 @@
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
+    interface FeeItem {
+        name: string;
+        amount: number;
+        allow_partial: boolean;
+    }
 
-    export let value: any[] = [];
+    interface FeeSection {
+        name: string;
+        items: FeeItem[];
+    }
 
-    const dispatch = createEventDispatcher();
+    let { value = $bindable([]), onTotalChange } = $props<{ 
+        value: FeeSection[], 
+        onTotalChange?: (total: number) => void 
+    }>();
 
     function addSection() {
-        value = [...value, { name: 'New Section', items: [] }];
+        value.push({ name: 'New Section', items: [] });
         update();
     }
 
     function removeSection(index: number) {
-        value = value.filter((_, i) => i !== index);
+        value.splice(index, 1);
         update();
     }
 
     function addItem(sectionIndex: number) {
-        value[sectionIndex].items = [...value[sectionIndex].items, { name: 'New Item', amount: 0, allow_partial: false }];
-        value = value; // Trigger reactivity
+        value[sectionIndex].items.push({ name: 'New Item', amount: 0, allow_partial: false });
         update();
     }
 
     function removeItem(sectionIndex: number, itemIndex: number) {
-        value[sectionIndex].items = value[sectionIndex].items.filter((_, i) => i !== itemIndex);
-        value = value; // Trigger reactivity
+        value[sectionIndex].items.splice(itemIndex, 1);
         update();
     }
 
     function update() {
-        dispatch('change', value);
         // Calculate total
         const total = value.reduce((sum, section) => {
             return sum + (section.items?.reduce((s: number, i: any) => s + (Number(i.amount) || 0), 0) || 0);
         }, 0);
-        dispatch('totalChange', total);
+        
+        if (onTotalChange) {
+            onTotalChange(total);
+        }
     }
 </script>
 
@@ -45,11 +55,11 @@
                     type="text" 
                     class="form-control form-control-sm me-2 fw-bold" 
                     bind:value={section.name} 
-                    on:input={update} 
+                    oninput={update} 
                     placeholder="Section Name"
                     style="max-width: 200px;"
                 />
-                <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeSection(sIndex)}>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick={() => removeSection(sIndex)}>
                     Remove Section
                 </button>
             </div>
@@ -71,7 +81,7 @@
                                         type="text" 
                                         class="form-control form-control-sm" 
                                         bind:value={item.name} 
-                                        on:input={update}
+                                        oninput={update}
                                         placeholder="Item Name" 
                                     />
                                 </td>
@@ -80,7 +90,7 @@
                                         type="number" 
                                         class="form-control form-control-sm" 
                                         bind:value={item.amount} 
-                                        on:input={update}
+                                        oninput={update}
                                         placeholder="0.00" 
                                     />
                                 </td>
@@ -90,13 +100,13 @@
                                             class="form-check-input" 
                                             type="checkbox" 
                                             bind:checked={item.allow_partial} 
-                                            on:change={update}
+                                            onchange={update}
                                             title="Allow half payment for this item"
                                         />
                                     </div>
                                 </td>
                                 <td>
-                                    <button type="button" class="btn btn-sm btn-link text-danger p-0" on:click={() => removeItem(sIndex, iIndex)}>
+                                    <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick={() => removeItem(sIndex, iIndex)}>
                                         &times;
                                     </button>
                                 </td>
@@ -104,14 +114,14 @@
                         {/each}
                     </tbody>
                 </table>
-                <button type="button" class="btn btn-sm btn-link text-decoration-none" on:click={() => addItem(sIndex)}>
+                <button type="button" class="btn btn-sm btn-link text-decoration-none" onclick={() => addItem(sIndex)}>
                     + Add Item
                 </button>
             </div>
         </div>
     {/each}
 
-    <button type="button" class="btn btn-sm btn-outline-primary" on:click={addSection}>
+    <button type="button" class="btn btn-sm btn-outline-primary" onclick={addSection}>
         + Add Fee Section
     </button>
 </div>

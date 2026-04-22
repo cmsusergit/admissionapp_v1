@@ -57,6 +57,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         icon: "bi-cash-coin",
       },
       {
+        title: "Fee Schemes",
+        href: "/admin/fee-schemes",
+        icon: "bi-patch-check",
+      },
+      {
         title: "Payment Gateways",
         href: "/admin/payment-gateways",
         icon: "bi-credit-card",

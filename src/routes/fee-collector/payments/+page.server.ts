@@ -61,6 +61,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 course_id,
                 cycle_id,
                 form_type,
+                assigned_fee_scheme_id,
                 courses!inner(name, college_id),
                 admission_cycles(academic_year_id)
             )
@@ -73,6 +74,13 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     if (admError) {
         console.error('Error fetching admissions:', admError.message);
     }
+
+    // Fetch fee schemes for dropdown
+    const { data: feeSchemes } = await supabase
+        .from('fee_schemes')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
 
     // Fetch provisional fee payments for each admission's application
     const admissionsWithProvFees = await Promise.all(admissions?.map(async (adm) => {
@@ -94,7 +102,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     // Fetch all fee structures for robust lookup
     let fsQuery = supabase
         .from('fee_structures')
-        .select('*, courses!inner(college_id)'); // Join to filter by college
+        .select('*, courses!inner(college_id), fee_schemes(name)'); // Join to filter by college
 
     fsQuery = applyRoleBasedCollegeFilter(fsQuery, userProfile, 'fee_structures');
 
@@ -104,25 +112,21 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         console.error('Error fetching all fee structures:', allFsError.message);
     }
 
-    // Process to get fee structures for each admission (Legacy/Specific binding if needed, but we now have all)
-    // We keep this structure to minimize frontend breakage but populate it from allFeeStructures if possible?
-    // Actually, let's just pass allFeeStructures to frontend and update frontend logic.
-    
-    // Legacy support: Map admissions to structures for existing UI logic
+    // Process to get fee structures for each admission
     const feeStructuresPromises = admissionsWithProvFees?.map(async (adm) => {
-        // Safe access to nested properties
         const app = adm.applications as any;
         const courseId = app?.course_id;
         const academicYearId = app?.admission_cycles?.academic_year_id;
         const formType = app?.form_type || 'Provisional';
+        const feeSchemeId = app?.assigned_fee_scheme_id;
 
         if (!courseId || !academicYearId) return null;
 
-        // Find in fetched list
         const feeStructure = allFeeStructures?.find(fs => 
             fs.course_id === courseId && 
             fs.academic_year_id === academicYearId && 
-            fs.form_type === formType
+            fs.form_type === formType &&
+            (!feeSchemeId || fs.fee_scheme_id === feeSchemeId)
         );
         
         if (!feeStructure) return null;
@@ -137,9 +141,10 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         tuitionPayments,
         applicationFeePayments,
         provisionalFeePayments,
-        admissions: admissionsWithProvFees || [], // Use admissionsWithProvFees here
+        admissions: admissionsWithProvFees || [], 
         feeStructures: feeStructures || [],
-        allFeeStructures: allFeeStructures || [] // Pass full list
+        allFeeStructures: allFeeStructures || [],
+        feeSchemes: feeSchemes || []
     };
 };
 
@@ -156,14 +161,8 @@ export const actions: Actions = {
         const payment_date = formData.get('payment_date') as string || new Date().toISOString();
         const admission_category_code = formData.get('admission_category_code') as string; 
         
-        // Default to tuition_fee for this specific "Record Payment" form which is for admissions
-        // If we want to support recording application fees here manually, we need a toggle.
-        // But usually, Fee Collector records Admission Fees (Tuition). 
-        // Application fees are paid by student or DEO pre-admission.
-        // So we explicitly set payment_type to 'tuition_fee' here to ensure separation.
         const payment_type = 'tuition_fee';
 
-        // New: Parse the payment breakdown JSON
         const payment_breakdown_str = formData.get('payment_breakdown') as string;
         let payment_breakdown = [];
         try {
@@ -176,23 +175,50 @@ export const actions: Actions = {
             return fail(400, { message: 'Invalid payment details or missing admission category.', error: true });
         }
 
+        // 1. Fetch Application Details for validation and sequence generation
+        const { data: appData, error: appError } = await supabase
+            .from('applications')
+            .select(`
+                student_id, 
+                course_id, 
+                branch_id, 
+                form_type, 
+                assigned_fee_scheme_id,
+                courses(college_id, code), 
+                branches(code), 
+                admission_cycles(academic_year_id, academic_years(short_code, name))
+            `)
+            .eq('id', application_id)
+            .single();
+
+        if (appError || !appData) {
+            console.error('Error fetching application details:', appError?.message);
+            return fail(500, { message: 'Failed to fetch application details.', error: true });
+        }
+
+        const feeSchemeId = appData.assigned_fee_scheme_id;
+        if (!feeSchemeId) {
+            return fail(400, { message: 'Student has no assigned Fee Scheme. Please assign one before recording payment.', error: true });
+        }
+
         // --- Validation: Ensure collected amount is valid against net outstanding ---
-        // 1. Fetch Fee Structure for the application
+        // 2. Fetch Fee Structure for the application AND scheme
         const { data: currentFeeStructure, error: fsError } = await supabase
             .from('fee_structures')
-            .select('total_fee')
+            .select('total_fee, fee_components')
             .eq('course_id', appData.course_id)
             .eq('academic_year_id', appData.admission_cycles?.academic_year_id)
             .eq('form_type', appData.form_type || 'Provisional')
+            .eq('fee_scheme_id', feeSchemeId)
             .maybeSingle();
 
         if (fsError || !currentFeeStructure) {
             console.error('Error fetching current fee structure:', fsError?.message);
-            return fail(500, { message: 'Failed to retrieve fee structure for validation.', error: true });
+            return fail(500, { message: 'Failed to retrieve fee structure for the assigned scheme.', error: true });
         }
         const totalCourseFee = currentFeeStructure.total_fee || 0;
 
-        // 2. Calculate Provisional Fee Paid
+        // 3. Calculate Provisional Fee Paid
         const { data: provPayments, error: provPayError } = await supabase
             .from('payments')
             .select('amount')
@@ -206,7 +232,7 @@ export const actions: Actions = {
         }
         const totalProvPaid = provPayments?.reduce((sum, p) => sum + p.amount, 0) || 0;
 
-        // 3. Calculate Tuition Fee Already Paid (excluding this current payment)
+        // 4. Calculate Tuition Fee Already Paid (excluding this current payment)
         const { data: tuitionPayments, error: tuitionPayError } = await supabase
             .from('payments')
             .select('amount')
@@ -220,71 +246,35 @@ export const actions: Actions = {
         }
         const totalTuitionPaid = tuitionPayments?.reduce((sum, p) => sum + p.amount, 0) || 0;
 
-        // 4. Determine Net Payable for Tuition
+        // 5. Determine Net Payable for Tuition
         const netPayableTuition = totalCourseFee - totalProvPaid - totalTuitionPaid;
 
-        // 5. Validate Collected Amount
-        if (amount > netPayableTuition + 0.01) { // Add a small epsilon for floating point comparison
-            return fail(400, { message: `Collected amount (INR ${amount.toFixed(2)}) exceeds net payable tuition (INR ${netPayableTuition.toFixed(2)}).`, error: true });
+        // 6. Validate Collected Amount
+        if (amount > netPayableTuition + 0.01) { 
+            return fail(400, { message: `Collected amount (INR ${amount.toFixed(2)}) exceeds net payable tuition (INR ${netPayableTuition.toFixed(2)}) for assigned scheme.`, error: true });
         }
-        if (amount <= 0) { // Amount must be positive
+        if (amount <= 0) {
             return fail(400, { message: 'Payment amount must be greater than zero.', error: true });
         }
         // --- End Validation ---
 
-        // 1. Fetch Application Details for Sequence Generation
-        const { data: appData, error: appError } = await supabase
-            .from('applications')
-            .select(`
-                student_id, 
-                course_id, 
-                branch_id, 
-                form_type, 
-                courses(college_id, code), 
-                branches(code), 
-                admission_cycles(academic_year_id, academic_years(short_code))
-            `)
-            .eq('id', application_id)
-            .single();
-
-        if (appError || !appData) {
-            console.error('Error fetching application details:', appError?.message);
-            return fail(500, { message: 'Failed to fetch application details.', error: true });
-        }
-
         const collegeId = appData.courses!.college_id; 
         const academicYearId = appData.admission_cycles!.academic_year_id; 
+        const academicYearName = appData.admission_cycles!.academic_years!.name;
         const courseId = appData.course_id;
         const studentId = appData.student_id;
-        const branchId = appData.branch_id;
-        const formType = appData.form_type; // Get form_type directly
+        const formType = appData.form_type; 
 
         if (!collegeId || !academicYearId || !courseId || !studentId || !formType) {
-            return fail(500, { message: 'Missing critical application details (college, academic year, course, student, or form type).', error: true });
-        }
-        
-        const academicYearCode = appData.admission_cycles!.academic_years!.short_code; 
-        const courseCode = appData.courses!.code;
-        const branchCode = appData.branches?.code;
-
-        const missingDetails = [];
-        if (!collegeId) missingDetails.push('College');
-        if (!academicYearId) missingDetails.push('Academic Year');
-        if (!academicYearCode) missingDetails.push('Academic Year Short Code (e.g. 25)');
-        if (!courseCode) missingDetails.push('Course Code');
-        if (branchId && !branchCode) missingDetails.push('Branch Code');
-
-        if (missingDetails.length > 0) {
-             return fail(500, { message: `Missing details for ID generation: ${missingDetails.join(', ')}`, error: true });
+            return fail(500, { message: 'Missing critical application details.', error: true });
         }
 
         // 2. Generate Receipt Number
         let receipt_number;
         try {
-            // Use the proper receipt number generation function
             receipt_number = await generateReceiptNumber(
                 supabase,
-                payment_type, // 'tuition_fee' or other payment types
+                payment_type,
                 academicYearId,
                 academicYearName,
                 collegeId,
@@ -294,61 +284,19 @@ export const actions: Actions = {
             console.error('Error generating receipt number:', e);
             return fail(500, { message: 'Failed to generate receipt number.', error: true });
         }
-
-        // 3. Generate CollegeID (Enrollment Number) if not exists
-        // Check current
-        const { data: student, error: studentError } = await supabase
-            .from('users')
-            .select('student_profiles(enrollment_number)')
-            .eq('id', studentId)
-            .single();
         
-        if (!student?.student_profiles?.enrollment_number) {
-            try {
-                // Generate CollegeID using the new function and detailed codes
-                const enrollment_number = await generateCollegeId(
-                    supabase,
-                    collegeId,
-                    courseId,
-                    academicYearId,
-                    academicYearCode,
-                    courseCode,
-                    branchCode,
-                    admission_category_code, // Use the code from form data
-                    branchId // Pass branchId for sequence lookup
-                );
-                
-                // Update User
-                await supabase.from('student_profiles').update({ enrollment_number }).eq('user_id', studentId);
-            } catch (e) {
-                console.error("Error generating student ID:", e);
-                // We don't fail payment if ID generation fails, but log it.
-            }
-        }
-
-        // Construct a primary transaction ID (e.g., HYBRID-TIMESTAMP)
         const transaction_id = `HYBRID-${Date.now()}`;
-
-        // Get the fee structure to snapshot the breakdown at this point in time
-        // This is crucial for future reference even if the fee structure changes later
-        const { data: feeStructureSnapshot } = await supabase
-            .from('fee_structures')
-            .select('fee_components')
-            .eq('course_id', courseId)
-            .eq('academic_year_id', academicYearId)
-            .eq('form_type', appData.form_type || 'Provisional')
-            .maybeSingle();
 
         const { error } = await supabase.from('payments').insert({
             application_id,
             amount,
             transaction_id,
-            receipt_number, // Save generated receipt number
+            receipt_number, 
             status: 'completed',
-            payment_type, // Explicitly set to 'tuition_fee'
+            payment_type,
             payment_date: new Date(payment_date).toISOString(),
-            payment_breakdown, // Store the payment mode JSON
-            fee_components_breakdown: feeStructureSnapshot?.fee_components || null // Store the fee structure snapshot
+            payment_breakdown,
+            fee_components_breakdown: currentFeeStructure?.fee_components || null
         });
 
         if (error) {
@@ -357,5 +305,32 @@ export const actions: Actions = {
         }
 
         return { success: true, message: 'Payment recorded successfully!' };
+    },
+
+    updateAssignedScheme: async ({ request, locals: { supabase, getAuthenticatedUser, userProfile } }) => {
+        const authenticatedUser = await getAuthenticatedUser();
+        if (!authenticatedUser || userProfile?.role !== 'fee_collector') {
+            throw redirect(303, '/login');
+        }
+
+        const formData = await request.formData();
+        const application_id = formData.get('application_id') as string;
+        const fee_scheme_id = formData.get('fee_scheme_id') as string;
+
+        if (!application_id || !fee_scheme_id) {
+            return fail(400, { message: 'Application ID and Fee Scheme are required.', error: true });
+        }
+
+        const { error } = await supabase
+            .from('applications')
+            .update({ assigned_fee_scheme_id: fee_scheme_id })
+            .eq('id', application_id);
+
+        if (error) {
+            console.error('Error updating assigned scheme:', error.message);
+            return fail(500, { message: 'Failed to update assigned fee scheme.', error: true });
+        }
+
+        return { success: true, message: 'Fee scheme assigned successfully!' };
     }
 };

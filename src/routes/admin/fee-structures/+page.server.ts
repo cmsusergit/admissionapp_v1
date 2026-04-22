@@ -16,43 +16,47 @@ export const load: PageServerLoad = async ({ locals: { supabase, getSession, use
         { data: structures, error: feeStructuresError },
         { data: courses, error: coursesError },
         { data: academicYears, error: academicYearsError },
-        { data: formTypes, error: formTypesError }
+        { data: formTypes, error: formTypesError },
+        { data: feeSchemes, error: feeSchemesError }
     ] = await Promise.all([
         supabase
             .from('fee_structures')
             .select(`
-                id, course_id, academic_year_id, total_fee, installment_json, created_at,
+                id, course_id, academic_year_id, total_fee, installment_json, fee_components, form_type, fee_scheme_id, created_at,
                 courses(name, code, colleges(name)),
-                academic_years(name)
+                academic_years(name),
+                fee_schemes(name)
             `)
             .order('created_at', { ascending: false }),
         supabase.from('courses').select('id, name'),
         supabase.from('academic_years').select('id, name'),
-        supabase.from('form_types').select('name').eq('is_active', true).order('name')
+        supabase.from('form_types').select('name').eq('is_active', true).order('name'),
+        supabase.from('fee_schemes').select('id, name').eq('is_active', true).order('name')
     ]);
 
     if (feeStructuresError) {
         console.error('Error fetching fee structures:', feeStructuresError.message);
-        return { feeStructures: [], courses: [], academicYears: [], formTypes: [] };
+        return { feeStructures: [], courses: [], academicYears: [], formTypes: [], feeSchemes: [] };
     }
     if (coursesError) {
         console.error('Error fetching courses for dropdown:', coursesError.message);
-        return { feeStructures: structures || [], courses: [], academicYears: [], formTypes: [] };
     }
     if (academicYearsError) {
         console.error('Error fetching academic years for dropdown:', academicYearsError.message);
-        return { feeStructures: structures || [], courses: courses || [], academicYears: [], formTypes: [] };
     }
     if (formTypesError) {
         console.error('Error fetching form types:', formTypesError.message);
-        return { feeStructures: structures || [], courses: courses || [], academicYears: academicYears || [], formTypes: [] };
+    }
+    if (feeSchemesError) {
+        console.error('Error fetching fee schemes:', feeSchemesError.message);
     }
 
     return {
         feeStructures: structures || [],
         courses: courses || [],
         academicYears: academicYears || [],
-        formTypes: formTypes || []
+        formTypes: formTypes || [],
+        feeSchemes: feeSchemes || []
     };
 };
 
@@ -67,6 +71,7 @@ export const actions: Actions = {
         const course_id = formData.get('course_id') as string;
         const academic_year_id = formData.get('academic_year_id') as string;
         const form_type = formData.get('form_type') as string;
+        const fee_scheme_id = formData.get('fee_scheme_id') as string;
         const total_fee = parseFloat(formData.get('total_fee') as string);
         const installment_json_str = formData.get('installment_json') as string;
         const fee_components_str = formData.get('fee_components') as string;
@@ -89,6 +94,7 @@ export const actions: Actions = {
             course_id,
             academic_year_id,
             form_type,
+            fee_scheme_id,
             total_fee,
             installment_json,
             fee_components
@@ -113,6 +119,7 @@ export const actions: Actions = {
         const course_id = formData.get('course_id') as string;
         const academic_year_id = formData.get('academic_year_id') as string;
         const form_type = formData.get('form_type') as string;
+        const fee_scheme_id = formData.get('fee_scheme_id') as string;
         const total_fee = parseFloat(formData.get('total_fee') as string);
         const installment_json_str = formData.get('installment_json') as string;
         const fee_components_str = formData.get('fee_components') as string;
@@ -135,6 +142,7 @@ export const actions: Actions = {
             course_id,
             academic_year_id,
             form_type,
+            fee_scheme_id,
             total_fee,
             installment_json,
             fee_components
@@ -178,17 +186,18 @@ export const actions: Actions = {
         const target_course_id = formData.get('target_course_id') as string;
         const target_academic_year_id = formData.get('target_academic_year_id') as string;
         const target_form_type = formData.get('target_form_type') as string;
+        const target_fee_scheme_id = formData.get('target_fee_scheme_id') as string;
 
-        if (!source_id || !target_course_id || !target_academic_year_id || !target_form_type) {
+        if (!source_id || !target_course_id || !target_academic_year_id || !target_form_type || !target_fee_scheme_id) {
             return { success: false, message: 'Missing required fields for copy operation.' };
         }
 
         // 1. Fetch source details
-    const { data: sourceStructure, error: sourceError } = await supabase
-        .from('fee_structures')
-        .select('name, course_id, academic_year_id, target_audience, total_amount, metadata')
-        .eq('id', id)
-        .single();
+        const { data: sourceStructure, error: sourceError } = await supabase
+            .from('fee_structures')
+            .select('total_fee, installment_json, fee_components')
+            .eq('id', source_id)
+            .single();
 
         if (sourceError || !sourceStructure) {
             return { success: false, message: 'Source fee structure not found.' };
@@ -201,6 +210,7 @@ export const actions: Actions = {
             .eq('course_id', target_course_id)
             .eq('academic_year_id', target_academic_year_id)
             .eq('form_type', target_form_type)
+            .eq('fee_scheme_id', target_fee_scheme_id)
             .maybeSingle();
 
         if (existingTarget) {
@@ -212,6 +222,7 @@ export const actions: Actions = {
             course_id: target_course_id,
             academic_year_id: target_academic_year_id,
             form_type: target_form_type,
+            fee_scheme_id: target_fee_scheme_id,
             total_fee: sourceStructure.total_fee,
             installment_json: sourceStructure.installment_json,
             fee_components: sourceStructure.fee_components

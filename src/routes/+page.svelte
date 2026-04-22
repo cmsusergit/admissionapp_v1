@@ -1,18 +1,31 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { fade } from 'svelte/transition';
+<<<<<<< HEAD
+=======
+    import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';
+>>>>>>> test-branch
 
     let { data } = $props();
 </script>
 
 <div class="landing-page">
+<<<<<<< HEAD
+=======
+    <CrystalAnimation />
+>>>>>>> test-branch
     <div class="content container py-5">
         <div class="row align-items-center g-5">
             <!-- Welcome Section -->
             <div class="col-lg-6 text-center text-lg-start">
                 <div class="p-4 p-md-5 mb-4 rounded-4 shadow-lg welcome-card">
+<<<<<<< HEAD
                     <h1 class="display-4 fw-bold text-dark mb-3">University Admission Portal</h1>
                     <p class="fs-5 text-secondary mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
+=======
+                    <h1 class="display-4 fw-bold text-dark mb-3">SVIT Admission Portal</h1>
+                    <p class="fs-5 text-dark mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
+>>>>>>> test-branch
                     <div class="d-flex flex-wrap justify-content-center justify-content-lg-start gap-3 mt-4">
                         <a href="/login" class="btn btn-primary btn-lg px-4 shadow-sm fw-bold">
                             <i class="bi bi-box-arrow-in-right me-2"></i> Login to Dashboard
@@ -29,7 +42,11 @@
                 <div class="card border-0 rounded-4 shadow-lg overflow-hidden inquiry-panel">
                     <div class="card-header bg-white p-4 border-0">
                         <h3 class="fw-bold text-primary mb-1">Quick Inquiry</h3>
+<<<<<<< HEAD
                         <p class="text-muted small mb-0">No login required to share your interest.</p>
+=======
+                        <p class="text-dark small mb-0">No login required to share your interest.</p>
+>>>>>>> test-branch
                     </div>
                     <div class="card-body p-0">
                         <div class="list-group list-group-flush inquiry-list">
@@ -40,22 +57,35 @@
                                         <span class="badge bg-primary rounded-pill">Start &rarr;</span>
                                     </div>
                                     {#if form.description}
+<<<<<<< HEAD
                                         <p class="mb-2 text-muted small text-truncate">{form.description}</p>
+=======
+                                        <p class="mb-2 text-dark small text-truncate">{form.description}</p>
+>>>>>>> test-branch
                                     {/if}
                                     <div class="small text-primary fw-medium">
                                         <i class="bi bi-cursor-fill me-1"></i> Pre-select your courses
                                     </div>
                                 </a>
                             {:else}
+<<<<<<< HEAD
                                 <div class="p-5 text-center text-muted">
                                     <i class="bi bi-info-circle display-6 d-block mb-3 opacity-25"></i>
+=======
+                                <div class="p-5 text-center text-dark">
+                                    <i class="bi bi-info-circle display-6 d-block mb-3"></i>
+>>>>>>> test-branch
                                     <p>Our counselors will be available for inquiries soon.</p>
                                 </div>
                             {/each}
                         </div>
                     </div>
                     <div class="card-footer bg-light p-3 text-center border-0">
+<<<<<<< HEAD
                         <span class="text-muted small">Already filled a form? Login to see your pre-filled profile.</span>
+=======
+                        <span class="text-dark small">Already filled a form? Login to see your pre-filled profile.</span>
+>>>>>>> test-branch
                     </div>
                 </div>
             </div>
@@ -65,7 +95,11 @@
 
 <style lang="scss">
     .landing-page {
+<<<<<<< HEAD
         background-image: url('https://images.unsplash.com/photo-1562774053-701939374585?w=1920&auto=format&fit=crop&q=80');
+=======
+        background-color: #0d6efd;
+>>>>>>> test-branch
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
@@ -81,7 +115,11 @@
         left: 0;
         right: 0;
         bottom: 0;
+<<<<<<< HEAD
         background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(245,245,250,0.7) 100%);
+=======
+        background: transparent;
+>>>>>>> test-branch
         z-index: 1;
     }
 
@@ -91,15 +129,25 @@
     }
 
     .welcome-card {
+<<<<<<< HEAD
         background: rgba(255, 255, 255, 0.85) !important;
         backdrop-filter: blur(10px);
+=======
+        background: #ffffff !important;
+        backdrop-filter: none;
+>>>>>>> test-branch
         border: 1px solid rgba(255, 255, 255, 0.5);
         box-shadow: 0 8px 32px rgba(0,0,0,0.1) !important;
     }
 
     .inquiry-panel {
+<<<<<<< HEAD
         background: rgba(255, 255, 255, 0.85) !important;
         backdrop-filter: blur(10px);
+=======
+        background: #ffffff !important;
+        backdrop-filter: none;
+>>>>>>> test-branch
         border: 1px solid rgba(255, 255, 255, 0.5);
     }
 

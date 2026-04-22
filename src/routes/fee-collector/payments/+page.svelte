@@ -38,6 +38,7 @@
     });
 
     let selectedAdmissionId = ''; 
+    let showSchemeEdit = false; 
     let totalAmount = 0;
     let paymentDate = new Date().toISOString().split('T')[0];
 
@@ -290,6 +291,58 @@
                         </select>
                         <input type="hidden" name="application_id" value={actualApplicationId} />
                     </div>
+
+                    {#if selectedAdmissionId}
+                        {@const selectedAdm = data.admissions.find(a => a.id === selectedAdmissionId)}
+                        <div class="card bg-light mb-3">
+                            <div class="card-body p-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <label class="form-label fw-bold mb-0">Assigned Fee Scheme:</label>
+                                        {#if selectedAdm?.applications?.assigned_fee_scheme_id}
+                                            <span class="badge bg-primary fs-6 ms-2">
+                                                {data.feeSchemes.find(s => s.id === selectedAdm?.applications?.assigned_fee_scheme_id)?.name}
+                                            </span>
+                                        {:else}
+                                            <span class="badge bg-warning text-dark fs-6 ms-2">Not Assigned</span>
+                                        {/if}
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" on:click={() => showSchemeEdit = !showSchemeEdit}>
+                                        {showSchemeEdit ? 'Cancel' : 'Change Scheme'}
+                                    </button>
+                                </div>
+
+                                {#if showSchemeEdit || !selectedAdm?.applications?.assigned_fee_scheme_id}
+                                    <div class="mt-3 p-2 border rounded bg-white">
+                                        <form method="POST" action="?/updateAssignedScheme" use:enhance={() => {
+                                            startLoading();
+                                            return async ({result, update}) => {
+                                                if (result.type === 'success') {
+                                                    showSchemeEdit = false;
+                                                }
+                                                await update();
+                                                stopLoading();
+                                            }
+                                        }}>
+                                            <input type="hidden" name="application_id" value={actualApplicationId} />
+                                            <div class="input-group">
+                                                <select name="fee_scheme_id" class="form-select form-select-sm" required>
+                                                    <option value="">-- Assign Scheme --</option>
+                                                    {#each data.feeSchemes as scheme}
+                                                        <option value={scheme.id} selected={scheme.id === selectedAdm?.applications?.assigned_fee_scheme_id}>
+                                                            {scheme.name}
+                                                        </option>
+                                                    {/each}
+                                                </select>
+                                                <button type="submit" class="btn btn-sm btn-success">Update Scheme</button>
+                                            </div>
+                                            <div class="form-text mt-1 text-info">Changing the scheme will update the "Total Fee Due" below.</div>
+                                        </form>
+                                    </div>
+                                {/if}
+                            </div>
+                        </div>
+                    {/if}
 
                     <div class="mb-3">
                         <label for="adm-category" class="form-label">Admission Category Code (e.g., V, F)</label>

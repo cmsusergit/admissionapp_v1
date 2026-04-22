@@ -1,6 +1,7 @@
 <script lang="ts">
     import { supabase } from '$lib/supabase'; 
     import { PUBLIC_APP_URL, PUBLIC_SUPABASE_URL } from '$env/static/public';
+    import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';
 
     // DEBUG: Check Supabase Configuration
     console.log('Login Page Debug:');
@@ -62,12 +63,13 @@
 </script>
 
 <div class="login-page">
+    <CrystalAnimation />
     <div class="overlay"></div>
     <div class="content container d-flex justify-content-center align-items-center">
-        <div class="card shadow-lg p-4 border-0" style="max-width: 400px; width: 100%; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); border-radius: 1rem; border: 1px solid rgba(255,255,255,0.1);">
+        <div class="card shadow-lg p-4 border-0" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 1rem; border: 1px solid rgba(0,0,0,0.1);">
             <div class="text-center mb-4">
-                <h2 class="fw-bold text-white">Login</h2>
-                <p class="text-white-50 small">Access your dashboard</p>
+                <h2 class="fw-bold text-dark">Login</h2>
+                <p class="text-dark small">Access your dashboard</p>
             </div>
 
             {#if errorMessage}
@@ -78,11 +80,11 @@
 
             <form on:submit|preventDefault={signInWithEmail}>
                 <div class="mb-3">
-                    <label for="email" class="form-label text-white">Email address</label>
+                    <label for="email" class="form-label text-dark">Email address</label>
                     <input type="email" class="form-control" id="email" bind:value={email} required placeholder="name@example.com">
                 </div>
                 <div class="mb-3">
-                    <label for="password" class="form-label text-white">Password</label>
+                    <label for="password" class="form-label text-dark">Password</label>
                     <input type="password" class="form-control" id="password" bind:value={password} required placeholder="********">
                 </div>
                 <button type="submit" class="btn btn-primary w-100 fw-bold" disabled={loading}>
@@ -92,17 +94,17 @@
 
             <div class="mt-3 text-center">
                 <div class="d-flex align-items-center my-3">
-                    <hr class="flex-grow-1 border-light">
-                    <span class="px-2 text-white-50 small">OR</span>
-                    <hr class="flex-grow-1 border-light">
+                    <hr class="flex-grow-1 border-dark">
+                    <span class="px-2 text-dark small">OR</span>
+                    <hr class="flex-grow-1 border-dark">
                 </div>
-                <button type="button" class="btn btn-light w-100 fw-bold" on:click={signInWithGoogle}>
+                <button type="button" class="btn btn-light border w-100 fw-bold" on:click={signInWithGoogle}>
                     <i class="bi bi-google me-2 text-danger"></i> Sign in with Google
                 </button>
             </div>
 
             <div class="mt-4 text-center">
-                <p class="mb-0 text-white-50">Don't have an account? <a href="/register" class="fw-bold link-light">Register here</a></p>
+                <p class="mb-0 text-dark">Don't have an account? <a href="/register" class="fw-bold link-primary">Register here</a></p>
             </div>
         </div>
     </div>
@@ -110,7 +112,11 @@
 
 <style>
     .login-page {
+<<<<<<< HEAD
         background-image: url('https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1920&auto=format&fit=crop&q=80');
+=======
+        background-color: #0d6efd;
+>>>>>>> test-branch
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
@@ -127,7 +133,11 @@
         left: 0;
         right: 0;
         bottom: 0;
+<<<<<<< HEAD
         background: linear-gradient(135deg, rgba(255,252,245,0.85) 0%, rgba(250,245,230,0.85) 100%);
+=======
+        background: transparent;
+>>>>>>> test-branch
         z-index: 1;
     }
 
