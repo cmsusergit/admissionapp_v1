@@ -36,10 +36,18 @@
     }
 
     $effect(() => {
-        // Automatically uppercase all text values for data integrity (except emails)
+        // Automatically uppercase all text values for data integrity (except emails and select/radio options)
+        const fields = data.form.schema_json.fields || [];
         for (const key in inquiryData) {
             if (typeof inquiryData[key] === 'string' && !key.toLowerCase().includes('email')) {
-                inquiryData[key] = inquiryData[key].toUpperCase();
+                // Find field type to avoid breaking selects/radios
+                const field = fields.find((f: any) => (f.key === key || f.name === key));
+                if (field && (field.type === 'select' || field.type === 'radio' || field.type === 'checkbox')) continue;
+
+                const upper = inquiryData[key].toUpperCase();
+                if (inquiryData[key] !== upper) {
+                    inquiryData[key] = upper;
+                }
             }
         }
     });

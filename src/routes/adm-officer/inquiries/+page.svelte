@@ -27,10 +27,27 @@
 
     // Helper to find the best name to display
     function getDisplayName(inquiry: any) {
+        const d = inquiry.inquiry_data || {};
+        
+        // 1. Try to construct from components in inquiry_data
+        const title = d.title || d.salutation || d.prefix || '';
+        const first = d.first_name || d.fname || d.first || '';
+        const middle = d.middle_name || d.mname || d.middle || '';
+        const last = d.last_name || d.lname || d.surname || d.last || '';
+        
+        const combined = [title, first, middle, last].filter(val => val && typeof val === 'string').map(val => val.trim()).filter(Boolean).join(' ');
+        
+        if (combined && combined.length > (first.length || 0)) {
+            return combined;
+        }
+
+        // 2. Fallback to full_name column
         if (inquiry.full_name) return inquiry.full_name;
-        const inquiryData = inquiry.inquiry_data || {};
-        const nameKey = Object.keys(inquiryData).find(k => k.toLowerCase().includes('name'));
-        if (nameKey && inquiryData[nameKey]) return inquiryData[nameKey];
+
+        // 3. Fallback to any key containing "name" in inquiry_data
+        const nameKey = Object.keys(d).find(k => k.toLowerCase().includes('name') && d[k]);
+        if (nameKey) return d[nameKey];
+
         return 'Anonymous';
     }
 
@@ -317,10 +334,8 @@
                         <div class="mb-4">
                             <h6 class="text-uppercase text-muted small fw-bold mb-3 border-bottom pb-1">Personal Info</h6>
                             <div class="row g-2 mb-2">
-                                {#if selectedInquiry.full_name}
-                                    <div class="col-4 text-muted small">Name:</div>
-                                    <div class="col-8 fw-bold">{selectedInquiry.full_name}</div>
-                                {/if}
+                                <div class="col-4 text-muted small">Name:</div>
+                                <div class="col-8 fw-bold">{getDisplayName(selectedInquiry)}</div>
                                 
                                 <div class="col-4 text-muted small">Email:</div>
                                 <div class="col-8"><a href="mailto:{selectedInquiry.email}">{selectedInquiry.email}</a></div>

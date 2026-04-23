@@ -1,4 +1,4 @@
-<script lang="ts"> 
+<script lang="ts">
     import type { PageData } from './$types';
     import { NAVIGATION_CONFIG } from '$lib/config/navigation';
 

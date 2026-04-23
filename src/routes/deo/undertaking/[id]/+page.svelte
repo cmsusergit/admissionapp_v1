@@ -49,8 +49,8 @@
           text: [
             { text: "I, ", style: "body" },
             { text: undertaking.studentName, style: "bold" },
-            { text: `, and my parent/guardian, `, style: "body" },
-            { text: undertaking.parentName || "_________________", style: "bold" },
+            // { text: `, and my parent/guardian, `, style: "body" },             
+            // { text: undertaking.parentName || "_________________", style: "bold" },
             { text: `, have taken Provisional Admission in the course ${undertaking.courseName}${undertaking.branchName ? " (" + undertaking.branchName + ")" : ""} for the academic year ${undertaking.academicYear} at SVIT.`, style: "body" },
           ],
         },
@@ -181,8 +181,9 @@
 
       <div class="mb-2">
         <p class="mb-0">
-          I, <strong>{undertaking.studentName}</strong>, and my parent/guardian, 
-          <strong>{undertaking.parentName || "_________________"}</strong>, 
+          I, <strong>{undertaking.studentName}</strong>, 
+          <!-- and my parent/guardian, 
+          <strong>{undertaking.parentName || "_________________"}</strong>,  -->
           have taken Provisional Admission in the course
           <strong>{undertaking.courseName}</strong>{undertaking.branchName ? ` (${undertaking.branchName})` : ""}
           for the academic year <strong>{undertaking.academicYear}</strong> at SVIT.

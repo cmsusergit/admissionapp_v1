@@ -67,7 +67,7 @@
 
 <style lang="scss">
     .landing-page {
-        background-color: #0d6efd;
+        background-color: #1e2b4a;
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;

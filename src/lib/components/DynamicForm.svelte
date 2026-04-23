@@ -283,34 +283,29 @@
         return checkValue === equals;
     }
 
-    // Track formData changes for visibility - using $effect for proper Svelte 5 reactivity
+    // Track formData changes for visibility and dependent selects
+    let lastDependentValues = $state<Record<string, any>>({});
+    
     $effect(() => {
-        // Access formData to create dependency
-        const _dep = formData;
-        console.debug(`[DynamicForm] formData updated (for reactivity):`, JSON.stringify(Object.keys(_dep || {})));
+        // Access formData to create dependency for visibility calculations
+        const currentData = formData;
         
-        // Also update dependent selects when formData changes
+        // Also update dependent selects when parent fields change
         schema.fields.forEach(field => {
             if (field.type === 'select' && field.dataSource?.type === 'rest' && field.dependsOn) {
-                const parentVal = formData[field.dependsOn];
-                if (parentVal) {
-                    loadDynamicOptions(field, parentVal);
-                } else {
-                    dynamicOptions[getKey(field)] = [];
-                }
-            }
-        });
-    });
-
-    // Reactivity for Dependent Selects
-    $effect(() => {
-        schema.fields.forEach(field => {
-            if (field.type === 'select' && field.dataSource?.type === 'rest' && field.dependsOn) {
-                const parentVal = formData[field.dependsOn];
-                if (parentVal) {
-                    loadDynamicOptions(field, parentVal);
-                } else {
-                    dynamicOptions[getKey(field)] = [];
+                const parentVal = currentData[field.dependsOn];
+                const key = getKey(field);
+                
+                // Only load if the parent value has actually changed to avoid infinite loops or unnecessary resets
+                if (parentVal !== lastDependentValues[key]) {
+                    lastDependentValues[key] = parentVal;
+                    if (parentVal) {
+                        loadDynamicOptions(field, parentVal);
+                    } else {
+                        dynamicOptions[key] = [];
+                        // Clear the value if the parent is cleared
+                        if (formData[key]) formData[key] = '';
+                    }
                 }
             }
         });
@@ -593,14 +588,12 @@
             onchange={() => clearError(key)}
             disabled={readonly || loadingOptions[key] || (!!field.dependsOn && !formData[field.dependsOn])}
         >
-            {#if loadingOptions[key]}
-                <option value="">Loading...</option>
-            {:else}
-                <option value="">-- Select {field.label} --</option>
-                {#each getOptions(field) as option}
-                    <option value={option.value}>{option.label}</option>
-                {/each}
-            {/if}
+            <option value="">
+                {loadingOptions[key] ? 'Loading...' : `-- Select ${field.label} --`}
+            </option>
+            {#each getOptions(field) as option}
+                <option value={option.value}>{option.label}</option>
+            {/each}
         </select>
     {:else if field.type === 'checkbox'}
         <div class="form-check">

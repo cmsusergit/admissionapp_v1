@@ -53,6 +53,23 @@
     function setDraft(draft: boolean) {
         isDraft = draft;
     }
+
+    $effect(() => {
+        // Automatically uppercase all text values for data integrity (except emails and selects)
+        const fields = data.schemaFields || [];
+        for (const key in profileData) {
+            if (typeof profileData[key] === 'string' && !key.toLowerCase().includes('email')) {
+                // Find field type to avoid breaking selects
+                const field = fields.find((f: any) => f.key === key);
+                if (field && (field.type === 'select' || field.type === 'radio' || field.type === 'checkbox')) continue;
+
+                const upper = profileData[key].toUpperCase();
+                if (profileData[key] !== upper) {
+                    profileData[key] = upper;
+                }
+            }
+        }
+    });
 </script>
 
 <div class="container mt-4">
