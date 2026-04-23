@@ -13,42 +13,63 @@
 </script>
 
 <header class="app-header border-bottom bg-white {hidden ? 'header-hidden' : ''}">
-    <div class="container-fluid d-flex align-items-center justify-content-between h-100">
-        <div class="d-flex align-items-center">
-            {#if university}
-                {#if university.logo_url}
-                    <img src={university.logo_url} alt="University Logo" class="university-logo me-3">
+    <div class="container-fluid h-100">
+        <div class="row h-100 align-items-center">
+            <!-- Column 1 & 2: Logo and University Name combined for alignment -->
+            <div class="col-md-5 d-flex align-items-center">
+                {#if university && university.logo_url}
+                    <img src={university.logo_url} alt="University Logo" class="university-logo me-2">
+                {:else}
+                    <i class="bi bi-mortarboard-fill text-primary fs-3 me-2"></i>
                 {/if}
-                <h1 class="h5 m-0 text-primary fw-bold">{university.name}</h1>
-            {:else}
-                <h1 class="h5 m-0 text-primary fw-bold">Admission Portal</h1>
-            {/if}
-        </div>
-        
-        {#if userProfile}
-            <div class="dropdown">
-                <button 
-                    class="btn d-flex align-items-center p-0 dropdown-toggle" 
-                    type="button" 
-                    id="dropdownUser" 
-                    data-bs-toggle="dropdown" 
-                    aria-expanded="false"
-                >
-                    <span class="me-2 text-muted small d-none d-md-block">{userProfile.full_name || userProfile.email}</span>
-                    {#if avatarUrl}
-                        <img src="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{avatarUrl}" alt="Profile" class="rounded-circle border" style="width: 36px; height: 36px; object-fit: cover;">
-                    {:else}
-                        <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
-                            <i class="bi bi-person-fill"></i>
-                        </div>
-                    {/if}
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownUser">
-                    <li><h6 class="dropdown-header">{userProfile.full_name || userProfile.email}</h6></li>
-                    <li><button class="dropdown-item text-danger" on:click={handleLogout}>Logout</button></li>
-                </ul>
+                
+                {#if university}
+                    <h1 class="h6 m-0 text-primary fw-bold text-truncate">{university.name}</h1>
+                {:else}
+                    <h1 class="h6 m-0 text-primary fw-bold">Admission Portal</h1>
+                {/if}
             </div>
-        {/if}
+
+            <!-- Column 3: Spacer -->
+            <div class="col-md-3">
+            </div>
+
+            <!-- Column 4: Spacer -->
+            <div class="col-md-2">
+            </div>
+
+            <!-- Column 5: User Profile -->
+            <div class="col-md-2 d-flex justify-content-end">
+                {#if userProfile}
+                    <div class="dropdown">
+                        <button 
+                            class="btn d-flex align-items-center p-0 dropdown-toggle" 
+                            type="button" 
+                            id="dropdownUser" 
+                            data-bs-toggle="dropdown" 
+                            aria-expanded="false"
+                        >
+                            <span class="me-2 text-muted small d-none d-xl-block text-truncate" style="max-width: 100px;">{userProfile.full_name || userProfile.email}</span>
+                            {#if avatarUrl}
+                                <img src="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{avatarUrl}" alt="Profile" class="rounded-circle border" style="width: 32px; height: 32px; object-fit: cover;">
+                            {:else}
+                                <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                    <i class="bi bi-person-fill"></i>
+                                </div>
+                            {/if}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownUser">
+                            <li><h6 class="dropdown-header">{userProfile.full_name || userProfile.email}</h6></li>
+                            <li><button class="dropdown-item text-danger" on:click={handleLogout}>Logout</button></li>
+                        </ul>
+                    </div>
+                {:else}
+                    <div class="d-flex gap-2">
+                        <a href="/login" class="btn btn-sm btn-outline-primary fw-bold">Login</a>
+                    </div>
+                {/if}
+            </div>
+        </div>
     </div>
 </header>
 
