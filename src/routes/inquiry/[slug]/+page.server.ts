@@ -56,22 +56,54 @@ export const actions: Actions = {
         let email = '';
         let fullName = '';
         let phone = '';
+        
+        // Name components for assembly
+        let nameParts = {
+            title: '',
+            first: '',
+            middle: '',
+            last: ''
+        };
 
         if (form.schema_json && form.schema_json.fields) {
             form.schema_json.fields.forEach((field: any) => {
                 const val = inquiryData[field.key];
                 if (!val) return;
 
-                // Priority 1: Linked to profile
-                if (field.profileFieldKey === 'email') email = val;
-                else if (field.profileFieldKey === 'full_name') fullName = val;
-                else if (field.profileFieldKey === 'phone' || field.profileFieldKey === 'contact') phone = val;
+                const keyLower = field.key.toLowerCase();
+                const profileKey = field.profileFieldKey;
+
+                // Email
+                if (profileKey === 'email' || (!email && keyLower.includes('email'))) {
+                    email = val;
+                }
                 
-                // Priority 2: Key pattern matching (if not already found)
-                if (!email && field.key.toLowerCase().includes('email')) email = val;
-                if (!fullName && field.key.toLowerCase().includes('name')) fullName = val;
-                if (!phone && (field.key.toLowerCase().includes('phone') || field.key.toLowerCase().includes('contact'))) phone = val;
+                // Phone
+                if (profileKey === 'phone' || profileKey === 'contact' || (!phone && (keyLower.includes('phone') || keyLower.includes('contact')))) {
+                    phone = val;
+                }
+
+                // Name Assembly
+                if (profileKey === 'full_name' && !fullName) fullName = val;
+                
+                if (profileKey === 'title' || profileKey === 'salutation' || keyLower === 'title' || keyLower === 'salutation') nameParts.title = val;
+                if (profileKey === 'first_name' || keyLower === 'first_name' || keyLower === 'fname') nameParts.first = val;
+                if (profileKey === 'middle_name' || keyLower === 'middle_name' || keyLower === 'mname') nameParts.middle = val;
+                if (profileKey === 'last_name' || keyLower === 'last_name' || keyLower === 'lname' || keyLower === 'surname') nameParts.last = val;
+
+                // Fallback for single "name" field if not already set
+                if (!fullName && !nameParts.first && (keyLower === 'name' || keyLower === 'full_name')) {
+                    fullName = val;
+                }
             });
+        }
+
+        // Combine name parts if full name was not explicitly provided as a single field
+        if (!fullName) {
+            fullName = [nameParts.title, nameParts.first, nameParts.middle, nameParts.last]
+                .filter(Boolean)
+                .join(' ')
+                .trim();
         }
 
         if (!email) {

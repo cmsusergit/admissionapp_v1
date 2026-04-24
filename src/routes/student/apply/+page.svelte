@@ -46,6 +46,25 @@
             else if (field.profileFieldKey === 'phone' && data.studentProfile?.phone) {
                 merged[field.key] = data.studentProfile.phone;
             }
+
+            // Fix for Select boxes: ensure merged value matches one of the options (case-insensitive)
+            if (field.type === 'select' && merged[field.key] !== undefined) {
+                let options: any[] = [];
+                if (field.dataSource?.options) options = field.dataSource.options;
+                else if (field.options) options = field.options;
+
+                if (options.length > 0) {
+                    const val = String(merged[field.key]).toLowerCase();
+                    const match = options.find(opt => {
+                        const optVal = typeof opt === 'string' ? opt.split('|')[0].trim() : String(opt.value || opt);
+                        return optVal.toLowerCase() === val;
+                    });
+
+                    if (match) {
+                        merged[field.key] = typeof match === 'string' ? match.split('|')[0].trim() : (match.value || match);
+                    }
+                }
+            }
         });
 
         return merged;

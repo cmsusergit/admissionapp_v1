@@ -3,6 +3,7 @@
     import { enhance } from '$app/forms';
     import { toastStore } from '$lib/stores/toastStore';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
+    import DynamicForm from '$lib/components/DynamicForm.svelte';
 
     export let data: PageData;
     export let form: ActionData;
@@ -14,6 +15,15 @@
 
     let rejecting = false;
     let rejectionReason = '';
+
+    // Data Editing State
+    let showDataEditModal = false;
+    let editingFormData: Record<string, any> = {};
+
+    function openDataEditor() {
+        editingFormData = JSON.parse(JSON.stringify(application.form_data || {}));
+        showDataEditModal = true;
+    }
 
     function confirmReject() {
         if (!rejectionReason) {
@@ -166,7 +176,12 @@
 
     <!-- Form Data (Other Fields) -->
     <div class="card mb-4 border-secondary">
-        <div class="card-header bg-secondary text-white">Submitted Form Data</div>
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+            <span>Submitted Form Data</span>
+            <button class="btn btn-sm btn-light" on:click={openDataEditor}>
+                <i class="bi bi-pencil-square me-1"></i> Edit Data
+            </button>
+        </div>
         <div class="card-body bg-light">
             {#if otherFields.length > 0}
                 <dl class="row mb-0">
@@ -431,7 +446,7 @@
                     await update();
                 };
             }}>
-                <div class="modal-body">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <input type="hidden" name="payment_id" value={selectedPayment?.id} />
                     <div class="mb-3">
                         <label class="form-label">Payment Type</label>
@@ -474,7 +489,7 @@
                     await update();
                 };
             }}>
-                <div class="modal-body">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <input type="hidden" name="application_id" value={application.id} />
                     <p class="text-danger fw-bold">Warning: This action will revoke the student's admission and clear their enrollment number.</p>
                     <div class="mb-3">
@@ -514,7 +529,7 @@
                     await update();
                 };
             }}>
-                <div class="modal-body">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <input type="hidden" name="application_id" value={application.id} />
                     
                     <div class="alert alert-info">
@@ -614,4 +629,52 @@
             </div>
         </div>
     </div>
+{/if}
+
+<!-- Edit Application Data Modal -->
+{#if showDataEditModal}
+<div class="modal d-block" style="background: rgba(0,0,0,0.5); z-index: 1050;">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">Edit Application Form Data</h5>
+                <button type="button" class="btn-close btn-close-white" on:click={() => showDataEditModal = false}></button>
+            </div>
+            <form method="POST" action="?/saveFormData" use:enhance={() => {
+                startLoading();
+                return async ({ result, update }) => {
+                    stopLoading();
+                    if (result.type === 'success') {
+                        showDataEditModal = false;
+                        toastStore.success('Application data updated successfully');
+                        await update();
+                    } else if (result.type === 'failure') {
+                        toastStore.error(result.data?.message || 'Failed to update data');
+                    } else {
+                        toastStore.error('An unexpected error occurred.');
+                    }
+                };
+            }}>
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    {#if formSchema}
+                        <DynamicForm schema={formSchema} bind:formData={editingFormData} />
+                        <input type="hidden" name="form_data" value={JSON.stringify(editingFormData)} />
+                    {:else}
+                        <div class="alert alert-warning">
+                            No form schema found for this application type. Editing is limited.
+                        </div>
+                        <!-- Fallback: Raw JSON editor if no schema? For now just show warning -->
+                    {/if}
+                    <div class="mt-3 text-muted small">
+                        <i class="bi bi-info-circle me-1"></i> Changes made here will update the student's submitted application data directly.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showDataEditModal = false}>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {/if}

@@ -100,14 +100,30 @@ export const load: PageServerLoad = async ({
   }
 
   // Fetch form schema to help render form data correctly
-  const { data: formSchema } = await supabaseAdmin
+  let { data: formSchema } = await supabaseAdmin
     .from("admission_forms")
     .select("schema_json")
     .eq("course_id", application.course_id)
     .eq("cycle_id", application.cycle_id)
     .eq("form_type", application.form_type)
-    .eq("is_enabled", true)
     .maybeSingle();
+
+  // FALLBACK: If no exact match (e.g. historical data with different form_type name), 
+  // try to get ANY form for this course/cycle to at least show the fields.
+  if (!formSchema) {
+    const { data: fallbackForm } = await supabaseAdmin
+      .from("admission_forms")
+      .select("schema_json")
+      .eq("course_id", application.course_id)
+      .eq("cycle_id", application.cycle_id)
+      .limit(1)
+      .maybeSingle();
+      
+    if (fallbackForm) {
+        console.log(`[Debug] Using fallback schema for application ${id}`);
+        formSchema = fallbackForm;
+    }
+  }
 
   // Fetch lists for Transfer Modal
   const { data: allCourses } = await supabaseAdmin
@@ -985,6 +1001,60 @@ export const actions: Actions = {
     return {
       success: true,
       message: `Student transferred successfully! New Enrollment ID: ${newEnrollmentNumber}. Status reverted to 'verified' for fee review.`,
+    };
+  },
+
+  saveFormData: async ({
+    params,
+    request,
+    locals: { getAuthenticatedUser, userProfile },
+  }) => {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (
+      !authenticatedUser ||
+      !["adm_officer", "admin"].includes(userProfile?.role || "")
+    ) {
+      throw redirect(303, "/login");
+    }
+
+    const { id } = params;
+    const formData = await request.formData();
+    const updatedDataRaw = formData.get("form_data") as string;
+
+    if (!updatedDataRaw) {
+      return fail(400, { message: "No data provided." });
+    }
+
+    let updatedData = {};
+    try {
+      updatedData = JSON.parse(updatedDataRaw);
+    } catch (e) {
+      return fail(400, { message: "Invalid JSON data." });
+    }
+
+    // Use Service Role to ensure we can update even if user permissions are tight
+    const supabaseAdmin = createClient(
+      PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    const { error: updateError } = await supabaseAdmin
+      .from("applications")
+      .update({
+        form_data: updatedData,
+        updated_at: new Date().toISOString(),
+        updated_by: userProfile.id,
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      console.error("Error saving application data:", updateError.message);
+      return fail(500, { message: "Failed to save application data." });
+    }
+
+    return {
+      success: true,
+      message: "Application data updated successfully.",
     };
   },
 };

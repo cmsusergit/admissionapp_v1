@@ -4,10 +4,11 @@
     import { toastStore } from '$lib/stores/toastStore';
     import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 
-    export let data: PageData;
+    let { data } = $props<{ data: PageData }>();
 
-    $: profileData = data.profile?.profile_data || {};
-    let uploadingFields: Record<string, boolean> = {};
+    let profileData = $state<Record<string, any>>(data.profile?.profile_data || {});
+    let uploadingFields = $state<Record<string, boolean>>({});
+    let isDraft = $state(false);
 
     async function handleFileUpload(event: Event, fieldKey: string) {
         const target = event.target as HTMLInputElement;
@@ -48,11 +49,27 @@
             uploadingFields[fieldKey] = false;
         }
     }
-    let isDraft = false;
 
     function setDraft(draft: boolean) {
         isDraft = draft;
     }
+
+    $effect(() => {
+        // Automatically uppercase all text values for data integrity (except emails and selects)
+        const fields = data.schemaFields || [];
+        for (const key in profileData) {
+            if (typeof profileData[key] === 'string' && !key.toLowerCase().includes('email')) {
+                // Find field type to avoid breaking selects
+                const field = fields.find((f: any) => f.key === key);
+                if (field && (field.type === 'select' || field.type === 'radio' || field.type === 'checkbox')) continue;
+
+                const upper = profileData[key].toUpperCase();
+                if (profileData[key] !== upper) {
+                    profileData[key] = upper;
+                }
+            }
+        }
+    });
 </script>
 
 <div class="container mt-4">
@@ -90,6 +107,9 @@
                         };
                     }}>
                         <input type="hidden" name="is_draft" value={isDraft.toString()} />
+                        <!-- We need to bind form fields to profileData for reactivity/uppercasing -->
+                        <input type="hidden" name="profile_data_json" value={JSON.stringify(profileData)} />
+                        
                         <h5 class="mb-3">Personal Details</h5>
                         <div class="row g-3">
                             {#each data.schemaFields as field}
@@ -100,7 +120,7 @@
                                     </label>
 
                                     {#if field.type === 'select'}
-                                        <select class="form-select" name={field.key} value={profileData[field.key] ?? field.default_value ?? ''} required={!isDraft && field.is_required}>
+                                        <select class="form-select" name={field.key} bind:value={profileData[field.key]} required={!isDraft && field.is_required}>
                                             <option value="">-- Select --</option>
                                             {#each field.options || [] as opt}
                                                 {@const parts = typeof opt === 'string' ? opt.split('|') : [opt]}
@@ -110,15 +130,15 @@
                                             {/each}
                                         </select>
                                     {:else if field.type === 'textarea'}
-                                        <textarea class="form-control" name={field.key} value={profileData[field.key] ?? field.default_value ?? ''} required={!isDraft && field.is_required}></textarea>
+                                        <textarea class="form-control" name={field.key} bind:value={profileData[field.key]} required={!isDraft && field.is_required}></textarea>
                                     {:else if field.type === 'file'}
-                                        <input type="hidden" name={field.key} value={profileData[field.key] ?? field.default_value ?? ''}>
+                                        <input type="hidden" name={field.key} value={profileData[field.key] ?? ''}>
                                         <div class="input-group">
                                             <input 
                                                 type="file" 
                                                 class="form-control" 
                                                 accept="image/*,application/pdf"
-                                                on:change={(e) => handleFileUpload(e, field.key)}
+                                                onchange={(e) => handleFileUpload(e, field.key)}
                                                 disabled={uploadingFields[field.key]}
                                             >
                                             {#if uploadingFields[field.key]}
@@ -139,7 +159,7 @@
                                             type={field.type} 
                                             class="form-control" 
                                             name={field.key} 
-                                            value={profileData[field.key] ?? field.default_value ?? ''}
+                                            bind:value={profileData[field.key]}
                                             required={!isDraft && field.is_required}
                                         >
                                     {/if}
@@ -150,8 +170,8 @@
                         </div>
 
                         <div class="mt-4 text-end d-flex justify-content-end gap-2">
-                            <button type="submit" class="btn btn-secondary" on:click={() => setDraft(true)}>Save as Draft</button>
-                            <button type="submit" class="btn btn-primary" on:click={() => setDraft(false)}>Submit Profile</button>
+                            <button type="submit" class="btn btn-secondary" onclick={() => setDraft(true)}>Save as Draft</button>
+                            <button type="submit" class="btn btn-primary" onclick={() => setDraft(false)}>Submit Profile</button>
                         </div>
                     </form>
                 </div>

@@ -368,6 +368,27 @@
             }
 
             if (val !== undefined && val !== null && val !== '') {
+                // Fix for Select boxes: ensure merged value matches one of the options (case-insensitive)
+                if (field.type === 'select') {
+                    // Try to find the options in the field schema
+                    let options: any[] = [];
+                    if (field.dataSource?.options) options = field.dataSource.options;
+                    else if (field.options) options = field.options;
+
+                    if (options.length > 0) {
+                        const valStr = String(val).toLowerCase();
+                        const match = options.find(opt => {
+                            const optVal = typeof opt === 'string' ? opt.split('|')[0].trim() : String(opt.value || opt);
+                            return optVal.toLowerCase() === valStr;
+                        });
+
+                        if (match) {
+                            // Use the EXACT case from the option value to prevent reset
+                            val = typeof match === 'string' ? match.split('|')[0].trim() : (match.value || match);
+                        }
+                    }
+                }
+
                 console.log(`>>> MAPPED: Field [${field.key}] from source [${source}] = [${val}]`);
                 merged[field.key] = val;
             }

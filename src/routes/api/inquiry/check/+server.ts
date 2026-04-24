@@ -11,8 +11,8 @@ export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
     
     if (inquiry) {
         const mappedData = await mapInquiryToProfile(inquiry);
-        // Use the intelligently combined name from mappedData if column is empty
-        const finalFullName = inquiry.full_name || mappedData.full_name || '';
+        // Use the intelligently mapped name (which now prioritizes construction from parts)
+        const finalFullName = mappedData.full_name || inquiry.full_name || '';
         
         return json({
             found: true,
