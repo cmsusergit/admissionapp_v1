@@ -7,6 +7,12 @@ import { SUPABASE_SERVICE_ROLE_KEY } from "$env/static/private";
 import { generateReceiptNumber } from "$lib/server/receipt";
 import { applyRoleBasedCollegeFilter } from "$lib/server/security";
 
+const createStudentSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  full_name: z.string().min(1),
+});
+
 function extractLinkedProfileFields(
   formData: any,
   schemaFields: any[],
@@ -404,6 +410,13 @@ export const actions: Actions = {
     const supabaseAdmin = createClient(
       PUBLIC_SUPABASE_URL,
       SUPABASE_SERVICE_ROLE_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      },
     );
 
     // 2. Create user using Admin API
