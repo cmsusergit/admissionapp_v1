@@ -91,7 +91,7 @@ export async function approveApplicationLogic(
   
   const prefix = `${formTypeCode}-${yearShort}-${courseCode}-`;
 
-  // Fetch sequence with exact prefix match to ensure separation
+  // Fetch sequence with exact prefix match to ensure separation per form type
   let { data: strictSequence } = await supabase
     .from("admission_sequences")
     .select("id, current_sequence")
@@ -113,13 +113,22 @@ export async function approveApplicationLogic(
         current_sequence: 0,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (createError) {
       console.error(
-        "Error creating default admission sequence:",
+        "Error creating admission sequence:",
         createError.message,
       );
+      
+      if (createError.message.includes('duplicate key')) {
+          return {
+              success: false,
+              message: "Database constraint error: Admission sequences are currently restricted to one per course. Please update the unique constraint on admission_sequences to include the prefix.",
+              status: 500
+          };
+      }
+
       return {
         success: false,
         message: "Failed to create new admission sequence.",
@@ -127,6 +136,10 @@ export async function approveApplicationLogic(
       };
     }
     strictSequence = newSeq;
+  }
+
+  if (!strictSequence) {
+      return { success: false, message: "Critical error: Could not retrieve or create admission sequence.", status: 500 };
   }
 
   const newSequenceNumber = (strictSequence?.current_sequence ?? 0) + 1;
@@ -189,10 +202,6 @@ export async function approveApplicationLogic(
     admission_status: "Admitted",
     active_application_id: applicationId,
   };
-
-  if (!isProvisional) {
-    updatePayload.enrollment_number = admission_number; 
-  }
 
   const { error: profileUpdateError } = await supabase
     .from("student_profiles")

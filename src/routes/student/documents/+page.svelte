@@ -11,6 +11,9 @@
     export let data: PageData;
     export let form: ActionData;
 
+    $: console.log('[DocumentsSvelte] Received data.documents:', data.documents);
+    $: console.log('[DocumentsSvelte] Selected applicationId:', selectedApplicationId);
+
     let selectedApplicationId: string = '';
     
     // Reactively set selected ID from URL
@@ -81,92 +84,90 @@
         isUploading = true;
         startLoading(); // Show overlay
 
-        const fileExtension = file.name.split('.').pop();
-        
-        // Use user ID for storage path to match RLS policies
-        const userId = data.session?.user?.id;
-        if (!userId) {
-            alert('User session not found.');
-            isUploading = false;
-            return;
-        }
-        
-        const filePath = `${userId}/${uuidv4()}.${fileExtension}`; 
+        const uploadData = new FormData();
+        uploadData.append('file', file);
 
-        // Upload new file
-        const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('documents')
-            .upload(filePath, file);
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: uploadData
+            });
+            const result = await response.json();
 
-        if (uploadError) {
-            console.error('Error uploading file to storage:', uploadError.message);
-            alert(`Upload failed: ${uploadError.message}`);
-            isUploading = false;
-            stopLoading();
-            return;
-        }
+            if (!result.success) {
+                alert(`Upload failed: ${result.message}`);
+                isUploading = false;
+                stopLoading();
+                return;
+            }
 
-        // Update record in public.documents table
-        const { error: dbError } = await supabase.from('documents').update({
-            file_path: uploadData.path,
-            file_name: file.name,
-            file_type: file.type,
-            status: 'pending', // Reset status on re-upload
-            rejection_reason: null // Clear rejection reason
-        }).eq('id', $documentToReupload.id);
+            // Update record in public.documents table
+            const { error: dbError } = await supabase.from('documents').update({
+                file_path: result.path,
+                file_name: file.name,
+                file_type: file.type,
+                status: 'pending', // Reset status on re-upload
+                rejection_reason: null // Clear rejection reason
+            }).eq('id', $documentToReupload.id);
 
-        if (dbError) {
-            console.error('Error updating document record:', dbError.message);
-            alert(`Failed to update document record: ${dbError.message}`);
-        } else {
-            // SYNC WITH APPLICATIONS TABLE form_data
-            if ($documentToReupload.application_id) {
-                const { data: appData, error: appFetchError } = await supabase
-                    .from('applications')
-                    .select('form_data')
-                    .eq('id', $documentToReupload.application_id)
-                    .single();
+            if (dbError) {
+                console.error('Error updating document record:', dbError.message);
+                alert(`Failed to update document record: ${dbError.message}`);
+            } else {
+                // SYNC WITH APPLICATIONS TABLE form_data
+                if ($documentToReupload.application_id) {
+                    const { data: appData, error: appFetchError } = await supabase
+                        .from('applications')
+                        .select('form_data')
+                        .eq('id', $documentToReupload.application_id)
+                        .single();
 
-                if (appFetchError) {
-                    console.error('Error fetching application to sync:', appFetchError.message);
-                } else if (appData && appData.form_data) {
-                    let updatedFormData = { ...appData.form_data };
-                    let dataChanged = false;
+                    if (appFetchError) {
+                        console.error('Error fetching application to sync:', appFetchError.message);
+                    } else if (appData && appData.form_data) {
+                        let updatedFormData = { ...appData.form_data };
+                        let dataChanged = false;
 
-                    // Find the key that holds the old file path and update it
-                    for (const key in updatedFormData) {
-                        if (updatedFormData[key] === $documentToReupload.file_path) {
-                            updatedFormData[key] = uploadData.path;
-                            dataChanged = true;
-                            // We can break if we assume one document per field, but safely continue
+                        // Find the key that holds the old file path and update it
+                        for (const key in updatedFormData) {
+                            if (updatedFormData[key] === $documentToReupload.file_path) {
+                                updatedFormData[key] = result.path;
+                                dataChanged = true;
+                            }
                         }
-                    }
 
-                    if (dataChanged) {
-                        const { error: appUpdateError } = await supabase
-                            .from('applications')
-                            .update({ form_data: updatedFormData })
-                            .eq('id', $documentToReupload.application_id);
-                        
-                        if (appUpdateError) {
-                            console.error('Error syncing application form data:', appUpdateError.message);
+                        if (dataChanged) {
+                            const { error: appUpdateError } = await supabase
+                                .from('applications')
+                                .update({ form_data: updatedFormData })
+                                .eq('id', $documentToReupload.application_id);
+                            
+                            if (appUpdateError) {
+                                console.error('Error syncing application form data:', appUpdateError.message);
+                            }
                         }
                     }
                 }
-            }
 
-            // Delete old file from storage to clean up (optional but good practice)
-            if ($documentToReupload.file_path && $documentToReupload.file_path !== uploadData.path) {
-                await supabase.storage.from('documents').remove([$documentToReupload.file_path]);
-            }
+                // Delete old file from storage to clean up
+                if ($documentToReupload.file_path && $documentToReupload.file_path !== result.path) {
+                    await fetch('/api/upload', {
+                        method: 'DELETE',
+                        body: JSON.stringify({ path: $documentToReupload.file_path })
+                    });
+                }
 
-            alert('Document re-uploaded successfully!');
-            showReuploadModal = false;
-            location.reload(); 
+                alert('Document re-uploaded successfully!');
+                showReuploadModal = false;
+                location.reload(); 
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Upload failed due to network error.');
+        } finally {
+            isUploading = false;
+            stopLoading();
         }
-
-        isUploading = false;
-        stopLoading();
     }
 
     async function handleDeleteConfirmed() {

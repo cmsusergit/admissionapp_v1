@@ -2,6 +2,10 @@ import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { generateReceiptNumber } from '$lib/server/receipt';
 import { applyRoleBasedCollegeFilter } from '$lib/server/security';
+import { ensureStudentEnrolled } from '$lib/server/enrollment';
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
 export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
     const authenticatedUser = await getAuthenticatedUser();
@@ -304,6 +308,11 @@ export const actions: Actions = {
             return fail(500, { message: 'Failed to record payment.', error: true });
         }
 
+        // Trigger auto-enrollment if this was a tuition payment
+        if (payment_type === 'tuition_fee') {
+            await ensureStudentEnrolled(supabase, application_id);
+        }
+
         return { success: true, message: 'Payment recorded successfully!' };
     },
 
@@ -317,18 +326,29 @@ export const actions: Actions = {
         const application_id = formData.get('application_id') as string;
         const fee_scheme_id = formData.get('fee_scheme_id') as string;
 
+        console.log('[Server] updateAssignedScheme:', { application_id, fee_scheme_id });
+
         if (!application_id || !fee_scheme_id) {
             return fail(400, { message: 'Application ID and Fee Scheme are required.', error: true });
         }
 
-        const { error } = await supabase
+        // Use Admin client because fee_collector doesn't have update rights on 'applications' table
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            }
+        });
+
+        const { error } = await supabaseAdmin
             .from('applications')
             .update({ assigned_fee_scheme_id: fee_scheme_id })
             .eq('id', application_id);
 
         if (error) {
             console.error('Error updating assigned scheme:', error.message);
-            return fail(500, { message: 'Failed to update assigned fee scheme.', error: true });
+            return fail(500, { message: 'Failed to update assigned fee scheme: ' + error.message, error: true });
         }
 
         return { success: true, message: 'Fee scheme assigned successfully!' };

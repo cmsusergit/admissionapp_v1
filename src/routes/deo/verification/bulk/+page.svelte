@@ -7,6 +7,11 @@
 
     export let data: PageData;
 
+    $: console.log('[BulkSvelte] Received applications:', data.applications);
+    $: if (data.applications?.length > 0) {
+        console.log('[BulkSvelte] Sample application documents:', data.applications[0].documents);
+    }
+
     let selectedDocument: any = null;
     let showRejectModal = false;
     let rejectionReason = '';

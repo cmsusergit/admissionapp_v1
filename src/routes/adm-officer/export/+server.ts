@@ -40,52 +40,51 @@ export const GET: RequestHandler = async ({
                     updated_at,
                     form_data,
                     approval_comment,
-            users (full_name, email, student_profiles(enrollment_number)),
+                    student_user:users!student_id(full_name, email, student_profiles(enrollment_number)),
                     courses(name, code, colleges(name)),
                     branches(name),
                     admission_cycles(name, academic_years(name)),
                     account_admissions(admission_number),
                     merit_list_entries(merit_score)
-                `,
-    )
-    .order("updated_at", { ascending: false });
-  if (statusFilter) query = query.eq("status", statusFilter);
-  if (courseFilter) query = query.eq("course_id", courseFilter);
-  if (branchFilter) query = query.eq("branch_id", branchFilter);
-  if (formTypeFilter) query = query.eq("form_type", formTypeFilter);
-  if (startDate) query = query.gte("submitted_at", startDate);
-  if (endDate) query = query.lte("submitted_at", endDate + "T23:59:59");
+                    `,
+                    )
+                    .order("updated_at", { ascending: false });
+                    if (statusFilter) query = query.eq("status", statusFilter);
+                    if (courseFilter) query = query.eq("course_id", courseFilter);
+                    if (branchFilter) query = query.eq("branch_id", branchFilter);
+                    if (formTypeFilter) query = query.eq("form_type", formTypeFilter);
+                    if (startDate) query = query.gte("submitted_at", startDate);
+                    if (endDate) query = query.lte("submitted_at", endDate + "T23:59:59");
 
-  if (searchQuery) {
-    query = query.or(
-      `email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`,
-      { foreignTable: "users" },
-    );
-  }
+                    if (searchQuery) {
+                    query = query.or(
+                    `email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`,
+                    { foreignTable: "student_user" },
+                    );
+                    }
 
-  const { data: applications, error } = await query;
+                    const { data: applications, error } = await query;
 
-  if (error) {
-    console.error("Export query error:", error);
-    return new Response("Error fetching data", { status: 500 });
-  }
+                    if (error) {
+                    console.error("Export query error:", error);
+                    return new Response("Error fetching data: " + error.message, { status: 500 });
+                    }
 
-  // Define Field Mappings
-  const fieldMap: Record<
-    string,
-    { label: string; getValue: (app: any) => string }
-  > = {
-    id: { label: "Application ID", getValue: (app) => app.id },
-    student_name: {
-      label: "Student Name",
-      getValue: (app) => `"${app.users?.full_name || ""}"`,
-    },
-    email: { label: "Email", getValue: (app) => app.users?.email || "" },
-    enrollment_number: {
-      label: "College ID",
-      getValue: (app) => app.users?.enrollment_number || "",
-    },
-    course: {
+                    // Define Field Mappings
+                    const fieldMap: Record<
+                    string,
+                    { label: string; getValue: (app: any) => string }
+                    > = {
+                    id: { label: "Application ID", getValue: (app) => app.id },
+                    student_name: {
+                    label: "Student Name",
+                    getValue: (app) => `"${app.student_user?.full_name || ""}"`,
+                    },
+                    email: { label: "Email", getValue: (app) => app.student_user?.email || "" },
+                    enrollment_number: {
+                    label: "College ID",
+                    getValue: (app) => app.student_user?.student_profiles?.enrollment_number || "",
+                    },    course: {
       label: "Course",
       getValue: (app) => `"${app.courses?.name || ""}"`,
     },

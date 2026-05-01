@@ -1,6 +1,7 @@
 import { redirect, fail } from "@sveltejs/kit";
 import type { PageServerLoad, Actions } from "./$types";
 import { z } from "zod"; // Will need to install zod
+import { getUnprocessedInquiry, mapInquiryToProfile } from "$lib/server/inquiry";
 
 function extractLinkedProfileFields(
   formData: any,
@@ -98,6 +99,64 @@ async function syncProfileFields(
   } catch (e) {
     console.error("Exception in syncProfileFields:", e);
     return { success: false, error: String(e) };
+  }
+}
+
+async function syncDocuments(
+  supabase: any,
+  studentId: string,
+  appId: string,
+  formData: any,
+  courseId: string,
+  cycleId: string,
+  formType: string,
+) {
+  try {
+    const { data: formDetails } = await supabase
+      .from("admission_forms")
+      .select("schema_json")
+      .eq("course_id", courseId)
+      .eq("cycle_id", cycleId)
+      .eq("form_type", formType)
+      .maybeSingle();
+
+    if (formDetails?.schema_json?.fields) {
+      const fileFields = formDetails.schema_json.fields.filter(
+        (f: any) => f.type === "file",
+      );
+
+      const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+      for (const field of fileFields) {
+        const key = field.key || field.name;
+        const filePath = formData ? formData[key] : null;
+        if (filePath) {
+          const { data: existingDoc } = await supabase
+            .from("documents")
+            .select("id")
+            .eq("application_id", appId)
+            .eq("document_type", field.label)
+            .maybeSingle();
+
+          const docData = {
+            application_id: appId,
+            user_id: studentId,
+            file_path: filePath,
+            file_name: filePath.split("/").pop() || "uploaded_file",
+            document_type: field.label,
+            status: "pending",
+            uploaded_by: currentUserId,
+          };
+
+          if (existingDoc) {
+            await supabase.from("documents").update(docData).eq("id", existingDoc.id);
+          } else {
+            await supabase.from("documents").insert(docData);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error in syncDocuments:", e);
   }
 }
 
@@ -308,50 +367,6 @@ export const actions: Actions = {
 
     const formFee = formDetails?.form_fee || 0;
 
-    // Helper function to sync documents (using cached formDetails)
-    const syncDocuments = async (appId: string) => {
-      if (
-        formDetails &&
-        formDetails.schema_json &&
-        formDetails.schema_json.fields
-      ) {
-        const fileFields = formDetails.schema_json.fields.filter(
-          (f: any) => f.type === "file",
-        );
-
-        for (const field of fileFields) {
-          const filePath = validatedFormData
-            ? validatedFormData[field.name]
-            : null;
-          if (filePath) {
-            const { data: existingDoc } = await supabase
-              .from("documents")
-              .select("id")
-              .eq("application_id", appId)
-              .eq("document_type", field.label)
-              .maybeSingle();
-
-            const docData = {
-              application_id: appId,
-              file_path: filePath,
-              file_name: filePath.split("/").pop() || "uploaded_file",
-              document_type: field.label,
-              status: "pending",
-            };
-
-            if (existingDoc) {
-              await supabase
-                .from("documents")
-                .update(docData)
-                .eq("id", existingDoc.id);
-            } else {
-              await supabase.from("documents").insert(docData);
-            }
-          }
-        }
-      }
-    };
-
     if (validatedApplicationId) {
       // Check application status before update
       const { data: existingAppCheck, error: checkError } = await supabase
@@ -391,7 +406,7 @@ export const actions: Actions = {
           form_data: validatedFormData,
           branch_id: validatedBranchId || null,
           form_type: validatedFormType,
-          status: "draft",
+          status: existingAppCheck.status, // Preserve current status
           updated_at: new Date().toISOString(),
           updated_by: userProfile.id, // Audit
           application_fee_status: newFeeStatus,
@@ -408,7 +423,15 @@ export const actions: Actions = {
       }
 
       // Sync documents AFTER update
-      await syncDocuments(validatedApplicationId);
+      await syncDocuments(
+        supabase,
+        userProfile.id,
+        validatedApplicationId,
+        validatedFormData,
+        validatedCourseId,
+        validatedCycleId,
+        validatedFormType,
+      );
 
       await syncProfileFields(
         supabase,
@@ -477,7 +500,15 @@ export const actions: Actions = {
       }
       if (data) {
         // Sync documents AFTER creation
-        await syncDocuments(data.id);
+        await syncDocuments(
+          supabase,
+          userProfile.id,
+          data.id,
+          validatedFormData,
+          validatedCourseId,
+          validatedCycleId,
+          validatedFormType,
+        );
 
         await syncProfileFields(
           supabase,
