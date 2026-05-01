@@ -667,7 +667,7 @@
             alert('Please select or create a student first.');
             return;
         }
-        if (branchesForSelectedCourse.length > 0 && !selectedBranchId) {
+        if (branchesForSelectedCourse.length > 0 && !selectedBranchId && !isBranchSelectionDisabled) {
             alert('Please select a Branch for this course.');
             return;
         }
