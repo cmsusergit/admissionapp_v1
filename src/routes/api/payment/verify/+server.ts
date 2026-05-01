@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { verifyPayment } from '$lib/server/payment';
 import { createFeeReceipt } from '$lib/server/receipt';
+import { ensureStudentEnrolled } from '$lib/server/enrollment';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, locals: { supabase, getSession } }) => {
@@ -63,6 +64,11 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, getSes
             collegeId: transaction.applications?.college_id,
             courseId: transaction.applications?.course_id
         });
+
+        // Trigger auto-enrollment if this was a tuition payment
+        if (transaction.application_id) {
+            await ensureStudentEnrolled(supabase, transaction.application_id);
+        }
 
         return json({ success: true, receiptId: receipt.id, receiptNo: receipt.receipt_no });
 

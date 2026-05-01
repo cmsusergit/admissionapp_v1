@@ -20,31 +20,36 @@ export function generateCSV(data: any[], columns: ReportColumn[]): string {
 }
 
 export function getValueByPath(obj: any, path: string): any {
+    if (!obj) return null;
     const parts = path.split('.');
     let current = obj;
-    
-    // Handle PostgREST alias syntax in path if present (e.g. 'users!fk.name')
-    // The data object usually has the alias/table name as key.
-    // So 'users!fk' in path maps to 'users' key in data? 
-    // Actually, if we selected 'users!fk(...)', the key in data is 'users'.
-    // We need to strip modifiers from path parts to find keys.
     
     for (const part of parts) {
         if (current === null || current === undefined) return null;
         
         // Strip !fk or :alias if present to find the property name
-        // e.g. "users!fk" -> "users"
         const propName = part.split('!')[0].split(':')[0]; 
         
-        current = current[propName];
+        // Attempt 1: Direct match
+        if (current[propName] !== undefined) {
+            current = current[propName];
+        } 
+        // Attempt 2: Case-insensitive search if direct match fails
+        else {
+            const foundKey = Object.keys(current).find(k => k.toLowerCase() === propName.toLowerCase());
+            if (foundKey) {
+                current = current[foundKey];
+            } else {
+                // If it's a leaf node but we didn't find the exact path, 
+                // maybe the object itself IS the value? (Sometimes happens with PostgREST count/single joins)
+                // But usually we just return null.
+                return null;
+            }
+        }
         
-        // Handle Arrays (e.g. one-to-many)? 
-        // If current becomes an array, we might want the first item or join them?
-        // For CSV flat report, usually we expect x-to-one. 
-        // If array, just JSON stringify or join.
+        // Handle Arrays (take first item for flat reports)
         if (Array.isArray(current)) {
-            if (current.length > 0) current = current[0]; // Take first for now
-            else current = null;
+            current = current.length > 0 ? current[0] : null;
         }
     }
     return current;

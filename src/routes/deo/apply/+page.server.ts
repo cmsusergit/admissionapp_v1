@@ -100,29 +100,71 @@ async function syncProfileFields(
     }
 
     return { success: true };
-  } catch (e) {
+    } catch (e) {
     console.error("Exception in syncProfileFields:", e);
     return { success: false, error: String(e) };
-  }
+    }
+    }
+
+    async function syncDocuments(
+    supabase: any,
+    studentId: string,
+    appId: string,
+    formData: any,
+    formDetails: any,
+    ) {
+    if (
+    formDetails &&
+    formDetails.schema_json &&
+    formDetails.schema_json.fields
+    ) {
+    const fileFields = formDetails.schema_json.fields.filter(
+      (f: any) => f.type === "file",
+    );
+
+        const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+        for (const field of fileFields) {
+            const key = field.key || field.name;
+            const filePath = formData ? formData[key] : null;
+            if (filePath) {
+                const { data: existingDoc } = await supabase
+                    .from("documents")
+                    .select("id")
+                    .eq("application_id", appId)
+                    .eq("document_type", field.label)
+                    .maybeSingle();
+
+                const docData = {
+                    application_id: appId,
+                    user_id: studentId,
+                    file_path: filePath,
+                    file_name: filePath.split("/").pop() || "uploaded_file",
+                    document_type: field.label,
+                    status: "pending",
+                    uploaded_by: currentUserId,
+                };
+
+                if (existingDoc) {
+                    await supabase.from("documents").update(docData).eq("id", existingDoc.id);
+                } else {
+                    await supabase.from("documents").insert(docData);
+                }
+            }
+        }
+    }
 }
 
-const createStudentSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters long"),
-  full_name: z.string().min(1, "Full name is required"),
-});
-
 const applicationSchema = z.object({
-  student_id: z.string().uuid(),
-  course_id: z.string().uuid(),
-  cycle_id: z.string().uuid(),
-  branch_id: z.string().uuid().optional().nullable(),
-  form_type: z
-    .enum(["ACPC", "Provisional", "MQ/NRI", "Vacant"])
-    .optional()
-    .default("Provisional"),
-  form_data: z.record(z.string(), z.any()).optional(),
-  application_id: z.string().uuid().optional(),
+    student_id: z.string().uuid(),
+    course_id: z.string().uuid(),
+    cycle_id: z.string().uuid(),
+    branch_id: z.string().uuid().optional().nullable(),
+    form_type: z
+        .enum(["ACPC", "Provisional", "MQ/NRI", "Vacant"])
+        .optional()
+        .default("Provisional"),
+    form_data: z.record(z.string(), z.any()).optional(),
+    application_id: z.string().uuid().optional(),
 });
 
 export const load: PageServerLoad = async ({
@@ -621,7 +663,7 @@ export const actions: Actions = {
         .from("applications")
         .update({
           form_data: validatedFormData,
-          status: "draft",
+          status: existingAppCheck.status, // Preserve current status
           branch_id: validatedBranchId,
           form_type: validatedFormType,
           application_fee_status: newFeeStatus,
@@ -645,6 +687,14 @@ export const actions: Actions = {
         validatedCourseId,
         validatedCycleId,
         validatedFormType,
+      );
+
+      await syncDocuments(
+        supabase,
+        validatedStudentId,
+        validatedApplicationId,
+        validatedFormData,
+        formDetails,
       );
 
       return { success: true, message: "Application updated successfully!" };
@@ -705,6 +755,14 @@ export const actions: Actions = {
           validatedFormType,
         );
 
+        await syncDocuments(
+          supabase,
+          validatedStudentId,
+          existingApp.id,
+          validatedFormData,
+          formDetails,
+        );
+
         return {
           success: true,
           message: "Updated existing draft for this student/course.",
@@ -750,6 +808,15 @@ export const actions: Actions = {
           validatedCycleId,
           validatedFormType,
         );
+
+        await syncDocuments(
+          supabase,
+          validatedStudentId,
+          data.id,
+          validatedFormData,
+          formDetails,
+        );
+
         return {
           success: true,
           message: "Application created successfully!",

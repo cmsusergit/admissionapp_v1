@@ -134,6 +134,20 @@ export const actions: Actions = {
             if (activeYear) academicYearId = activeYear.id;
         }
 
+        // 3. Insert Preferences (Priority Choices)
+        let preferences = [];
+        try {
+            preferences = JSON.parse(preferencesRaw || '[]');
+        } catch (e) {
+            preferences = [];
+        }
+
+        // Validate that at least one valid preference exists
+        const validPreferences = preferences.filter((p: any) => p.course_id);
+        if (validPreferences.length === 0) {
+            return fail(400, { message: 'At least one Course Preference is required.' });
+        }
+
         // 5. Insert Inquiry
         const { data: inquiry, error: inquiryError } = await supabase
             .from('inquiries')
@@ -153,24 +167,20 @@ export const actions: Actions = {
             return fail(500, { message: 'Failed to save inquiry' });
         }
 
-        // 3. Insert Preferences (Priority Choices)
-        const preferences = JSON.parse(preferencesRaw || '[]');
-        if (preferences.length > 0) {
-            const prefsToInsert = preferences.map((p: any, index: number) => ({
-                inquiry_id: inquiry.id,
-                course_id: p.course_id,
-                branch_id: p.branch_id || null,
-                priority: index + 1
-            }));
+        const prefsToInsert = validPreferences.map((p: any, index: number) => ({
+            inquiry_id: inquiry.id,
+            course_id: p.course_id,
+            branch_id: p.branch_id || null,
+            priority: index + 1
+        }));
 
-            const { error: prefsError } = await supabase
-                .from('inquiry_preferences')
-                .insert(prefsToInsert);
+        const { error: prefsError } = await supabase
+            .from('inquiry_preferences')
+            .insert(prefsToInsert);
 
-            if (prefsError) {
-                console.error('Preferences Error:', prefsError);
-                // Non-fatal for the main inquiry, but log it
-            }
+        if (prefsError) {
+            console.error('Preferences Error:', prefsError);
+            // Non-fatal for the main inquiry, but log it
         }
 
         return { success: true };

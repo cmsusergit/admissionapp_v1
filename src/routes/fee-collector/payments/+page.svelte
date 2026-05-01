@@ -4,6 +4,7 @@
     import { writable } from 'svelte/store';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
     import { onMount } from 'svelte';
+    import { invalidateAll, goto } from '$app/navigation';
     import { page } from '$app/stores';
     import { toastStore } from '$lib/stores/toastStore';
     import { generateReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
@@ -58,9 +59,18 @@
     let initialRemainingAmount: number = 0; 
     let currentRemainingAmount: number = 0; 
 
+    let selectedFeeSchemeId = '';
+    let lastSetAdmissionId = '';
+
     $: {
         const selectedAdmission = data.admissions.find(a => a.id === selectedAdmissionId);
         actualApplicationId = selectedAdmission?.application_id || '';
+        
+        // Only auto-set scheme ID when student changes to avoid overwriting user selection during refreshes
+        if (selectedAdmissionId !== lastSetAdmissionId) {
+            selectedFeeSchemeId = selectedAdmission?.applications?.assigned_fee_scheme_id || '';
+            lastSetAdmissionId = selectedAdmissionId;
+        }
 
         feeStructureToCollect = data.feeStructures.find(fs => fs.admissionId === selectedAdmissionId)?.feeStructure || null;
         amountDue = feeStructureToCollect?.total_fee || 0;
@@ -85,6 +95,43 @@
             }
         }
     });
+
+    async function handleUpdateScheme() {
+        if (!actualApplicationId || !selectedFeeSchemeId) {
+            toastStore.error('Application ID and Fee Scheme are required.');
+            return;
+        }
+
+        startLoading();
+        try {
+            const formData = new FormData();
+            formData.append('application_id', actualApplicationId);
+            formData.append('fee_scheme_id', selectedFeeSchemeId);
+
+            const response = await fetch('?/updateAssignedScheme', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Server returned error ' + response.status);
+            }
+
+            await invalidateAll();
+            
+            // After refresh, force re-sync from database if needed, 
+            // but the reactive block should handle it since selectedAdmissionId remains same.
+            lastSetAdmissionId = ''; // Force sync on next reactive cycle
+            
+            showSchemeEdit = false;
+            toastStore.success('Fee scheme updated successfully!');
+        } catch (e) {
+            console.error('Update failed:', e);
+            toastStore.error('Failed to update fee scheme.');
+        } finally {
+            stopLoading();
+        }
+    }
 
     function openRecordModal() {
         selectedAdmissionId = ''; 
@@ -209,6 +256,7 @@
                         <tr>
                             <th>Date</th>
                             <th>Admission No.</th>
+                            <th>Enrollment No.</th>
                             <th>Student</th>
                             <th>Course</th>
                             <th>Total Amount</th>
@@ -222,6 +270,11 @@
                             <tr>
                                 <td>{new Date(payment.payment_date).toLocaleDateString()}</td>
                                 <td>{Array.isArray(payment.applications?.account_admissions) ? payment.applications?.account_admissions[0]?.admission_number : payment.applications?.account_admissions?.admission_number || '-'}</td>
+                                <td>
+                                    <span class="badge {payment.applications?.student_user?.student_profiles?.enrollment_number ? 'bg-success' : 'bg-light text-muted border'}">
+                                        {payment.applications?.student_user?.student_profiles?.enrollment_number || 'Pending'}
+                                    </span>
+                                </td>
                                 <td>
                                     {payment.applications?.student_user?.full_name || payment.applications?.student_user?.email}
                                 </td>
@@ -314,30 +367,20 @@
 
                                 {#if showSchemeEdit || !selectedAdm?.applications?.assigned_fee_scheme_id}
                                     <div class="mt-3 p-2 border rounded bg-white">
-                                        <form method="POST" action="?/updateAssignedScheme" use:enhance={() => {
-                                            startLoading();
-                                            return async ({result, update}) => {
-                                                if (result.type === 'success') {
-                                                    showSchemeEdit = false;
-                                                }
-                                                await update();
-                                                stopLoading();
-                                            }
-                                        }}>
-                                            <input type="hidden" name="application_id" value={actualApplicationId} />
-                                            <div class="input-group">
-                                                <select name="fee_scheme_id" class="form-select form-select-sm" required>
-                                                    <option value="">-- Assign Scheme --</option>
-                                                    {#each data.feeSchemes as scheme}
-                                                        <option value={scheme.id} selected={scheme.id === selectedAdm?.applications?.assigned_fee_scheme_id}>
-                                                            {scheme.name}
-                                                        </option>
-                                                    {/each}
-                                                </select>
-                                                <button type="submit" class="btn btn-sm btn-success">Update Scheme</button>
-                                            </div>
-                                            <div class="form-text mt-1 text-info">Changing the scheme will update the "Total Fee Due" below.</div>
-                                        </form>
+                                        <div class="input-group">
+                                            <select class="form-select form-select-sm" bind:value={selectedFeeSchemeId} required>
+                                                <option value="">-- Assign Scheme --</option>
+                                                {#each data.feeSchemes as scheme}
+                                                    <option value={scheme.id}>
+                                                        {scheme.name}
+                                                    </option>
+                                                {/each}
+                                            </select>
+                                            <button type="button" class="btn btn-sm btn-success" on:click={handleUpdateScheme}>
+                                                Update Scheme
+                                            </button>
+                                        </div>
+                                        <div class="form-text mt-1 text-info">Changing the scheme will update the "Total Fee Due" below.</div>
                                     </div>
                                 {/if}
                             </div>

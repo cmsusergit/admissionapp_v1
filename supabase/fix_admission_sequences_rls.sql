@@ -1,19 +1,19 @@
--- Fix RLS for Admission Sequences
--- Allow University Auth and College Auth to manage sequences for admission number generation
 
-ALTER TABLE public.admission_sequences ENABLE ROW LEVEL SECURITY;
+-- Fix unique constraint for admission sequences to include prefix
+-- This allows different numbering series for different form types (e.g. MQ, ACPC, etc.)
 
--- Drop existing restricted policy if it conflicts or just add new ones
--- We keep Admin policy.
+DO $$
+BEGIN
+    -- 1. Drop old constraint if it exists
+    ALTER TABLE public.admission_sequences 
+    DROP CONSTRAINT IF EXISTS admission_sequences_college_id_course_id_academic_year_id_key;
 
--- University Auth Policy
-DROP POLICY IF EXISTS "Admission Sequences: Univ Auth manage" ON public.admission_sequences;
-CREATE POLICY "Admission Sequences: Univ Auth manage" ON public.admission_sequences 
-FOR ALL 
-USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'university_auth'));
+    -- 2. Add new constraint that includes prefix
+    ALTER TABLE public.admission_sequences 
+    ADD CONSTRAINT admission_sequences_full_unique_key 
+    UNIQUE(college_id, course_id, academic_year_id, prefix);
 
--- College Auth Policy (for direct admissions)
-DROP POLICY IF EXISTS "Admission Sequences: College Auth manage" ON public.admission_sequences;
-CREATE POLICY "Admission Sequences: College Auth manage" ON public.admission_sequences 
-FOR ALL 
-USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'college_auth'));
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error adjusting constraints: %', SQLERRM;
+END $$;

@@ -17,7 +17,13 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     }
 
     // Use Service Role to ensure we get all data cleanly for bulk processing
-    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+        }
+    });
 
     // Filter Params
     const status = url.searchParams.get('status') || 'submitted'; // Default to Pending Verification
@@ -71,21 +77,31 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         .order('submitted_at', { ascending: true })
         .range(offset, offset + limit - 1);
 
+    console.log(`[BulkLoad] Executing query for validCourseIds:`, validCourseIds);
     const { data: applications, count, error } = await query;
 
     if (error) {
-        console.error('Bulk Load Error:', error);
+        console.error('[BulkLoad] Query Error:', error.message);
     }
+
+    console.log(`[BulkLoad] Found ${applications?.length || 0} applications.`);
 
     // Generate signed URLs for documents
     if (applications) {
         for (const app of applications) {
-            if (app.documents) {
+            console.log(`[BulkLoad] App ${app.id}: Documents count: ${app.documents?.length || 0}`);
+            if (app.documents && Array.isArray(app.documents)) {
                 for (const doc of app.documents) {
-                    const { data: signed } = await supabaseAdmin.storage
+                    console.log(`[BulkLoad] Signing: ${doc.file_path}`);
+                    const { data: signed, error: signError } = await supabaseAdmin.storage
                         .from('documents')
                         .createSignedUrl(doc.file_path, 3600);
-                    if (signed) doc.signed_url = signed.signedUrl;
+                    
+                    if (signError) {
+                        console.error(`[BulkLoad] Signed URL Error:`, signError.message);
+                    } else if (signed) {
+                        doc.signed_url = signed.signedUrl;
+                    }
                 }
             }
         }

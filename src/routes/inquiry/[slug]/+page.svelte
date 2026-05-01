@@ -7,9 +7,10 @@
     let { data, form } = $props<{ data: any, form: any }>();
 
     let inquiryData = $state<Record<string, any>>({});
-    let preferences = $state<any[]>([]);
+    let preferences = $state<any[]>([{ course_id: '', branch_id: '' }]);
     
     let submitted = $state(false);
+    let clientError = $state('');
 
     // Derived: available branches for a choice
     function getBranchesForCourse(courseId: string) {
@@ -18,6 +19,7 @@
 
     function addPreference() {
         preferences = [...preferences, { course_id: '', branch_id: '' }];
+        clientError = '';
     }
 
     function removePreference(index: number) {
@@ -93,7 +95,15 @@
                                 </div>
                             </div>
                         {:else}
-                            <form method="POST" use:enhance={() => {
+                            <form method="POST" use:enhance={({ cancel }) => {
+                                clientError = '';
+                                if (preferences.filter(p => p.course_id).length === 0) {
+                                    clientError = 'At least one Course Preference is required.';
+                                    window.scrollTo(0, document.body.scrollHeight);
+                                    cancel();
+                                    return;
+                                }
+
                                 startLoading();
                                 return async ({ update }) => {
                                     await update();
@@ -112,16 +122,19 @@
 
                                 <!-- Course/Branch Priorities -->
                                 <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h4 class="mb-0 text-primary">Course Preferences</h4>
+                                    <h4 class="mb-0 text-primary">Course Preferences <span class="text-danger">*</span></h4>
                                     <button type="button" class="btn btn-sm btn-outline-primary" onclick={addPreference}>
                                         <i class="bi bi-plus-lg me-1"></i> Add Choice
                                     </button>
                                 </div>
-                                <p class="text-muted small mb-3">Select the courses you are interested in, in order of your preference.</p>
+                                <p class="text-muted small mb-3">Select the courses you are interested in, in order of your preference. At least one choice is mandatory.</p>
 
                                 {#if preferences.length === 0}
-                                    <div class="text-center py-4 bg-light rounded-3 border border-dashed mb-4">
-                                        <p class="text-muted mb-0">No preferences added yet. Click "Add Choice" to begin.</p>
+                                    <div class="text-center py-4 bg-light rounded-3 border border-danger border-dashed mb-4">
+                                        <p class="text-danger mb-0">No preferences added. At least one course selection is required to submit.</p>
+                                        <button type="button" class="btn btn-sm btn-primary mt-2" onclick={addPreference}>
+                                            Add Your First Choice
+                                        </button>
                                     </div>
                                 {:else}
                                     <div class="preference-list mb-4">
@@ -173,8 +186,8 @@
                                     </button>
                                 </div>
 
-                                {#if form?.message}
-                                    <div class="alert alert-danger mt-3">{form.message}</div>
+                                {#if form?.message || clientError}
+                                    <div class="alert alert-danger mt-3">{form?.message || clientError}</div>
                                 {/if}
                             </form>
                         {/if}

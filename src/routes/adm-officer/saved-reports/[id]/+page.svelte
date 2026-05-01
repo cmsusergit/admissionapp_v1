@@ -1,31 +1,42 @@
-
 <script lang="ts">
     import { enhance } from '$app/forms';
     import type { PageData, ActionData } from './$types';
 
-    export let data: PageData;
-    export let form: ActionData;
+    let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
-    let filterValues: Record<string, any> = {};
-    let loading = false;
+    let filterValues = $state<Record<string, any>>({});
+    let loading = $state(false);
+
+    // Initialize or update filterValues when template or form data changes
+    $effect(() => {
+        if (form?.userFilters) {
+            // If we have filters returned from a previous preview, use them
+            filterValues = { ...form.userFilters };
+        } else if (data.template.configuration.parameters) {
+            // Initialize with empty strings if not set
+            const initial: Record<string, any> = {};
+            data.template.configuration.parameters.forEach((p: any) => {
+                if (filterValues[p.name] === undefined) {
+                    initial[p.name] = '';
+                }
+            });
+            if (Object.keys(initial).length > 0) {
+                filterValues = { ...filterValues, ...initial };
+            }
+        }
+    });
 
     // Reactive download URL
-    $: downloadUrl = (() => {
+    let downloadUrl = $derived.by(() => {
         const params = new URLSearchParams();
         params.append('id', data.template.id);
         Object.entries(filterValues).forEach(([key, value]) => {
-            if (value) params.append(key, value);
+            if (value !== undefined && value !== null && value !== '') {
+                params.append(key, value);
+            }
         });
         return `/api/reports/generate?${params.toString()}`;
-    })();
-
-    // Initialize filterValues from form if available (after preview) or empty
-    // But since inputs are bound, if form returns values, we might want to update them?
-    // Actually, bind:value keeps them in sync. If form action reloads page, data is lost unless we populate from form.
-    // SvelteKit form actions usually return form data.
-    if (form?.userFilters) {
-        filterValues = { ...form.userFilters };
-    }
+    });
 </script>
 
 <div class="container-fluid mt-4">
@@ -51,7 +62,7 @@
                     <form method="POST" action="?/preview" use:enhance={() => {
                         loading = true;
                         return async ({ update }) => {
-                            await update();
+                            await update({ reset: false });
                             loading = false;
                         };
                     }}>
