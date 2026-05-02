@@ -256,7 +256,7 @@
                         <tr>
                             <th>Date</th>
                             <th>Admission No.</th>
-                            <th>Enrollment No.</th>
+                            <th>College ID</th>
                             <th>Student</th>
                             <th>Course</th>
                             <th>Total Amount</th>

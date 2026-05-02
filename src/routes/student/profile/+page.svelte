@@ -92,7 +92,7 @@
                             <div>{data.user.email}</div>
                         </div>
                         <div class="col-md-6 mt-2">
-                            <label class="small text-muted fw-bold">Enrollment Number</label>
+                            <label class="small text-muted fw-bold">College ID</label>
                             <div class="font-monospace fs-5">{data.profile?.enrollment_number || 'Not Assigned'}</div>
                         </div>
                     </div>

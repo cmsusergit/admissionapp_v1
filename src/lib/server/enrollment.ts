@@ -1,18 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Generates a sequential enrollment number for a student.
- * This is triggered upon the first tuition fee payment.
+ * Generates a sequential College ID (Enrollment Number) for a student.
+ * Format: [YY][CourseAlias][BranchAlias][CategoryChar][SEQ]
+ * Example: 26BECEA001
  */
 export async function generateEnrollmentNumber(
     supabase: SupabaseClient,
     collegeId: string,
     courseId: string,
     academicYearId: string,
-    branchId: string | null = null
+    branchId: string | null = null,
+    formType: string = 'MQ/NRI'
 ): Promise<string> {
     
-    // 1. Fetch academic year short code and course code
+    // 1. Fetch required metadata
     const { data: ayData } = await supabase
         .from('academic_years')
         .select('short_code, name')
@@ -24,12 +26,32 @@ export async function generateEnrollmentNumber(
         .select('code')
         .eq('id', courseId)
         .single();
+
+    let branchCode = '';
+    if (branchId) {
+        const { data: branchData } = await supabase
+            .from('branches')
+            .select('code')
+            .eq('id', branchId)
+            .single();
+        branchCode = branchData?.code || '';
+    }
     
     const yearShort = ayData?.short_code || ayData?.name.substring(0, 4).slice(-2) || new Date().getFullYear().toString().slice(-2);
-    const courseCode = courseData?.code || 'GEN';
+    const courseAlias = courseData?.code || 'GEN';
     
-    // Format: ENR-YY-COURSE-
-    const prefix = `ENR-${yearShort}-${courseCode}-`;
+    // Mapping for Admission Category (single char)
+    const categoryMap: Record<string, string> = {
+        'ACPC': 'A',
+        'MQ/NRI': 'M',
+        'Provisional': 'P',
+        'Vacant': 'V',
+        'D2D': 'D'
+    };
+    const categoryChar = categoryMap[formType] || formType.charAt(0).toUpperCase();
+
+    // The sequence tracking still happens per college/course/year/branch
+    const sequencePrefix = `${yearShort}${courseAlias}${branchCode}${categoryChar}`;
 
     // 2. Fetch or Create Enrollment Sequence
     let query = supabase
@@ -55,7 +77,7 @@ export async function generateEnrollmentNumber(
                 course_id: courseId,
                 academic_year_id: academicYearId,
                 branch_id: branchId,
-                prefix: prefix,
+                prefix: sequencePrefix, // Store the new format prefix
                 current_sequence: 0
             })
             .select()
@@ -68,11 +90,18 @@ export async function generateEnrollmentNumber(
         sequence = newSeq;
     }
 
+    if (!sequence) {
+        throw new Error('Enrollment sequence could not be found or created.');
+    }
+
     // 3. Increment Sequence
     const newSeqNum = (sequence.current_sequence || 0) + 1;
     const { error: updateError } = await supabase
         .from('enrollment_sequences')
-        .update({ current_sequence: newSeqNum })
+        .update({ 
+            current_sequence: newSeqNum,
+            prefix: sequencePrefix // Update prefix in case it changed
+        })
         .eq('id', sequence.id);
 
     if (updateError) {
@@ -80,12 +109,12 @@ export async function generateEnrollmentNumber(
         throw new Error('Failed to increment enrollment sequence');
     }
 
-    // 4. Return formatted number: ENR-YY-COURSE-0001
-    return `${prefix}${newSeqNum.toString().padStart(4, '0')}`;
+    // 4. Return formatted number: [YY][Course][Branch][Category][001]
+    return `${yearShort}${courseAlias}${branchCode}${categoryChar}${newSeqNum.toString().padStart(3, '0')}`;
 }
 
 /**
- * Assigns an enrollment number to a student if they don't already have one.
+ * Assigns a College ID (Enrollment Number) to a student if they don't already have one.
  * Typically called after a tuition fee payment is recorded.
  */
 export async function ensureStudentEnrolled(
@@ -101,6 +130,7 @@ export async function ensureStudentEnrolled(
             course_id, 
             branch_id, 
             cycle_id,
+            form_type,
             admission_cycles(academic_year_id),
             courses(college_id)
         `)
@@ -130,10 +160,11 @@ export async function ensureStudentEnrolled(
             collegeId,
             app.course_id,
             academicYearId,
-            app.branch_id
+            app.branch_id,
+            app.form_type
         );
 
-        // Update student profile
+        // Update student profile and official college affiliation in users table
         await supabase
             .from('student_profiles')
             .update({ 
@@ -141,8 +172,13 @@ export async function ensureStudentEnrolled(
                 admission_status: 'Admitted'
             })
             .eq('user_id', app.student_id);
+
+        await supabase
+            .from('users')
+            .update({ college_id: collegeId })
+            .eq('id', app.student_id);
             
-        console.log(`Assigned Enrollment Number ${enrollmentNumber} to Student ${app.student_id}`);
+        console.log(`Assigned College ID ${enrollmentNumber} to Student ${app.student_id}`);
     } catch (e) {
         console.error('Failed to auto-enroll student:', e);
     }

@@ -132,7 +132,7 @@
                     <p><strong>Name:</strong> {application.student_user?.full_name || 'N/A'}</p>
                     <p><strong>Email:</strong> {application.student_user?.email || 'N/A'}</p>
                     <p><strong>User ID:</strong> <small>{application.student_user?.id}</small></p>
-                    <p><strong>Enrollment No:</strong> <span class="badge bg-secondary">{application.student_user?.student_profiles?.enrollment_number || 'Pending'}</span></p>
+                    <p><strong>College ID:</strong> <span class="badge bg-secondary">{application.student_user?.student_profiles?.enrollment_number || 'Pending'}</span></p>
                 </div>
             </div>
         </div>
@@ -358,7 +358,7 @@
 
                 <!-- Mark Fee Paid (Manual) -->
                 {#if application.application_fee_status === 'pending'}
-                    <form method="POST" action="?/markFeePaid" use:enhance={() => {
+                    <form method="POST" action="?/markAppFeePaid" use:enhance={() => {
                         startLoading();
                         return async ({ update }) => {
                             await update();
@@ -368,7 +368,7 @@
                         <input type="hidden" name="application_id" value={application.id} />
                         <input type="text" name="approval_comment" class="form-control form-control-sm mb-2" placeholder="Comment (optional)" style="max-width: 200px;" />
                         <button type="submit" class="btn btn-warning">
-                            Mark Fee Paid (Manual)
+                            Mark App Fee Paid (Manual)
                         </button>
                     </form>
                 {/if}
@@ -491,7 +491,7 @@
             }}>
                 <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <input type="hidden" name="application_id" value={application.id} />
-                    <p class="text-danger fw-bold">Warning: This action will revoke the student's admission and clear their enrollment number.</p>
+                    <p class="text-danger fw-bold">Warning: This action will revoke the student's admission and clear their College ID.</p>
                     <div class="mb-3">
                         <label class="form-label">Cancellation Reason</label>
                         <textarea name="reason" class="form-control" rows="3" required bind:value={cancelReason} placeholder="e.g. Student Request, Documents invalid..."></textarea>
@@ -574,7 +574,7 @@
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Enrollment Prefix Letter</label>
+                            <label class="form-label">College ID Prefix Letter</label>
                             <input 
                                 type="text" 
                                 class="form-control" 
@@ -588,7 +588,7 @@
                     </div>
                     
                     <p class="small text-muted">
-                        Note: Transferring will regenerate the Enrollment Number and update the student profile. 
+                        Note: Transferring will regenerate the College ID and update the student profile. 
                         The application form data will be merged with the new course's requirements.
                     </p>
                 </div>

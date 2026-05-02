@@ -104,7 +104,7 @@
             </div>
             <div class="table-responsive">
                 <table class="table table-hover">
-                    <thead><tr><th>Date</th><th>Receipt</th><th>Name</th><th>Enrollment No.</th><th>Type</th><th>Amount</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Receipt</th><th>Name</th><th>College ID</th><th>Type</th><th>Amount</th><th>Actions</th></tr></thead>
                     <tbody>
                         {#each data.payments as p}
                             <tr>

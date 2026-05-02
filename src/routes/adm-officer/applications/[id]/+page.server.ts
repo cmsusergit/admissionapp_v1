@@ -1057,4 +1057,82 @@ export const actions: Actions = {
       message: "Application data updated successfully.",
     };
   },
+
+  markAppFeePaid: async ({
+    params,
+    locals: { getAuthenticatedUser, userProfile },
+  }) => {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (
+      !authenticatedUser ||
+      !["adm_officer", "admin"].includes(userProfile?.role || "")
+    ) {
+      throw redirect(303, "/login");
+    }
+
+    const { id: application_id } = params;
+
+    const supabaseAdmin = createClient(
+      PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    // 1. Fetch application to get fee amount
+    const { data: app, error: appError } = await supabaseAdmin
+      .from("applications")
+      .select("course_id, cycle_id, form_type, application_fee_status")
+      .eq("id", application_id)
+      .single();
+
+    if (appError || !app) {
+      return fail(404, { message: "Application not found." });
+    }
+
+    if (app.application_fee_status === "paid") {
+      return { success: true, message: "Fee already marked as paid." };
+    }
+
+    // 2. Fetch fee amount from admission_forms
+    const { data: form } = await supabaseAdmin
+      .from("admission_forms")
+      .select("form_fee")
+      .eq("course_id", app.course_id)
+      .eq("cycle_id", app.cycle_id)
+      .eq("form_type", app.form_type)
+      .maybeSingle();
+
+    const amount = form?.form_fee || 0;
+
+    // 3. Record payment in payments table
+    const { error: payError } = await supabaseAdmin.from("payments").insert({
+      application_id,
+      amount,
+      payment_type: "application_fee",
+      status: "completed",
+      payment_date: new Date().toISOString(),
+      transaction_id: `MANUAL-${Date.now()}`,
+      metadata: { manual_override_by: userProfile.id }
+    });
+
+    if (payError) {
+      console.error("Error recording manual payment:", payError.message);
+      return fail(500, { message: "Failed to record payment." });
+    }
+
+    // 4. Update application status
+    const { error: updateError } = await supabaseAdmin
+      .from("applications")
+      .update({ application_fee_status: "paid" })
+      .eq("id", application_id);
+
+    if (updateError) {
+      console.error("Error updating application fee status:", updateError.message);
+      return fail(500, { message: "Failed to update fee status." });
+    }
+
+    return {
+      success: true,
+      message: "Application fee marked as paid successfully.",
+    };
+  },
 };
