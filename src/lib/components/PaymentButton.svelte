@@ -33,10 +33,32 @@
                 throw new Error(data.error || 'Failed to initiate payment');
             }
 
+            if (data.payuParams) {
+                // PayU Redirect flow (Requires POST)
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = data.paymentUrl;
+
+                for (const key in data.payuParams) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = key;
+                    input.value = data.payuParams[key];
+                    form.appendChild(input);
+                }
+
+                document.body.appendChild(form);
+                form.submit();
+                return;
+            }
+
             if (data.paymentUrl) {
-                // Redirect flow (PayU, Custom)
+                // Generic Redirect flow (GET)
                 window.location.href = data.paymentUrl;
-            } else if (data.keyId) {
+                return;
+            }
+            
+            if (data.keyId) {
                 // SDK Flow (Razorpay) - Mocking behavior for now since SDK is not loaded
                 toast.info('SDK flow initialized (Mocked). Simulating success in 2 seconds...');
                 console.log('SDK Initialization Data:', data);

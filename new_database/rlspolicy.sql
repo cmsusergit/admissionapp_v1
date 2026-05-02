@@ -85,22 +85,19 @@ WITH CHECK (
 );
 
 -- ==========================================================
--- 4. ADMISSION SEQUENCES FIX
+-- 5. FEE RECEIPTS POLICIES
 -- ==========================================================
 
--- Fix unique constraint for admission sequences to include prefix
--- This allows different numbering series for different form types
-ALTER TABLE public.admission_sequences 
-DROP CONSTRAINT IF EXISTS admission_sequences_college_id_course_id_academic_year_id_key;
+ALTER TABLE public.fee_receipts ENABLE ROW LEVEL SECURITY;
 
--- We use a safe check for the new constraint name
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'admission_sequences_full_unique_key') THEN
-        ALTER TABLE public.admission_sequences 
-        ADD CONSTRAINT admission_sequences_full_unique_key 
-        UNIQUE(college_id, course_id, academic_year_id, prefix);
-    END IF;
-END $$;
+DROP POLICY IF EXISTS "Fee Receipts: Students view own" ON public.fee_receipts;
+CREATE POLICY "Fee Receipts: Students view own" ON public.fee_receipts 
+FOR SELECT TO authenticated
+USING (auth.uid() = student_id OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin'));
+
+DROP POLICY IF EXISTS "Fee Receipts: Staff manage" ON public.fee_receipts;
+CREATE POLICY "Fee Receipts: Staff manage" ON public.fee_receipts 
+FOR ALL TO authenticated
+USING (public.get_my_role() IN ('admin', 'fee_collector', 'adm_officer'));
 
 

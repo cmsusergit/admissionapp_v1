@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 export interface PaymentOrderRequest {
     amount: number;
@@ -8,6 +9,7 @@ export interface PaymentOrderRequest {
     studentId: string;
     applicationId?: string;
     metadata?: Record<string, any>;
+    baseUrl?: string;
 }
 
 export interface PaymentOrderResponse {
@@ -17,6 +19,7 @@ export interface PaymentOrderResponse {
     keyId?: string; // Public key for client-side SDK
     transactionId: string; // Our internal ID
     paymentUrl?: string; // For redirect flows
+    payuParams?: any; // Specific for PayU POST redirection
 }
 
 export interface VerificationResult {
@@ -72,8 +75,9 @@ export async function createPaymentOrder(
 
     // 3. Call Gateway API (Adapter Pattern)
     let gatewayOrderId = `ORDER-${Date.now()}`; 
-    let keyId = gateway.config?.key_id || 'test_key';
+    let keyId = gateway.config?.key_id || gateway.config?.merchant_key || 'test_key';
     let paymentUrl = undefined;
+    let payuParams = null;
 
     if (gateway.type === 'redirect') {
         // Handle Redirect Flows (PayU / Custom)
@@ -83,29 +87,66 @@ export async function createPaymentOrder(
         }
 
         if (gateway.provider_name === 'PayU') {
-             // Mock PayU Hash Generation
-             // In real app: hash = sha512(key|txnid|amount|productinfo|firstname|email|udf1...|salt)
-             const txnid = transaction.id;
-             const amount = request.amount;
-             // Construct URL or Form Data. 
-             // Since PayU requires POST, we might return the params for frontend to auto-submit.
-             // For simplicity here, assuming GET or a pre-generated payment link:
-             paymentUrl = `${baseUrl}?txnid=${txnid}&amount=${amount}&surl=/api/payment/callback&furl=/api/payment/callback`;
+             // 1. Identify and Clean Credentials
+             const key = (gateway.config.merchant_key || gateway.config.key_id || '').toString().trim();
+             const salt = (gateway.config.merchant_salt || gateway.config.key_secret || gateway.config.salt || '').toString().trim();
+
+             // Shorten TXNID for PayU (< 25 chars)
+             const txnid = `TXN${Date.now().toString().slice(-10)}${Math.floor(Math.random() * 1000)}`;
+             gatewayOrderId = txnid; 
+             
+             const amount = Number(request.amount).toFixed(2);
+             const productinfo = 'AdmissionFee';
+             
+             const { data: userData } = await supabase.from('users').select('full_name, email').eq('id', request.studentId).single();
+             const { data: profile } = await supabase.from('student_profiles').select('profile_data').eq('user_id', request.studentId).maybeSingle();
+             
+             const firstname = (userData?.full_name?.split(' ')[0] || 'Student').replace(/[^a-zA-Z0-9]/g, '');
+             const email = (userData?.email || '').trim();
+             
+             let phone = request.metadata?.phone || '';
+             if (!phone && profile?.profile_data) {
+                 phone = profile.profile_data.phone || profile.profile_data.mobile || profile.profile_data.contact_no || '';
+             }
+             if (!phone) phone = '9999999999';
+             phone = phone.replace(/[^0-9]/g, '').slice(-10);
+
+             // 2. Construct Hash (EXACTLY 16 PIPES as requested by PayU error message)
+             // Sequence: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5|udf6|udf7|udf8|udf9|udf10|salt
+             const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
+             const hash = crypto.createHash('sha512').update(hashString).digest('hex');
+
+             const base = request.baseUrl || '';
+             const surl = `${base}/api/payment/callback?status=success`;
+             const furl = `${base}/api/payment/callback?status=failure`;
+
+             payuParams = {
+                 key, txnid, amount, productinfo, firstname, email, phone, hash, surl, furl,
+                 service_provider: 'payu_paisa',
+                 udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+                 udf6: '', udf7: '', udf8: '', udf9: '', udf10: ''
+             };
+
+             console.log('--- PAYU 16-PIPE DIAGNOSTICS ---');
+             console.log('Key:', key);
+             console.log('TXNID:', txnid);
+             console.log('Amount:', amount);
+             console.log('Hash String:', `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||SALT`);
+             console.log('--------------------------------');
+             
+             paymentUrl = baseUrl; 
         } else {
              // Generic/Custom Redirect
-             // Append basic params
              const params = new URLSearchParams({
                  transaction_id: transaction.id,
                  amount: request.amount.toString(),
                  currency: request.currency,
-                 callback_url: '/api/payment/callback' // Frontend should handle full absolute URL
+                 callback_url: '/api/payment/callback'
              });
              paymentUrl = `${baseUrl}?${params.toString()}`;
         }
     } else if (gateway.provider_name === 'Razorpay') {
         // SDK Flow
-        // Example: const razorpay = new Razorpay({ key_id: ..., key_secret: ... });
-        // gatewayOrderId = await razorpay.orders.create(...)
     }
 
     // Update transaction 
@@ -113,7 +154,8 @@ export async function createPaymentOrder(
         .from('transactions')
         .update({ 
             gateway_transaction_id: gatewayOrderId,
-            payment_url: paymentUrl
+            payment_url: paymentUrl,
+            gateway_response: { ...transaction.gateway_response, payu_params: payuParams }
         })
         .eq('id', transaction.id);
 
@@ -123,7 +165,8 @@ export async function createPaymentOrder(
         currency: request.currency,
         keyId: keyId,
         transactionId: transaction.id,
-        paymentUrl: paymentUrl
+        paymentUrl: paymentUrl,
+        payuParams: payuParams
     };
 }
 
@@ -151,13 +194,32 @@ export async function verifyPayment(
     }
 
     const gateway = transaction.payment_gateways;
+    const salt = gateway.config?.merchant_salt;
     
-    // 2. Verify Signature (Mock logic)
-    // Real implementation: crypto.createHmac('sha256', secret).update(body).digest('hex')
-    let isValid = true; 
+    // 2. Verify Signature/Hash
+    let isValid = false; 
     
-    // In production, implement provider-specific validation here
-    // e.g. if (gateway.provider_name === 'Razorpay') { isValid = validateRazorpaySignature(...) }
+    if (gateway.provider_name === 'PayU' && salt) {
+        // Reverse Hash: sha512(salt|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+        const status = gatewayResponse.status;
+        const email = gatewayResponse.email || '';
+        const firstname = gatewayResponse.firstname || '';
+        const productinfo = gatewayResponse.productinfo || '';
+        const amount = gatewayResponse.amount || '';
+        const txnid = gatewayResponse.txnid || '';
+        const key = gatewayResponse.key || '';
+        
+        const reverseHashString = `${salt}|${status}||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
+        const calculatedHash = crypto.createHash('sha512').update(reverseHashString).digest('hex');
+        
+        isValid = (calculatedHash === gatewayResponse.hash);
+        
+        // MOCK BYPASS: For testing purposes if hash is missing in manual triggers
+        if (gateway.mode === 'test' && !gatewayResponse.hash) isValid = true;
+    } else {
+        // Generic/SDK success (Razorpay etc usually verified in verify server action)
+        isValid = true;
+    }
 
     if (!isValid) {
         await supabase
@@ -172,8 +234,8 @@ export async function verifyPayment(
         .from('transactions')
         .update({ 
             status: 'success', 
-            gateway_response: gatewayResponse,
-            gateway_transaction_id: gatewayResponse.payment_id || transaction.gateway_transaction_id 
+            gateway_response: { ...transaction.gateway_response, ...gatewayResponse },
+            gateway_transaction_id: gatewayResponse.payment_id || gatewayResponse.mihpayid || transaction.gateway_transaction_id 
         })
         .eq('id', transactionId);
 

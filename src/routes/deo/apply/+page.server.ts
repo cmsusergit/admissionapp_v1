@@ -402,7 +402,7 @@ export const actions: Actions = {
     if (!parsed.success) {
       return fail(400, {
         message: "Invalid student data",
-        errors: parsed.error.errors,
+        errors: parsed.error.issues,
         error: true,
       });
     }
@@ -583,7 +583,7 @@ export const actions: Actions = {
       console.error("Validation failed:", parsed.error.errors);
       return fail(400, {
         message: "Invalid form submission",
-        errors: parsed.error.errors,
+        errors: parsed.error.issues,
         error: true,
       });
     }

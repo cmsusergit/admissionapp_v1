@@ -2,6 +2,9 @@ import { redirect } from '@sveltejs/kit';
 import { verifyPayment } from '$lib/server/payment';
 import { createFeeReceipt } from '$lib/server/receipt';
 import type { RequestHandler } from './$types';
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
 export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
     await handleCallback(url.searchParams, supabase);
@@ -35,9 +38,14 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
 
     const gatewayResponse = Object.fromEntries(params.entries());
 
+    // Use Service Role for internal state updates to bypass RLS hurdles
+    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false }
+    });
+
     try {
         if (status === 'failure' || status === 'failed') {
-            await supabase
+            await supabaseAdmin
                 .from('transactions')
                 .update({ status: 'failed', gateway_response: gatewayResponse })
                 .eq('id', transactionId);
@@ -45,15 +53,15 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
         }
 
         // Fetch transaction to preserve metadata before verifyPayment overwrites it
-        const { data: initialTx } = await supabase.from('transactions').select('gateway_response').eq('id', transactionId).single();
+        const { data: initialTx } = await supabaseAdmin.from('transactions').select('gateway_response').eq('id', transactionId).single();
         const initMeta = initialTx?.gateway_response?.init_meta;
 
-        const verification = await verifyPayment(supabase, transactionId, gatewayResponse);
+        const verification = await verifyPayment(supabaseAdmin, transactionId, gatewayResponse);
         
         if (verification.success) {
-            const { data: transaction } = await supabase
+            const { data: transaction } = await supabaseAdmin
                 .from('transactions')
-                .select('*, applications(college_id, course_id, academic_year_id)')
+                .select('*, applications(course_id, cycle_id, courses(college_id), admission_cycles(academic_year_id))')
                 .eq('id', transactionId)
                 .single();
 
@@ -62,7 +70,7 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                 const paymentType = initMeta?.paymentType || 'tuition_fee';
                 
                 // Record in `payments` table
-                await supabase.from('payments').insert({
+                await supabaseAdmin.from('payments').insert({
                     application_id: transaction.application_id,
                     amount: transaction.amount,
                     transaction_id: transaction.id,
@@ -72,30 +80,32 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                 });
 
                 if (paymentType === 'application_fee') {
-                    await supabase
+                    await supabaseAdmin
                         .from('applications')
                         .update({ application_fee_status: 'paid' })
                         .eq('id', transaction.application_id);
                 }
 
                 if (paymentType === 'provisional_fee') {
-                    await supabase
+                    await supabaseAdmin
                         .from('account_admissions')
                         .update({ enrollment_status: 'confirmed' })
                         .eq('application_id', transaction.application_id);
                 }
 
                 let yearName = undefined;
-                if (transaction.applications?.academic_year_id) {
-                    const { data: ay } = await supabase
+                const academicYearId = (transaction.applications as any)?.admission_cycles?.academic_year_id;
+
+                if (academicYearId) {
+                    const { data: ay } = await supabaseAdmin
                         .from('academic_years')
                         .select('name')
-                        .eq('id', transaction.applications.academic_year_id)
+                        .eq('id', academicYearId)
                         .single();
                     yearName = ay?.name;
                 }
 
-                await createFeeReceipt(supabase, {
+                await createFeeReceipt(supabaseAdmin, {
                     transactionId: transaction.id,
                     studentId: transaction.student_id,
                     applicationId: transaction.application_id,
@@ -103,9 +113,9 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                     details: gatewayResponse,
                     generatedBy: transaction.student_id, 
                     paymentType: paymentType,
-                    academicYearId: transaction.applications?.academic_year_id,
+                    academicYearId: academicYearId,
                     yearName: yearName,
-                    collegeId: transaction.applications?.college_id,
+                    collegeId: (transaction.applications as any)?.courses?.college_id,
                     courseId: transaction.applications?.course_id
                 });
             }

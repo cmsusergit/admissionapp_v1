@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { createPaymentOrder } from '$lib/server/payment';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = async ({ request, locals: { supabase, getSession } }) => {
+export const POST: RequestHandler = async ({ request, url, locals: { supabase, getSession } }) => {
     const session = await getSession();
     if (!session) {
         return json({ error: 'Unauthorized' }, { status: 401 });
@@ -16,13 +16,15 @@ export const POST: RequestHandler = async ({ request, locals: { supabase, getSes
     }
 
     try {
+        const origin = url.origin;
         const orderResponse = await createPaymentOrder(supabase, {
             amount,
             currency,
             description,
             studentId,
             applicationId,
-            metadata
+            metadata,
+            baseUrl: origin
         });
 
         return json(orderResponse);
