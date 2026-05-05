@@ -6,6 +6,7 @@
     import DynamicForm from '$lib/components/DynamicForm.svelte';
     import { supabase } from '$lib/supabase'; // Client-side supabase client
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; // Import loading controls
+    import PaymentButton from '$lib/components/PaymentButton.svelte';
 
     let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
@@ -1088,22 +1089,47 @@
                 <button type="button" class="btn-close" onclick={() => (showPaymentModal = false)}></button>
             </div>
             <div class="modal-body">
-                <h4 class="text-primary mb-3">Amount: ₹ {currentFeeAmount}</h4>
-                <div class="mb-3">
-                    <label class="form-label">Payment Mode</label>
-                    <select class="form-select" bind:value={paymentMode}>
-                        <option value="cash">Cash</option>
-                        <option value="cheque">Cheque</option>
-                        <option value="online_transfer">Online Transfer</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Reference No.</label>
-                    <input type="text" class="form-control" bind:value={transactionRef} />
+                <div class="row">
+                    <div class="col-md-6 border-end">
+                        <h6 class="text-uppercase text-muted small fw-bold mb-3">Option 1: Offline Payment</h6>
+                        <h4 class="text-primary mb-3">Amount: ₹ {currentFeeAmount}</h4>
+                        <div class="mb-3">
+                            <label class="form-label">Payment Mode</label>
+                            <select class="form-select" bind:value={paymentMode}>
+                                <option value="cash">Cash</option>
+                                <option value="cheque">Cheque</option>
+                                <option value="online_transfer">Online Transfer</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Reference No.</label>
+                            <input type="text" class="form-control" bind:value={transactionRef} />
+                        </div>
+                        <button type="button" class="btn btn-success w-100" onclick={handleRecordPayment}>Record Offline Payment</button>
+                    </div>
+                    <div class="col-md-6 ps-md-4">
+                        <h6 class="text-uppercase text-muted small fw-bold mb-3">Option 2: Online Payment</h6>
+                        <p class="text-muted small mb-4">Use the college terminal to process the student's card or UPI payment via the secure gateway.</p>
+                        <div class="text-center py-4 bg-light rounded mb-3">
+                            <i class="bi bi-shield-check display-4 text-success"></i>
+                            <div class="mt-2 fw-bold">PayU Secure Checkout</div>
+                        </div>
+                        {#if currentApplicationId}
+                            <PaymentButton 
+                                applicationId={currentApplicationId} 
+                                studentId={selectedStudentId} 
+                                amount={currentFeeAmount} 
+                                paymentType="application_fee" 
+                                buttonText="Initiate Online Payment" 
+                                buttonClass="btn btn-primary w-100 py-2 fw-bold"
+                                returnUrl="/deo/dashboard"
+                            />
+                        {/if}
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-success" onclick={handleRecordPayment}>Record Payment</button>
+                <button type="button" class="btn btn-link text-muted" onclick={() => (showPaymentModal = false)}>Cancel & Do Later</button>
             </div>
         </div>
     </div>

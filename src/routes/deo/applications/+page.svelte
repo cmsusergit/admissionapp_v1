@@ -5,6 +5,7 @@
     import { enhance } from '$app/forms';
     import { toastStore } from '$lib/stores/toastStore';
     import { supabase } from '$lib/supabase';
+    import PaymentButton from '$lib/components/PaymentButton.svelte';
 
     export let data: PageData;
 
@@ -302,6 +303,17 @@
                                             <a href="/deo/apply?applicationId={appAny.id}" class="btn btn-sm btn-outline-primary">
                                                 {appAny.status === 'draft' || appAny.status === 'needs_correction' ? 'Edit' : 'View'}
                                             </a>
+                                            {#if appAny.application_fee_status === 'pending' && appAny.form_fee > 0}
+                                                <PaymentButton 
+                                                    applicationId={appAny.id} 
+                                                    studentId={appAny.student_id || appAny.users?.id} 
+                                                    amount={appAny.form_fee} 
+                                                    paymentType="application_fee" 
+                                                    buttonText="Pay App Fee" 
+                                                    buttonClass="btn btn-sm btn-outline-warning" 
+                                                    returnUrl="/deo/applications"
+                                                />
+                                            {/if}
                                             {#if appAny.status === 'approved' && isProvisional(appAny)}
                                                 {#if !isPaid(appAny)}
                                                     <button class="btn btn-sm btn-success" on:click={() => openPaymentModal(appAny)}>

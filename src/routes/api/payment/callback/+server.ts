@@ -44,17 +44,18 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
     });
 
     try {
+        // Fetch transaction to preserve metadata before verifyPayment overwrites it
+        const { data: initialTx } = await supabaseAdmin.from('transactions').select('gateway_response').eq('id', transactionId).single();
+        const initMeta = initialTx?.gateway_response?.init_meta;
+        const returnUrl = initMeta?.returnUrl;
+
         if (status === 'failure' || status === 'failed') {
             await supabaseAdmin
                 .from('transactions')
                 .update({ status: 'failed', gateway_response: gatewayResponse })
                 .eq('id', transactionId);
-            throw redirect(303, `/student/payments?error=Payment failed`);
+            throw redirect(303, returnUrl || `/student/payments?error=Payment failed`);
         }
-
-        // Fetch transaction to preserve metadata before verifyPayment overwrites it
-        const { data: initialTx } = await supabaseAdmin.from('transactions').select('gateway_response').eq('id', transactionId).single();
-        const initMeta = initialTx?.gateway_response?.init_meta;
 
         const verification = await verifyPayment(supabaseAdmin, transactionId, gatewayResponse);
         
@@ -120,9 +121,9 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                 });
             }
             
-            throw redirect(303, `/student/payments?success=Payment successful`);
+            throw redirect(303, returnUrl || `/student/payments?success=Payment successful`);
         } else {
-            throw redirect(303, `/student/payments?error=${encodeURIComponent(verification.message || 'Verification failed')}`);
+            throw redirect(303, returnUrl || `/student/payments?error=${encodeURIComponent(verification.message || 'Verification failed')}`);
         }
     } catch (e: any) {
         if (e.status === 303) throw e; 

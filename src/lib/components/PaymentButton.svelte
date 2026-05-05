@@ -8,9 +8,22 @@
     export let paymentType: string;
     export let buttonClass: string = 'btn btn-sm btn-primary';
     export let buttonText: string = 'Pay Now';
+    export let returnUrl: string = '';
 
     async function handlePayment() {
-        if (amount <= 0) return;
+        // Robust validation
+        if (!amount || Number(amount) <= 0) {
+            console.error('[PaymentButton] Invalid amount:', amount);
+            toast.error('Invalid payment amount.');
+            return;
+        }
+        if (!studentId) {
+            console.error('[PaymentButton] Missing studentId');
+            toast.error('Student ID is required for payment.');
+            return;
+        }
+
+        console.log('[PaymentButton] Initiating payment:', { amount, studentId, applicationId, paymentType });
         
         startLoading();
         try {
@@ -18,12 +31,12 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    amount,
+                    amount: Number(amount),
                     currency: 'INR',
                     description: `Payment for ${paymentType}`,
                     studentId,
                     applicationId,
-                    metadata: { paymentType }
+                    metadata: { paymentType, returnUrl }
                 })
             });
 
@@ -76,7 +89,7 @@
                         });
                         const verifyData = await verifyRes.json();
                         if (verifyRes.ok && verifyData.success) {
-                            window.location.href = `/student/payments?success=Payment successful`;
+                            window.location.href = returnUrl || `/student/payments?success=Payment successful`;
                         } else {
                             throw new Error(verifyData.message || 'Verification failed');
                         }
