@@ -1,4 +1,4 @@
-# Implementation Plan: Application Form Fee Integration
+what# Implementation Plan: Application Form Fee Integration
 
 This document outlines the phased approach to integrate application form fees into the system, covering database changes, UI updates, and backend logic for student and administrator workflows.
 
@@ -79,9 +79,7 @@ This document outlines the phased approach to integrate application form fees in
 *   **Backend Action:** `markApplicationFeeStatus` (takes `application_id`, `new_status`, `reason?`).
     *   Updates `applications.application_fee_status`.
     *   If marking as 'paid', optionally insert a manual `payments` record (`payment_type='application_fee'`, `payment_method='manual'`, `amount=form_fee`, `status='completed'`).
-
 ### Phase 6: Student Payments Page
-
 *   **File:** `src/routes/student/payments/+page.svelte` (UI) and `src/routes/student/payments/+page.server.ts` (Backend)
 *   **Backend (`+page.server.ts` load function):**
     *   Fetch student's applications with `form_fee` and `application_fee_status`.
@@ -90,7 +88,16 @@ This document outlines the phased approach to integrate application form fees in
     *   List applications with pending application fees.
     *   Provide "Pay Now" button (Online payment flow).
     *   Display successful application fee payments.
-
 ---
-
 This plan integrates the requirements across different roles and flows, ensuring a robust and auditable system for application form fees.
+
+
+
+
+
+
+
+
+
+
+

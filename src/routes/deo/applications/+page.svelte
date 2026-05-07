@@ -248,6 +248,7 @@
                     <table class="table table-striped table-hover align-middle">
                         <thead>
                             <tr>
+                                <th style="width: 50px">#</th>
                                 <th>Student</th>
                                 <th>Course & Cycle</th>
                                 <th>Status</th>
@@ -257,9 +258,10 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {#each data.applications as app}
+                            {#each data.applications as app, i}
                                 {@const appAny = app as any}
                                 <tr>
+                                    <td>{(currentPage - 1) * currentLimit + i + 1}</td>
                                     <td>
                                         {getDisplayName(appAny)}
                                         {#if appAny.users?.student_profiles?.enrollment_number}
