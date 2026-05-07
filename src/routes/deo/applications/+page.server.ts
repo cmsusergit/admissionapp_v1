@@ -67,6 +67,8 @@ export const load: PageServerLoad = async ({
     `
             id,
             status,
+            student_id,
+            application_fee_status,
             updated_at,
             form_type,
             course_id,
@@ -137,6 +139,25 @@ export const load: PageServerLoad = async ({
     error,
   } = await executeQuery;
 
+  // Fetch admission forms to get form_fee for the 'Pay App Fee' button
+  const { data: admissionForms } = await supabase
+    .from("admission_forms")
+    .select("course_id, cycle_id, form_type, form_fee");
+
+  // Helper to join form fee
+  const enrich = (list: any[]) => (list || []).map((app: any) => {
+    const form = admissionForms?.find(
+        (f) => 
+            f.course_id === app.course_id && 
+            f.cycle_id === app.cycle_id && 
+            f.form_type === app.form_type
+    );
+    return {
+        ...app,
+        form_fee: form?.form_fee || 0
+    };
+  });
+
   if (error) {
     console.error("❌ Error fetching DEO applications:", error.message);
     console.error("Error details:", error);
@@ -177,8 +198,9 @@ export const load: PageServerLoad = async ({
       // Apply pagination to filtered results
       const paginatedResults = filteredApplications.slice(offset, offset + limit);
       
+      // Since we defined enrich below, we need to handle it. Actually let's move enrich up.
       return {
-        applications: paginatedResults || [],
+        applications: enrich(paginatedResults) || [],
         courses: courses || [],
         cycles: cycles || [],
         colleges: colleges || [],
@@ -212,7 +234,7 @@ export const load: PageServerLoad = async ({
   }
 
   return {
-    applications: applications || [],
+    applications: enrich(applications || []),
     courses: courses || [],
     cycles: cycles || [],
     colleges: colleges || [],

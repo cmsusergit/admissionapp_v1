@@ -78,7 +78,7 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
     name: "student_profiles",
     label: "Student Profiles",
     columns: [
-      { name: "enrollment_number", label: "Enrollment No", type: "text" },
+      { name: "enrollment_number", label: "College ID", type: "text" },
       { name: "admission_status", label: "Admission Status", type: "text" },
       // Add access to profile_data JSON keys? Complex. Just standard columns for now.
     ],

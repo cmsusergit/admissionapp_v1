@@ -85,13 +85,17 @@ USING (auth.uid() = student_id OR EXISTS (SELECT 1 FROM public.users WHERE id = 
 DROP POLICY IF EXISTS "Transactions: Staff view" ON public.transactions;
 CREATE POLICY "Transactions: Staff view" ON public.transactions 
 FOR SELECT TO authenticated
-USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin', 'fee_collector', 'adm_officer')));
+USING (public.get_my_role() IN ('admin', 'fee_collector', 'adm_officer', 'deo'));
 
--- Students can insert their own transactions
+-- Students can insert their own transactions, DEOs can insert for any student
 DROP POLICY IF EXISTS "Transactions: Students insert" ON public.transactions;
-CREATE POLICY "Transactions: Students insert" ON public.transactions 
+CREATE POLICY "Transactions: Insert policy" ON public.transactions 
 FOR INSERT TO authenticated
-WITH CHECK (auth.uid() = student_id);
+WITH CHECK (
+    auth.uid() = student_id 
+    OR 
+    public.get_my_role() IN ('admin', 'deo')
+);
 
 -- System/Admin can update transactions
 DROP POLICY IF EXISTS "Transactions: Admin update" ON public.transactions;
