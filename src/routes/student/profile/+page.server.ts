@@ -43,20 +43,25 @@ export const actions: Actions = {
     const profileData: Record<string, any> = {};
     const isDraft = formData.get("is_draft") === "true";
 
-    // 1. Fetch Schema Definition for Validation
+    // 1. Fetch Schema Definition for Validation and Filtering
     const { data: schemaFields } = await supabase
       .from("student_profile_fields")
       .select("key, label, type, is_required, default_value");
 
-    // Iterate over form data and build profile_data object
-    for (const [key, value] of formData.entries()) {
-      if (!key.startsWith("_") && key !== "is_draft") {
-        profileData[key] = value;
-      }
+    if (!schemaFields) {
+        return fail(500, { message: "Failed to load schema", error: true });
+    }
+
+    // Only include fields that exist in the schema
+    for (const field of schemaFields) {
+        const val = formData.get(field.key);
+        if (val !== null) {
+            profileData[field.key] = val;
+        }
     }
 
     // Server-side validation if NOT a draft
-    if (!isDraft && schemaFields) {
+    if (!isDraft) {
       for (const field of schemaFields) {
         if (field.is_required && !profileData[field.key]) {
           return fail(400, {

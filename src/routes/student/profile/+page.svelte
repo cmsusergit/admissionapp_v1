@@ -6,7 +6,25 @@
 
     let { data } = $props<{ data: PageData }>();
 
-    let profileData = $state<Record<string, any>>(data.profile?.profile_data || {});
+    // Helper: Initialize profile data with defaults from schema if missing
+    function getInitialProfileData() {
+        const base = data.profile?.profile_data || {};
+        const merged = { ...base };
+        
+        if (data.schemaFields) {
+            data.schemaFields.forEach((field: any) => {
+                if (field.default_value !== undefined && field.default_value !== null && field.default_value !== '') {
+                    // Only apply if currently empty/missing
+                    if (merged[field.key] === undefined || merged[field.key] === null || merged[field.key] === '') {
+                        merged[field.key] = field.default_value;
+                    }
+                }
+            });
+        }
+        return merged;
+    }
+
+    let profileData = $state<Record<string, any>>(getInitialProfileData());
     let uploadingFields = $state<Record<string, boolean>>({});
     let isDraft = $state(false);
 
@@ -107,8 +125,6 @@
                         };
                     }}>
                         <input type="hidden" name="is_draft" value={isDraft.toString()} />
-                        <!-- We need to bind form fields to profileData for reactivity/uppercasing -->
-                        <input type="hidden" name="profile_data_json" value={JSON.stringify(profileData)} />
                         
                         <h5 class="mb-3">Personal Details</h5>
                         <div class="row g-3">

@@ -37,6 +37,12 @@
         // Datagrid/Table specific
         column_max_scores?: Record<string, number>;
         inDatagrid?: boolean; // true = datagrid row, false = regular field (default true for table sections)
+        // Copy From & Transform
+        copyFrom?: {
+            field: string;
+            label: string;
+        };
+        transform?: 'uppercase' | 'none';
     }
 
     interface TableColumn {
@@ -231,6 +237,51 @@
                 console.log('[DynamicForm] Applied default values');
                 formData = newFormData;
             }
+        }
+    });
+
+    // Handle transformations (e.g. UPPERCASE) on the data
+    $effect(() => {
+        let newFormData = { ...formData };
+        let changed = false;
+
+        normalizedSchema.fields.forEach(field => {
+            const key = getKey(field);
+            if (field.transform === 'uppercase' && typeof newFormData[key] === 'string') {
+                const upper = newFormData[key].toUpperCase();
+                if (newFormData[key] !== upper) {
+                    newFormData[key] = upper;
+                    changed = true;
+                }
+            } else if (field.transform === 'uppercase' && field.is_merit && typeof newFormData[key]?.value === 'string') {
+                const upper = newFormData[key].value.toUpperCase();
+                if (newFormData[key].value !== upper) {
+                    newFormData[key].value = upper;
+                    changed = true;
+                }
+            } else if (field.transform === 'uppercase' && typeof newFormData[key] === 'object' && newFormData[key] !== null) {
+                // Handle Datagrid rows
+                const rowObj = newFormData[key];
+                for (const colKey in rowObj) {
+                    if (typeof rowObj[colKey] === 'string') {
+                        const upper = rowObj[colKey].toUpperCase();
+                        if (rowObj[colKey] !== upper) {
+                            rowObj[colKey] = upper;
+                            changed = true;
+                        }
+                    } else if (typeof rowObj[colKey]?.value === 'string') {
+                        const upper = rowObj[colKey].value.toUpperCase();
+                        if (rowObj[colKey].value !== upper) {
+                            rowObj[colKey].value = upper;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        });
+
+        if (changed) {
+            formData = newFormData;
         }
     });
 
@@ -523,6 +574,40 @@
 </script>
 
 {#snippet fieldControl(field: FormField, fieldId: string, key: string, hideLabel: boolean = false)}
+    <!-- Copy From Feature -->
+    {#if field.copyFrom && !readonly}
+        <div class="form-check mb-1">
+            <input 
+                type="checkbox" 
+                class="form-check-input" 
+                id="{fieldId}-copy"
+                onchange={(e) => {
+                    const checked = (e.target as HTMLInputElement).checked;
+                    if (checked) {
+                        const sourceVal = formData[field.copyFrom!.field];
+                        // Handle merit objects vs regular strings
+                        if (typeof sourceVal === 'object' && sourceVal !== null && 'value' in sourceVal) {
+                            if (field.is_merit) {
+                                formData[key] = JSON.parse(JSON.stringify(sourceVal));
+                            } else {
+                                formData[key] = sourceVal.value;
+                            }
+                        } else {
+                            if (field.is_merit) {
+                                formData[key] = { value: sourceVal, max_score: field.max_score || 100 };
+                            } else {
+                                formData[key] = sourceVal;
+                            }
+                        }
+                    }
+                }}
+            />
+            <label class="form-check-label small text-muted" for="{fieldId}-copy">
+                {field.copyFrom.label}
+            </label>
+        </div>
+    {/if}
+
     {#if field.is_merit}
         <div class="row g-2">
             <div class="col-md-6">
@@ -534,11 +619,13 @@
                     placeholder="Score"
                     value={formData[key]?.value ?? ''}
                     oninput={(e) => {
-                        const val = (e.target as HTMLInputElement).value;
+                        let val = (e.target as HTMLInputElement).value;
+                        if (field.transform === 'uppercase') val = val.toUpperCase();
                         if (!formData[key]) formData[key] = { value: '', max_score: field.max_score ?? 100 };
                         formData[key].value = val;
                         clearError(key);
                     }}
+                    style={field.transform === 'uppercase' ? 'text-transform: uppercase' : ''}
                     disabled={readonly}
                 />
             </div>
@@ -567,7 +654,13 @@
             id={fieldId}
             name={key}
             bind:value={formData[key]}
-            oninput={() => clearError(key)}
+            oninput={(e) => {
+                if (field.transform === 'uppercase') {
+                    formData[key] = (e.target as HTMLInputElement).value.toUpperCase();
+                }
+                clearError(key);
+            }}
+            style={field.transform === 'uppercase' ? 'text-transform: uppercase' : ''}
             disabled={readonly}
         />
     {:else if field.type === 'textarea'}
@@ -576,7 +669,13 @@
             id={fieldId}
             name={key}
             bind:value={formData[key]}
-            oninput={() => clearError(key)}
+            oninput={(e) => {
+                if (field.transform === 'uppercase') {
+                    formData[key] = (e.target as HTMLTextAreaElement).value.toUpperCase();
+                }
+                clearError(key);
+            }}
+            style={field.transform === 'uppercase' ? 'text-transform: uppercase' : ''}
             disabled={readonly}
         ></textarea>
     {:else if field.type === 'select'}
@@ -730,16 +829,20 @@
                                                 name={`${key}-${col.key}`}
                                                 value={col.is_merit ? formData[key]?.[col.key]?.value : formData[key]?.[col.key]}
                                                 oninput={(e) => {
-                                                    const targetValue = (e.target as HTMLInputElement).value;
+                                                    let targetValue = (e.target as HTMLInputElement).value;
+                                                    if (field.transform === 'uppercase') targetValue = targetValue.toUpperCase();
+                                                    
                                                     if (col.is_merit) {
                                                         if (!formData[key]) formData[key] = {};
                                                         if (!formData[key][col.key]) formData[key][col.key] = {};
                                                         formData[key][col.key].value = targetValue;
                                                     } else {
+                                                        if (!formData[key]) formData[key] = {};
                                                         formData[key][col.key] = targetValue;
                                                     }
                                                     clearError(key);
                                                 }}
+                                                style={field.transform === 'uppercase' ? 'text-transform: uppercase' : ''}
                                                 disabled={readonly}
                                             />
                                         {/if}

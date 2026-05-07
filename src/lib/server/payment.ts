@@ -111,14 +111,14 @@ export async function createPaymentOrder(
              if (!phone) phone = '9999999999';
              phone = phone.replace(/[^0-9]/g, '').slice(-10);
 
-             // 2. Construct Hash (EXACTLY 16 PIPES as requested by PayU error message)
+             // 2. Construct Hash (EXACTLY 16 PIPES for 17 items)
              // Sequence: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5|udf6|udf7|udf8|udf9|udf10|salt
-             const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
+             const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}||||||||||${salt}`;
              const hash = crypto.createHash('sha512').update(hashString).digest('hex');
 
              const base = request.baseUrl || '';
-             const surl = `${base}/api/payment/callback?status=success`;
-             const furl = `${base}/api/payment/callback?status=failure`;
+             const surl = `${base}/api/payment/callback`;
+             const furl = `${base}/api/payment/callback`;
 
              payuParams = {
                  key, txnid, amount, productinfo, firstname, email, phone, hash, surl, furl,
@@ -200,7 +200,7 @@ export async function verifyPayment(
     let isValid = false; 
     
     if (gateway.provider_name === 'PayU' && salt) {
-        // Reverse Hash: sha512(salt|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+        // Reverse Hash: sha512(salt|status|udf10|udf9|udf8|udf7|udf6|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
         const status = gatewayResponse.status;
         const email = gatewayResponse.email || '';
         const firstname = gatewayResponse.firstname || '';
@@ -209,7 +209,8 @@ export async function verifyPayment(
         const txnid = gatewayResponse.txnid || '';
         const key = gatewayResponse.key || '';
         
-        const reverseHashString = `${salt}|${status}||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
+        // Exactly 17 pipes for 18 items: salt|status|udf10|udf9|udf8|udf7|udf6|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
+        const reverseHashString = `${salt}|${status}|||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
         const calculatedHash = crypto.createHash('sha512').update(reverseHashString).digest('hex');
         
         isValid = (calculatedHash === gatewayResponse.hash);

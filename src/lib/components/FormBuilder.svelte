@@ -82,6 +82,12 @@
     let linkToProfileField = false;
     let selectedProfileFieldKey = '';
 
+    // Copy From & Transform Config
+    let enableCopyFrom = false;
+    let copyFromField = '';
+    let copyFromLabel = '';
+    let transformUppercase = false;
+
     // Section Config
     let newSectionTitle = '';
     let isEditingSection = false;
@@ -189,6 +195,12 @@
                 } : undefined
             };
 
+            // Copy From & Transform (Applicable to linked fields too)
+            if (enableCopyFrom && copyFromField && copyFromLabel) {
+                field.copyFrom = { field: copyFromField, label: copyFromLabel };
+            }
+            if (transformUppercase) field.transform = 'uppercase';
+
         } else {
             // Logic for Custom Field
             if (!key) {
@@ -292,11 +304,18 @@
                     endpoint,
                     valueField,
                     labelField
-                };
-            }
-        }
-        return field;
-    }
+                    };
+                    }
+                    }
+
+                    // Copy From & Transform
+                    if (enableCopyFrom && copyFromField && copyFromLabel) {
+                    field.copyFrom = { field: copyFromField, label: copyFromLabel };
+                    }
+                    if (transformUppercase) field.transform = 'uppercase';
+
+                    return field;
+                    }
 
     function editField(index: number) {
         const field = schema.fields[index];
@@ -379,18 +398,30 @@
                 selectSource = field.dataSource.type;
                 if (field.dataSource.type === 'static' && field.dataSource.options) {
                     staticOptions = field.dataSource.options.map((o: any) => `${o.value}|${o.label}`).join('\n');
-                }
                 if (field.dataSource.type === 'rest') {
                     endpoint = field.dataSource.endpoint || '';
                     valueField = field.dataSource.valueField || '';
                     labelField = field.dataSource.labelField || '';
                 }
-            }
-        }
+                }
+                }
 
-        isEditing = true;
-        editingIndex = index;
-        editingField = field;
+                // Load Copy From & Transform (Both Custom and Linked fields)
+                if (field.copyFrom) {
+                enableCopyFrom = true;
+                copyFromField = field.copyFrom.field;
+                copyFromLabel = field.copyFrom.label;
+                } else {
+                enableCopyFrom = false;
+                copyFromField = '';
+                copyFromLabel = '';
+                }
+                transformUppercase = field.transform === 'uppercase';
+
+                isEditing = true;
+                editingIndex = index;
+                showAddFieldModal = true;
+                }
         showAddFieldModal = true;
     }
 
@@ -473,6 +504,10 @@
         linkToProfileField = false;
         selectedProfileFieldKey = '';
         defaultValue = '';
+        enableCopyFrom = false;
+        copyFromField = '';
+        copyFromLabel = '';
+        transformUppercase = false;
         isEditing = false;
         editingIndex = -1;
         editingField = null;
@@ -863,12 +898,44 @@
                                 type="button" 
                                 class="btn btn-link btn-sm text-danger p-0 mt-1" 
                                 on:click={() => defaultValue = ''}
-                            >
-                                Clear default
-                            </button>
+                            >Clear Default</button>
                         {/if}
                     </div>
-                    
+
+                    <!-- Copy From & Transform -->
+                    <div class="mt-3 p-2 border rounded bg-light">
+                        <h6><i class="bi bi-copy me-1"></i> Copy & Transformation</h6>
+                        
+                        <!-- Transform -->
+                        {#if type === 'text' || type === 'textarea'}
+                            <div class="form-check mb-2">
+                                <input bind:checked={transformUppercase} id="transform-upper" class="form-check-input" type="checkbox">
+                                <label for="transform-upper" class="form-check-label fw-bold">Force UPPERCASE</label>
+                            </div>
+                        {/if}
+
+                        <!-- Copy From -->
+                        <div class="form-check">
+                            <input bind:checked={enableCopyFrom} id="enable-copy" class="form-check-input" type="checkbox">
+                            <label for="enable-copy" class="form-check-label fw-bold">Enable "Copy From" Checkbox</label>
+                        </div>
+                        
+                        {#if enableCopyFrom}
+                            <div class="ms-4 mt-2">
+                                <label class="small fw-bold">Source Field</label>
+                                <select bind:value={copyFromField} class="form-select form-select-sm mb-2">
+                                    <option value="">-- Select Source Field --</option>
+                                    {#each schema.fields.filter(f => f.key !== key) as sf}
+                                        <option value={sf.key}>{sf.label} ({sf.key})</option>
+                                    {/each}
+                                </select>
+                                
+                                <label class="small fw-bold">Checkbox Label</label>
+                                <input bind:value={copyFromLabel} class="form-control form-select-sm" placeholder="e.g. Same as Permanent Address" />
+                            </div>
+                        {/if}
+                    </div>
+
                     <div class="mt-3 p-2 border rounded bg-light">
                         <h6><i class="bi bi-eye me-1"></i> Conditional Visibility</h6>
                         <div class="row g-2">
