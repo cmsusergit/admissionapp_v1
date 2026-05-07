@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts"> 
     import { supabase } from '$lib/supabase'; 
     import { PUBLIC_APP_URL, PUBLIC_SUPABASE_URL } from '$env/static/public';
     import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';

@@ -20,6 +20,8 @@ export interface ReportConfig {
     parameters?: ReportParameter[]; // User-defined dynamic filters
 }
 
+const JSON_COLUMNS = new Set(['profile_data', 'form_data']);
+
 /**
  * Builds and executes a report query based on the template configuration.
  */
@@ -72,12 +74,12 @@ export async function executeReportQuery(
             if (param) {
                 // 1. Strip FK hints from column path for PostgREST filtering
                 let col = param.column.replace(/![a-zA-Z0-9_]+/g, '');
-                
-                // 2. If the column path starts with the base table name (e.g. applications.status), 
-                // strip it to refer to the local column.
+
                 if (col.startsWith(baseTable + '.')) {
                     col = col.slice(baseTable.length + 1);
                 }
+
+                col = convertJsonPathToFilter(col);
 
                 switch (param.operator) {
                     case 'eq': query = query.eq(col, value); break;
@@ -86,10 +88,11 @@ export async function executeReportQuery(
                     case 'gte': query = query.gte(col, value); break;
                     case 'lt': query = query.lt(col, value); break;
                     case 'lte': query = query.lte(col, value); break;
-                    case 'in': 
-                        const list = typeof value === 'string' ? value.split(',') : value;
-                        query = query.in(col, list); 
+                    case 'in': {
+                        const list = typeof value === 'string' ? value.split(',').map((item) => item.trim()) : value;
+                        query = query.in(col, list);
                         break;
+                    }
                 }
                 dynamicFilterString += `\n  AND ${col} ${param.operator} '${value}'`;
             }
@@ -126,6 +129,17 @@ export async function executeReportQuery(
     return { data, queryString };
 }
 
+function convertJsonPathToFilter(path: string): string {
+    const parts = path.split('.');
+    const jsonIndex = parts.findIndex((p) => JSON_COLUMNS.has(p));
+    if (jsonIndex >= 0 && jsonIndex + 1 < parts.length) {
+        const prefix = parts.slice(0, jsonIndex + 1).join('.');
+        const jsonKey = parts.slice(jsonIndex + 1).join('.');
+        return `${prefix}->>${jsonKey}`;
+    }
+    return path;
+}
+
 /**
  * Maps known ambiguous relationships to their explicit FK constraints
  */
@@ -141,36 +155,47 @@ const FK_MAP: Record<string, Record<string, string>> = {
     }
 };
 
-function buildSelectString(columns: ReportColumn[], currentTable: string): string {
+export function buildSelectString(columns: ReportColumn[], currentTable: string): string {
     const rootFields: string[] = [];
     const nestedFields: Record<string, string[]> = {};
 
-    columns.forEach(col => {
+    const addNestedField = (relation: string, field: string) => {
+        if (!nestedFields[relation]) nestedFields[relation] = [];
+        if (!nestedFields[relation].includes(field)) nestedFields[relation].push(field);
+    };
+
+    columns.forEach((col) => {
         const parts = col.path.split('.');
         if (parts.length === 1) {
             rootFields.push(parts[0]);
-        } else {
-            const rootWithHint = parts[0];
-            // Split by : (alias) or ! (hint) to get the actual relationship name
-            const root = rootWithHint.split('!')[0].split(':')[0]; 
-            const rest = parts.slice(1).join('.');
-
-            // Special case: if the "root" is actually the current table name (redundant prefix)
-            if (root === currentTable) {
-                const subParts = rest.split('.');
-                if (subParts.length === 1) {
-                    rootFields.push(subParts[0]);
-                } else {
-                    const subRoot = subParts[0].split('!')[0].split(':')[0];
-                    if (!nestedFields[subRoot]) nestedFields[subRoot] = [];
-                    nestedFields[subRoot].push(subParts.slice(1).join('.'));
-                }
-                return;
-            }
-
-            if (!nestedFields[root]) nestedFields[root] = [];
-            nestedFields[root].push(rest);
+            return;
         }
+
+        const firstSegment = parts[0];
+        if (JSON_COLUMNS.has(firstSegment)) {
+            rootFields.push(firstSegment);
+            return;
+        }
+
+        const rootWithHint = firstSegment;
+        const root = rootWithHint.split('!')[0].split(':')[0];
+        const rest = parts.slice(1).join('.');
+
+        // Special case: if the "root" is actually the current table name (redundant prefix)
+        if (root === currentTable) {
+            const subParts = rest.split('.');
+            if (subParts.length === 1) {
+                rootFields.push(subParts[0]);
+            } else if (JSON_COLUMNS.has(subParts[0])) {
+                rootFields.push(subParts[0]);
+            } else {
+                const subRoot = subParts[0].split('!')[0].split(':')[0];
+                addNestedField(subRoot, subParts.slice(1).join('.'));
+            }
+            return;
+        }
+
+        addNestedField(root, rest);
     });
 
     const nestedStrings = Object.entries(nestedFields).map(([relation, fields]) => {

@@ -46,6 +46,19 @@
                 >
                 <label class="form-check-label small" for={fullPath}>{col.label}</label>
             </div>
+
+            {#if col.type === 'json' && col.jsonKeys?.length}
+                {#each col.jsonKeys as jsonKey}
+                    {@const nestedPath = `${fullPath}.${jsonKey.key}`}
+                    <div class="form-check ms-5">
+                        <input class="form-check-input" type="checkbox" id={nestedPath}
+                            checked={selectedColumns.some(c => c.path === nestedPath)}
+                            on:change={() => toggle(nestedPath, `${tableDef.label} - ${col.label}: ${jsonKey.label}`)}
+                        >
+                        <label class="form-check-label small" for={nestedPath}>{jsonKey.label}</label>
+                    </div>
+                {/each}
+            {/if}
         {/each}
 
         <!-- Recursive Relations -->

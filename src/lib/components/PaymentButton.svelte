@@ -8,7 +8,7 @@
     export let paymentType: string;
     export let buttonClass: string = 'btn btn-sm btn-primary';
     export let buttonText: string = 'Pay Now';
-    export let returnUrl: string = '';
+    export let returnUrl: string = '/';
 
     async function handlePayment() {
         // Robust validation
@@ -89,7 +89,7 @@
                         });
                         const verifyData = await verifyRes.json();
                         if (verifyRes.ok && verifyData.success) {
-                            window.location.href = returnUrl || `/student/payments?success=Payment successful`;
+                            window.location.href = returnUrl || '/';
                         } else {
                             throw new Error(verifyData.message || 'Verification failed');
                         }

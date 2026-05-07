@@ -145,6 +145,7 @@ export const actions: Actions = {
 
         const formData = await request.formData();
         const userId = formData.get('id') as string;
+        const full_name = formData.get('full_name') as string;
         const role = formData.get('role') as string;
         const university_id = formData.get('university_id') as string || null;
         const college_id = formData.get('college_id') as string || null;
@@ -155,6 +156,7 @@ export const actions: Actions = {
         }
 
         const { error } = await supabase.from('users').update({
+            full_name,
             role,
             university_id,
             college_id

@@ -610,7 +610,7 @@
                         paymentType="application_fee"
                         buttonClass="btn btn-success w-100 py-2 fs-5"
                         buttonText="Pay Now"
-                        returnUrl="/student/payments?success=Application fee paid"
+                        returnUrl="/"
                     />
                 {/if}
             </div>

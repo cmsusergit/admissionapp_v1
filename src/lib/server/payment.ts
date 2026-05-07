@@ -88,8 +88,12 @@ export async function createPaymentOrder(
 
         if (gateway.provider_name === 'PayU') {
              // 1. Identify and Clean Credentials
-             const key = (gateway.config.merchant_key || gateway.config.key_id || '').toString().trim();
+             const key = (gateway.config.merchant_key || gateway.config.key_id || gateway.config.merchant_id || '').toString().trim();
              const salt = (gateway.config.merchant_salt || gateway.config.key_secret || gateway.config.salt || '').toString().trim();
+
+             if (!key || !salt) {
+                 throw error(500, 'PayU gateway misconfigured: merchant_key and merchant_salt are required');
+             }
 
              // Shorten TXNID for PayU (< 25 chars)
              const txnid = `TXN${Date.now().toString().slice(-10)}${Math.floor(Math.random() * 1000)}`;
@@ -111,9 +115,10 @@ export async function createPaymentOrder(
              if (!phone) phone = '9999999999';
              phone = phone.replace(/[^0-9]/g, '').slice(-10);
 
-             // 2. Construct Hash (EXACTLY 16 PIPES for 17 items)
-             // Sequence: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5|udf6|udf7|udf8|udf9|udf10|salt
-             const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}||||||||||${salt}`;
+             // 2. Construct Hash using the exact PayU sequence.
+             // Sequence: key|txnid|amount|productinfo|firstname|email|udf1..udf10|salt
+             const udfFields = Array(10).fill('');
+             const hashString = [key, txnid, amount, productinfo, firstname, email, ...udfFields, salt].join('|');
              const hash = crypto.createHash('sha512').update(hashString).digest('hex');
 
              const base = request.baseUrl || '';
