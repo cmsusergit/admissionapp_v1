@@ -41,16 +41,14 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     // Fetch independent data concurrently
     const [
         { data: activeYears },
-        { data: availableCourses },
-        { data: applications, error: appError }
+        { data: applications, error: appError },
+        { data: enabledForms },
+        { data: formTypes }
     ] = await Promise.all([
         supabase
             .from('academic_years')
             .select('id, name, admission_cycles(id, name, is_active)')
             .eq('is_active', true),
-        supabase
-            .from('courses')
-            .select('id, name, code, colleges(name, universities(name))'),
         supabase
             .from('applications')
             .select(`
@@ -60,28 +58,48 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 account_admissions(admission_number),
                 merit_list_entries(merit_rank, merit_score)
             `)
-            .eq('student_id', userProfile.id)
+            .eq('student_id', userProfile.id),
+        supabase
+            .from('admission_forms')
+            .select('course_id, cycle_id, form_type, is_enabled, is_merit_published')
+            .eq('is_enabled', true),
+        supabase
+            .from('form_types')
+            .select('name, student_can_apply')
     ]);
+
+    // Filter form types that students are allowed to apply for
+    // If the column doesn't exist yet, we default to all active ones
+    const allowedFormTypeNames = (formTypes || [])
+        .filter(ft => ft.student_can_apply !== false) // Matches true or undefined
+        .map(ft => ft.name);
+
+    // Filter enabled forms by allowed form types
+    const allowedEnabledForms = (enabledForms || []).filter(f => 
+        allowedFormTypeNames.includes(f.form_type)
+    );
+
+    // Get unique course IDs that have at least one allowed enabled form
+    const enabledCourseIds = Array.from(new Set(allowedEnabledForms.map(f => f.course_id)));
+
+    // Now fetch courses, but filter by those that actually have enabled student-facing forms
+    const { data: availableCourses } = await supabase
+            .from('courses')
+            .select('id, name, code, colleges(name, universities(name))')
+            .in('id', enabledCourseIds);
 
     if (appError) {
         console.error('Error fetching applications:', appError.message);
     }
 
-    // Fetch form publication status
     const courseIds = applications?.map(a => a.course_id) || [];
     const cycleIds = applications?.map(a => a.cycle_id) || [];
-    
-    const { data: forms } = await supabase
-        .from('admission_forms')
-        .select('course_id, cycle_id, form_type, is_merit_published')
-        .in('course_id', courseIds)
-        .in('cycle_id', cycleIds);
 
     // Attach published flag to applications
     const appsWithMeritStatus = applications?.map(app => {
         // Default to 'MQ/NRI' if not specified, as per specific requirement
         const appFormType = app.form_type || 'MQ/NRI';
-        const form = forms?.find(f => 
+        const form = allowedEnabledForms?.find(f => 
             f.course_id === app.course_id && 
             f.cycle_id === app.cycle_id &&
             (f.form_type === appFormType || (!f.form_type && appFormType === 'MQ/NRI'))

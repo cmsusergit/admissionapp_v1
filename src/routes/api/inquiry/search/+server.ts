@@ -9,7 +9,7 @@ export const GET: RequestHandler = async ({ url, locals: { supabase, userProfile
     }
 
     const q = url.searchParams.get('q') || '';
-    if (q.length < 2) return json([]);
+    if (q.length < 3) return json([]);
 
     const { data, error } = await supabase
         .from('inquiries')

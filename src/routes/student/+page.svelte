@@ -145,12 +145,11 @@
                                             <h5 class="mb-1">{course.name} <span class="badge bg-light text-dark border ms-2">{course.code}</span></h5>
                                             <small class="text-muted"><i class="bi bi-building me-1"></i>{courseAny.colleges?.name}, {courseAny.colleges?.universities?.name}</small>
                                         </div>
-                                        <div class="ms-2">
+                                        <div class="ms-2 d-flex gap-2">
                                             {#if existingApp}
-                                                <a href="/student/apply?applicationId={existingApp.id}" class="btn btn-sm btn-outline-secondary">View</a>
-                                            {:else}
-                                                <a href="/student/apply?courseId={course.id}" class="btn btn-sm btn-primary">Apply</a>
+                                                <a href="/student/apply?applicationId={existingApp.id}" class="btn btn-sm btn-outline-secondary">View Existing</a>
                                             {/if}
+                                            <a href="/student/apply?courseId={course.id}" class="btn btn-sm btn-primary">Apply</a>
                                         </div>
                                     </div>
                                 </div>
