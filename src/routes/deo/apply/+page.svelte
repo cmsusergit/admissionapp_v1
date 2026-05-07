@@ -104,7 +104,7 @@
     // Debounced inquiry search for autocomplete
     let searchTimeout: any;
     async function searchInquiries(query: string) {
-        if (!query || query.length < 2 || !isInquiryFormFilled) {
+        if (!query || query.length < 3 || !isInquiryFormFilled) {
             inquirySuggestions = [];
             return;
         }
@@ -118,7 +118,8 @@
                 // If there's an exact match in the suggestions, we can show the "Inquiry Found" alert
                 const exactMatch = inquirySuggestions.find((s: any) => 
                     s.email.toLowerCase() === query.toLowerCase() || 
-                    s.full_name.toLowerCase() === query.toLowerCase()
+                    s.full_name.toLowerCase() === query.toLowerCase() ||
+                    (s.phone && s.phone === query)
                 );
                 
                 if (exactMatch) {
@@ -127,7 +128,7 @@
             } catch (e) {
                 console.error('Inquiry search failed:', e);
             }
-        }, 300);
+        }, 800);
     }
 
     async function performInquiryCheck(val: string, type: 'email' | 'name' | 'phone') {
@@ -271,6 +272,7 @@
             // 1. Reset states to prevent old data leaks
             loadedStudentProfile = null;
             lastLoadedInquiryData = null; 
+            applicationFormData = {}; // Reset form data for clean slate
             
             selectedStudentId = student.id;
             studentSearchTerm = `${student.full_name} (${student.email})`;
@@ -321,10 +323,11 @@
         isStudentListExpanded = true;
         loadedStudentProfile = null;
         lastLoadedInquiryData = null; // Clear inquiry buffer too
+        applicationFormData = {}; // Reset form data
     }
 
     // Helper to merge profile and inquiry data into form data based on schema
-    function mergeProfileData(formData: any, schema: any, profileData: any) {
+    function mergeProfileData(formData: any, schema: any, profileData: any = null) {
         console.log('>>> [DIAGNOSTIC] mergeProfileData START');
         if (!schema || !schema.fields) {
             console.warn('>>> mergeProfileData: Missing schema fields. Aborting.');
@@ -333,11 +336,28 @@
         
         const merged = { ...formData };
         const inquiryData = lastLoadedInquiryData || {};
-        const pData = profileData || {};
+        
+        // Use global loadedStudentProfile if profileData is not explicitly provided
+        const pData = profileData || loadedStudentProfile?.profile_data || {};
 
         console.log('>>> Available Profile Data:', pData);
         console.log('>>> Available Inquiry Data:', inquiryData);
-        console.log('>>> Profile Field Defaults:', profileFieldDefaults);
+
+        // Helper to split full name
+        const splitName = (fullName: string) => {
+            if (!fullName) return { first: '', middle: '', last: '' };
+            const parts = fullName.trim().split(/\s+/);
+            if (parts.length === 1) return { first: parts[0], middle: '', last: '' };
+            if (parts.length === 2) return { first: parts[0], middle: '', last: parts[1] };
+            return { 
+                first: parts[0], 
+                middle: parts.slice(1, -1).join(' '), 
+                last: parts[parts.length - 1] 
+            };
+        };
+
+        const profileFullName = pData.full_name || pData.name || '';
+        const splitP = splitName(profileFullName);
 
         schema.fields.forEach((field: any) => {
             let val = undefined;
@@ -348,6 +368,11 @@
                 val = pData[field.profileFieldKey];
                 source = 'PROFILE_KEY:' + field.profileFieldKey;
             }
+            // 1b. Smart Name Mapping from Profile
+            else if (field.key === 'first_name' && splitP.first) { val = splitP.first; source = 'PROFILE_NAME_SPLIT'; }
+            else if (field.key === 'middle_name' && splitP.middle) { val = splitP.middle; source = 'PROFILE_NAME_SPLIT'; }
+            else if (field.key === 'last_name' && splitP.last) { val = splitP.last; source = 'PROFILE_NAME_SPLIT'; }
+            
             // 2. Secondary: Inquiry Data (if profile is empty for this field)
             else if (inquiryData[field.key] !== undefined && inquiryData[field.key] !== '') {
                 val = inquiryData[field.key];
@@ -357,15 +382,18 @@
                 val = inquiryData[field.profileFieldKey];
                 source = 'INQUIRY_PROFILE_KEY:' + field.profileFieldKey;
             }
+            // 2b. Smart Name Mapping from Inquiry
+            else if (inquiryData.full_name) {
+                const splitI = splitName(inquiryData.full_name);
+                if (field.key === 'first_name' && splitI.first) { val = splitI.first; source = 'INQUIRY_NAME_SPLIT'; }
+                else if (field.key === 'middle_name' && splitI.middle) { val = splitI.middle; source = 'INQUIRY_NAME_SPLIT'; }
+                else if (field.key === 'last_name' && splitI.last) { val = splitI.last; source = 'INQUIRY_NAME_SPLIT'; }
+            }
+
             // 3. Default value from admission form schema
-            else if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
+            if ((val === undefined || val === '') && field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
                 val = field.defaultValue;
                 source = 'FORM_SCHEMA_DEFAULT';
-            }
-            // 4. Default value from linked profile field schema (backward compatible)
-            else if (field.profileFieldKey && profileFieldDefaults[field.profileFieldKey] !== undefined && profileFieldDefaults[field.profileFieldKey] !== null && profileFieldDefaults[field.profileFieldKey] !== '') {
-                val = profileFieldDefaults[field.profileFieldKey];
-                source = 'PROFILE_FIELD_DEFAULT';
             }
 
             if (val !== undefined && val !== null && val !== '') {

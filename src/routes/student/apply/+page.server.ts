@@ -245,7 +245,7 @@ export const load: PageServerLoad = async ({
 
   const { data: formTypes, error: formTypesError } = await supabase
     .from("form_types")
-    .select("name")
+    .select("name, student_can_apply")
     .eq("is_active", true)
     .order("name");
   if (formTypesError) {
@@ -267,12 +267,19 @@ export const load: PageServerLoad = async ({
   // Fetch all enabled admission forms metadata for dropdown filtering
   const { data: enabledForms, error: enabledFormsError } = await supabase
     .from("admission_forms")
-    .select("course_id, cycle_id, form_type")
+    .select("course_id, cycle_id, form_type, is_enabled, is_merit_published")
     .eq("is_enabled", true);
 
   if (enabledFormsError) {
     console.error("Error fetching enabled forms:", enabledFormsError.message);
   }
+
+  // Filter form types to only those that have at least one enabled form in the system
+  // (We'll do further filtering on the client based on selected course/cycle)
+  const activeFormTypeNames = Array.from(new Set(enabledForms?.map(f => f.form_type) || []));
+  const filteredFormTypes = (formTypes || []).filter(ft => 
+    activeFormTypeNames.includes(ft.name) && ft.student_can_apply !== false
+  );
 
   // --- Autofill Logic ---
   let inquiryAutofillData = {};
@@ -288,8 +295,9 @@ export const load: PageServerLoad = async ({
     selectedCourse: selectedCourse,
     admissionFormSchema: admissionFormSchema,
     existingApplications: existingApplications || [],
-    formTypes: formTypes || [],
+    formTypes: filteredFormTypes,
     studentProfile: parentData.studentProfile, // Get from layout
+    userProfile, // Explicitly include user profile
     enabledForms: enabledForms || [],
     inquiryAutofillData
   };
@@ -624,92 +632,5 @@ export const actions: Actions = {
       feeStatus: finalFeeStatus,
       feeAmount: formSchema.form_fee,
     };
-  },
-
-  payApplicationFee: async ({
-    request,
-    locals: { supabase, getAuthenticatedUser, userProfile },
-  }) => {
-    const authenticatedUser = await getAuthenticatedUser();
-    if (!authenticatedUser || userProfile?.role !== "student") {
-      throw redirect(303, "/login");
-    }
-
-    const formData = await request.formData();
-    const application_id = formData.get("application_id") as string;
-
-    // Verify fee details
-    const { data: appData, error: fetchError } = await supabase
-      .from("applications")
-      .select("id, application_fee_status, course_id, cycle_id, form_type")
-      .eq("id", application_id)
-      .single();
-
-    if (fetchError || !appData) {
-      return fail(404, { message: "Application not found", error: true });
-    }
-
-    if (appData.application_fee_status === "paid") {
-      return { success: true, message: "Fee already paid." };
-    }
-
-    // Fetch fee amount
-    const { data: formDetails } = await supabase
-      .from("admission_forms")
-      .select("form_fee")
-      .eq("course_id", appData.course_id)
-      .eq("cycle_id", appData.cycle_id)
-      .eq("form_type", appData.form_type)
-      .eq("is_enabled", true)
-      .single();
-
-    const amount = formDetails?.form_fee || 0;
-
-    if (amount <= 0) {
-      // No fee, just mark paid/not_applicable
-      await supabase
-        .from("applications")
-        .update({ application_fee_status: "not_applicable" })
-        .eq("id", application_id);
-      return { success: true, message: "No fee required." };
-    }
-
-    // Mock Payment Processing
-    const transaction_id = `PAY-APP-${Date.now()}`;
-
-    // Record Payment
-    const { error: payError } = await supabase.from("payments").insert({
-      application_id,
-      amount,
-      payment_type: "application_fee",
-      transaction_id,
-      status: "completed",
-      payment_date: new Date().toISOString(),
-    });
-
-    if (payError) {
-      console.error("Error recording payment:", payError.message);
-      return fail(500, { message: "Payment failed to record.", error: true });
-    }
-
-    // Update Application Status
-    const { error: updateError } = await supabase
-      .from("applications")
-      .update({ application_fee_status: "paid" })
-      .eq("id", application_id);
-
-    if (updateError) {
-      console.error(
-        "Error updating application fee status:",
-        updateError.message,
-      );
-      return fail(500, {
-        message:
-          "Payment successful but status update failed. Please contact support.",
-        error: true,
-      });
-    }
-
-    return { success: true, message: "Payment successful!" };
   },
 };

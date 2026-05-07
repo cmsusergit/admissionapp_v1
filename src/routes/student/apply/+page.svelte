@@ -5,6 +5,7 @@
     import { page } from '$app/stores'; 
     import { onMount } from 'svelte';
     import DynamicForm from '$lib/components/DynamicForm.svelte';
+    import PaymentButton from '$lib/components/PaymentButton.svelte';
     import { supabase } from '$lib/supabase'; 
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; 
 
@@ -78,34 +79,6 @@
     let showPaymentModal = false;
     let currentFeeAmount = 0;
 
-    async function handlePayFee() {
-        if (!currentApplicationId) return;
-        
-        startLoading();
-        const formData = new FormData();
-        formData.append('application_id', currentApplicationId);
-
-        try {
-            const response = await fetch('?/payApplicationFee', {
-                method: 'POST',
-                body: formData
-            });
-            const result = deserialize(await response.text());
-
-            if (result.type === 'success') {
-                showPaymentModal = false;
-                uiMessage = { type: 'success', text: 'Payment successful! Application is now complete.' };
-                setTimeout(() => goto('/student'), 2000);
-            } else {
-                uiMessage = { type: 'danger', text: result.data?.message || 'Payment failed.' };
-            }
-        } catch (e) {
-            uiMessage = { type: 'danger', text: 'Payment error.' };
-        } finally {
-            stopLoading();
-        }
-    }
-
     // Derived stores for filtering options
     $: uniqueColleges = Array.from(new Map(data.courses.map((c: any) => [c.colleges?.id, c.colleges])).values()).filter(c => c);
     $: filteredCourses = selectedCollegeId 
@@ -119,6 +92,10 @@
     // Filter available form types based on enabled forms for selected Course/Cycle
     $: availableFormTypes = data.formTypes.filter((ft: any) => {
         if (!selectedCourseId || !selectedCycleId) return false;
+        
+        // Filter by database permission flag (if it exists)
+        if (ft.student_can_apply === false) return false;
+
         return data.enabledForms?.some((ef: any) => 
             ef.course_id === selectedCourseId && 
             ef.cycle_id === selectedCycleId && 
@@ -134,6 +111,7 @@
         selectedCycleId = '';
         selectedFormType = '';
         currentAdmissionFormSchema = null;
+        hasAutoChecked = false; // Reset auto-check
         console.log('Resetting selections.');
     }
 
@@ -143,22 +121,30 @@
         selectedCycleId = '';
         selectedFormType = '';
         currentAdmissionFormSchema = null;
+        hasAutoChecked = false; // Reset auto-check
         console.log('Resetting selections.');
     }
 
+    let hasAutoChecked = false;
+    
     // Reactivity block for filtering form types and checking applications
     $: {
         console.log('--- Reactive Block Triggered ---');
         console.log('Current Selections:', { selectedCollegeId, selectedCourseId, selectedCycleId, selectedFormType, selectedBranchId });
         
         // Only check for "any" existing application if NOT loading a specific one from URL
-        // This prevents race conditions where URL sets one type (e.g. Merit) but this finds another (e.g. Provisional)
         const urlAppId = $page.url.searchParams.get('applicationId');
-        // Only check for "any" existing application if NOT loading a specific one from URL
-        // AND if form type is not yet selected (to avoid overriding user choice)
-        if (selectedCourseId && selectedCycleId && !urlAppId && !selectedFormType) {
-            console.log('Course and Cycle selected. Checking for existing applications and loading schema...');
-            checkAnyExistingApplication(); // This will try to set selectedFormType
+        
+        // Only auto-check once when Course/Cycle are selected and no type is chosen yet
+        if (selectedCourseId && selectedCycleId && !urlAppId && !selectedFormType && !hasAutoChecked) {
+            console.log('Course and Cycle selected. Checking for existing applications...');
+            checkAnyExistingApplication();
+            hasAutoChecked = true;
+        }
+        
+        // Reset auto-check flag if Course/Cycle changes
+        if (!selectedCourseId || !selectedCycleId) {
+            hasAutoChecked = false;
         }
         
         if (selectedCourseId && selectedCycleId && selectedFormType) {
@@ -613,12 +599,20 @@
             <div class="modal-body text-center">
                 <p class="lead">Amount Due</p>
                 <h2 class="text-primary mb-4">₹ {currentFeeAmount.toFixed(2)}</h2>
-                <p class="text-muted small">This is a secure payment gateway integration (Mock).</p>
+                <p class="text-muted small">This is a secure payment gateway integration.</p>
             </div>
             <div class="modal-footer justify-content-center">
-                <button type="button" class="btn btn-success w-100" on:click={handlePayFee}>
-                    Pay Now <i class="bi bi-credit-card ms-2"></i>
-                </button>
+                {#if currentApplicationId}
+                    <PaymentButton 
+                        applicationId={currentApplicationId}
+                        studentId={data.userProfile?.id || ''}
+                        amount={currentFeeAmount}
+                        paymentType="application_fee"
+                        buttonClass="btn btn-success w-100 py-2 fs-5"
+                        buttonText="Pay Now"
+                        returnUrl="/student/payments?success=Application fee paid"
+                    />
+                {/if}
             </div>
         </div>
     </div>

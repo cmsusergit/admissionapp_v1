@@ -21,12 +21,11 @@ async function updateBranding() {
     .from('universities')
     .update({
         logo_url: 'https://via.placeholder.com/150x80?text=University+Logo',
-        contact_email: 'info@university.edu',
-        contact_phone: '+91-9876543210',
-        website: 'www.university.edu',
-        footer_text: '© 2026 My University. Values. Vision. Mission.',
-        address: '123, Knowledge Park, Education City, State - 400001'
-    })
+        contact_email: 'admission@svitvasad.ac.in',
+        contact_phone: '+91-9510782981',
+        website: 'www.svitvasad.ac.in',
+        footer_text: '© 2026 SVIT, Vasad. All Rights Reserved.',
+        address: 'SVIT, Vasad, Gujarat - 388306'    })
     .neq('id', '00000000-0000-0000-0000-000000000000'); // Update all (safe for dev)
 
   if (error) {

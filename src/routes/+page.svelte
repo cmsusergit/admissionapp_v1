@@ -16,12 +16,30 @@
                     <h1 class="display-4 fw-bold text-dark mb-3">SVIT Admission Portal</h1>
                     <p class="fs-5 text-dark mb-4">Your journey to academic excellence begins here. Join our community of scholars and innovators.</p>
                     <div class="d-flex flex-wrap justify-content-center justify-content-lg-start gap-3 mt-4">
-                        <a href="/login" class="btn btn-primary btn-lg px-4 shadow-sm fw-bold">
+                        <a href="/login" class="btn btn-primary btn-lg px-5 shadow-sm fw-bold">
                             <i class="bi bi-box-arrow-in-right me-2"></i> Login to Dashboard
                         </a>
-                        <a href="/register" class="btn btn-outline-primary btn-lg px-4 fw-bold">
-                            <i class="bi bi-person-plus me-2"></i> Create Account
-                        </a>
+                    </div>
+
+                    <!-- Student Instructions -->
+                    <div class="mt-5 p-4 border rounded-3 bg-light bg-opacity-50">
+                        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-info-circle-fill text-primary me-2"></i>How to Proceed?</h5>
+                        <ul class="list-unstyled text-dark mb-0">
+                            <li class="mb-2"><i class="bi bi-google me-2 text-primary"></i>Log in using your <strong>Gmail account</strong> (Google Login).</li>
+                            <li class="mb-2"><i class="bi bi-headset me-2 text-primary"></i>New students should contact the <strong>Admission Office</strong> for credentials.</li>
+                            <li class="mt-4 pt-3 border-top">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div>
+                                        <small class="text-muted d-block">Admission Helpdesk</small>
+                                        <span class="fw-bold"><i class="bi bi-telephone-fill me-1"></i> +91 95107 82981</span>
+                                    </div>
+                                    <div class="ms-auto">
+                                        <small class="text-muted d-block">Support Email</small>
+                                        <a href="mailto:admission@svitvasad.ac.in" class="text-decoration-none fw-bold">admission@svitvasad.ac.in</a>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>
