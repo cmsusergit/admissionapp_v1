@@ -2,10 +2,15 @@
 // Static definition of the database schema for the Report Builder
 // This avoids complex introspection permissions issues.
 
+export interface JsonColumnKey {
+  key: string;
+  label: string;
+}
+
 export interface TableDefinition {
   name: string;
   label: string;
-  columns: { name: string; label: string; type: string }[];
+  columns: { name: string; label: string; type: string; jsonKeys?: JsonColumnKey[] }[];
   relationships: {
     targetTable: string;
     label: string;
@@ -80,7 +85,7 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
     columns: [
       { name: "enrollment_number", label: "College ID", type: "text" },
       { name: "admission_status", label: "Admission Status", type: "text" },
-      // Add access to profile_data JSON keys? Complex. Just standard columns for now.
+      { name: "profile_data", label: "Profile Data", type: "json", jsonKeys: [] },
     ],
     relationships: [],
   },
@@ -190,6 +195,19 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
   },
 };
 
-export function getSchema() {
-  return Object.values(DB_SCHEMA);
+export function getSchema(profileFields: { key: string; label: string }[] = []) {
+  const schemaCopy = JSON.parse(JSON.stringify(DB_SCHEMA)) as Record<string, TableDefinition>;
+
+  const profileTable = schemaCopy.student_profiles;
+  if (profileTable) {
+    const profileDataColumn = profileTable.columns.find((c) => c.name === 'profile_data');
+    if (profileDataColumn) {
+      profileDataColumn.jsonKeys = profileFields.map((field) => ({
+        key: field.key,
+        label: field.label,
+      }));
+    }
+  }
+
+  return Object.values(schemaCopy);
 }

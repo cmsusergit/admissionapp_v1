@@ -1,7 +1,7 @@
 import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import { DB_SCHEMA, getSchema } from '$lib/server/dbInspector';
-import { executeReportQuery } from '$lib/server/reportQueryBuilder';
+import { getSchema } from '$lib/server/dbInspector';
+import { executeReportQuery, buildSelectString } from '$lib/server/reportQueryBuilder';
 import { getValueByPath, formatValue } from '$lib/server/reportExporter';
 
 export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
@@ -19,10 +19,16 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     // Fetch form types for the dropdown
     const { data: formTypes } = await supabase.from('form_types').select('id, name').order('name');
 
+    // Fetch profile schema keys so nested profile_data fields can be exposed in the report builder.
+    const { data: profileFields } = await supabase
+        .from('student_profile_fields')
+        .select('key, label')
+        .order('created_at', { ascending: true });
+
     return {
         templates: templates || [],
         formTypes: formTypes || [],
-        schema: getSchema()
+        schema: getSchema(profileFields || [])
     };
 };
 
@@ -123,16 +129,7 @@ export const actions: Actions = {
         if (!table || !column) return fail(400, { message: 'Table and Column required' });
 
         try {
-            // Transform dot notation to PostgREST select syntax
-            // e.g. 'users.full_name' -> 'users(full_name)'
-            // e.g. 'applications.courses.name' -> 'applications(courses(name))'
-            
-            // Simple recursive parser or just handle 1-2 levels which is common
-            const parts = column.split('.');
-            let selectString = parts[parts.length - 1];
-            for (let i = parts.length - 2; i >= 0; i--) {
-                selectString = `${parts[i]}(${selectString})`;
-            }
+            const selectString = buildSelectString([{ path: column, label: '' }], table);
 
             // Construct query
             // We fetch 50 rows to sample unique values.

@@ -1,17 +1,15 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
-import 'bootstrap/dist/js/bootstrap.bundle.min.js';
-    import 'bootstrap/dist/js/bootstrap.bundle.min.js'; // Ensure Bootstrap JS is available
+    import { onMount } from 'svelte';
 
     export let showModal = false;
 
     let modalElement: HTMLElement; // Reference to the modal DOM element
 
-    onMount(() => {
-        // Bootstrap requires jQuery or its own JS init
-        // If the modal is opened dynamically, ensure Bootstrap re-scans the DOM.
-        // For Svelte, onMount within the component is a good place.
-        // We ensure a 'bootstrap' global is available.
+    onMount(async () => {
+        if (typeof window !== 'undefined' && !(window as any).bootstrap) {
+            await import('bootstrap');
+        }
+
         if (typeof window !== 'undefined' && (window as any).bootstrap && modalElement) {
             const modal = new (window as any).bootstrap.Modal(modalElement);
             // This is primarily for showing/hiding. The Accordion itself relies on data-bs attributes.

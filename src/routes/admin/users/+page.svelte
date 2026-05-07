@@ -311,6 +311,11 @@
                     <input type="hidden" name="id" value={$currentUser.id} />
                     
                     <div class="mb-3">
+                        <label for="edit-fullname" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="edit-fullname" name="full_name" bind:value={$currentUser.full_name} required />
+                    </div>
+
+                    <div class="mb-3">
                         <label for="edit-role" class="form-label">Role</label>
                         <select class="form-select" id="edit-role" name="role" bind:value={$currentUser.role} required>
                             {#each roles as role}

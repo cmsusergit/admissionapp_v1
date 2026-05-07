@@ -66,9 +66,8 @@
       formType = "sdk";
       formEndpointUrl = "";
       formConfig = `{
-  "merchant_id": "",
-  "key_id": "",
-  "key_secret": ""
+  "merchant_key": "",
+  "merchant_salt": ""
 }`;
     }
     showModal = true;
@@ -332,8 +331,8 @@
                 rows="8"
                 bind:value={formConfig}
                 placeholder={`{
-  "key_id": "...",
-  "key_secret": "..."
+  "merchant_key": "...",
+  "merchant_salt": "..."
 }`}
               ></textarea>
               <div class="form-text text-danger">
