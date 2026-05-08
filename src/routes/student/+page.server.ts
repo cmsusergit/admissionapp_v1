@@ -38,6 +38,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     // Ideally we should update userProfile in locals for downstream use, but locals is per-request.
     // We will rely on the role check passing now.
 
+    const profileId = currentProfile?.id || authenticatedUser.id;
+
     // Fetch independent data concurrently
     const [
         { data: activeYears },
@@ -58,7 +60,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 account_admissions(admission_number),
                 merit_list_entries(merit_rank, merit_score)
             `)
-            .eq('student_id', userProfile.id),
+            .eq('student_id', profileId),
         supabase
             .from('admission_forms')
             .select('course_id, cycle_id, form_type, is_enabled, is_merit_published')

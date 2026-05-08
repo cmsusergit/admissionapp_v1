@@ -10,7 +10,7 @@
 
     // Helper to find if an application already exists for a course in an active cycle
     $: getExistingApplication = (courseId: string) => {
-        return data.applications.find(app => 
+        return (data.applications || []).find(app => 
             app.course_id === courseId && 
             activeCycleIds.includes(app.cycle_id)
         );
