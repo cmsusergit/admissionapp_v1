@@ -12,14 +12,26 @@ export const load: LayoutServerLoad = async ({ locals: { supabase, getAuthentica
         throw redirect(303, '/login'); // Redirect non-students or unauthenticated users
     }
 
-    const { data: studentProfile, error: profileError } = await supabase
-        .from('student_profiles')
-        .select('profile_data, enrollment_number, admission_status')
-        .eq('user_id', userProfile.id)
-        .maybeSingle();
+    let studentProfile = null;
+    
+    try {
+        const { data, error: profileError } = await supabase
+            .from('student_profiles')
+            .select('profile_data, enrollment_number, admission_status')
+            .eq('user_id', userProfile.id)
+            .maybeSingle();
 
-    if (profileError) {
-        console.error('Error fetching student profile:', profileError.message);
+        if (profileError) {
+            // PGRST116 means "no rows found" which is expected - not an error
+            if (profileError.code !== 'PGRST116') {
+                console.error('Error fetching student profile:', profileError.message);
+            }
+        } else {
+            studentProfile = data;
+        }
+    } catch (err) {
+        console.error('Exception fetching student profile:', err);
+        // Continue without profile data rather than crashing
     }
 
     return {

@@ -1103,15 +1103,15 @@ export const actions: Actions = {
 
     const amount = form?.form_fee || 0;
 
-    // 3. Record payment in payments table
-    const { error: payError } = await supabaseAdmin.from("payments").insert({
+    // 3. Record payment in transactions table
+    const { error: payError } = await supabaseAdmin.from("transactions").insert({
+      student_id: authenticatedUser.id,
       application_id,
       amount,
-      payment_type: "application_fee",
-      status: "completed",
-      payment_date: new Date().toISOString(),
-      transaction_id: `MANUAL-${Date.now()}`,
-      metadata: { manual_override_by: userProfile.id }
+      currency: 'INR',
+      status: "success",
+      gateway_transaction_id: `MANUAL-${Date.now()}`,
+      gateway_response: { manual_override_by: userProfile.id }
     });
 
     if (payError) {
@@ -1134,5 +1134,149 @@ export const actions: Actions = {
       success: true,
       message: "Application fee marked as paid successfully.",
     };
+  },
+
+  undoManualPayment: async ({ request, locals: { getAuthenticatedUser, userProfile } }) => {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (!authenticatedUser) {
+      throw redirect(303, '/login');
+    }
+
+    if (userProfile?.role !== 'adm_officer' && userProfile?.role !== 'admin') {
+      return fail(403, { message: 'Unauthorized. Only admin officers can undo payments.' });
+    }
+
+    const supabaseAdmin = createClient(
+      PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    const formData = await request.formData();
+    const application_id = formData.get('application_id') as string;
+
+    if (!application_id) {
+      return fail(400, { message: 'Application ID is required.' });
+    }
+
+    try {
+      // 1. Find and delete the manually recorded transaction
+      const { data: transactions, error: fetchError } = await supabaseAdmin
+        .from('transactions')
+        .select('id')
+        .eq('application_id', application_id)
+        .not('gateway_response->manual_override_by', 'is', null);
+
+      if (fetchError) {
+        console.error('Error fetching manual transaction:', fetchError.message);
+        return fail(500, { message: 'Failed to fetch transaction records.' });
+      }
+
+      // Delete the manual payment record(s)
+      if (transactions && transactions.length > 0) {
+        const { error: deleteError } = await supabaseAdmin
+          .from('transactions')
+          .delete()
+          .in('id', (transactions as any[]).map((t: any) => t.id));
+
+        if (deleteError) {
+          console.error('Error deleting manual transaction:', deleteError.message);
+          return fail(500, { message: 'Failed to delete transaction record.' });
+        }
+      }
+
+      // 2. Reset application_fee_status to pending
+      const { error: updateError } = await supabaseAdmin
+        .from('applications')
+        .update({ application_fee_status: 'pending' })
+        .eq('id', application_id);
+
+      if (updateError) {
+        console.error('Error resetting application fee status:', updateError.message);
+        return fail(500, { message: 'Failed to reset fee status.' });
+      }
+
+      return {
+        success: true,
+        message: 'Manual payment successfully undone. Fee status reset to pending.',
+      };
+    } catch (err) {
+      console.error('Exception in undoManualPayment:', err);
+      return fail(500, { message: 'An unexpected error occurred while undoing payment.' });
+    }
+  },
+
+  resetAppFeeStatus: async ({ request, locals: { getAuthenticatedUser, userProfile } }) => {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (!authenticatedUser) {
+      throw redirect(303, '/login');
+    }
+
+    if (userProfile?.role !== 'adm_officer' && userProfile?.role !== 'admin') {
+      return fail(403, { message: 'Unauthorized. Only admin officers can reset fee status.' });
+    }
+
+    const supabaseAdmin = createClient(
+      PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    const formData = await request.formData();
+    const application_id = formData.get('application_id') as string;
+
+    if (!application_id) {
+      return fail(400, { message: 'Application ID is required.' });
+    }
+
+    try {
+      // 1. Fetch application and admission form to check if fees are required
+      const { data: app, error: appError } = await supabaseAdmin
+        .from('applications')
+        .select('id, course_id, cycle_id, form_type, application_fee_status')
+        .eq('id', application_id)
+        .single();
+
+      if (appError || !app) {
+        return fail(404, { message: 'Application not found.' });
+      }
+
+      // 2. Check if this application requires fees
+      const { data: form, error: formError } = await supabaseAdmin
+        .from('admission_forms')
+        .select('form_fee')
+        .eq('course_id', app.course_id)
+        .eq('cycle_id', app.cycle_id)
+        .eq('form_type', app.form_type)
+        .maybeSingle();
+
+      if (formError) {
+        console.error('Error fetching admission form:', formError.message);
+        return fail(500, { message: 'Failed to check fee requirements.' });
+      }
+
+      const formFee = form?.form_fee || 0;
+
+      if (formFee === 0) {
+        return fail(400, { message: 'This application does not require application fees.' });
+      }
+
+      // 3. Reset application_fee_status to pending
+      const { error: updateError } = await supabaseAdmin
+        .from('applications')
+        .update({ application_fee_status: 'pending' })
+        .eq('id', application_id);
+
+      if (updateError) {
+        console.error('Error resetting application fee status:', updateError.message);
+        return fail(500, { message: 'Failed to reset fee status.' });
+      }
+
+      return {
+        success: true,
+        message: `Application fee status reset to pending (Amount: ₹${formFee})`,
+      };
+    } catch (err) {
+      console.error('Exception in resetAppFeeStatus:', err);
+      return fail(500, { message: 'An unexpected error occurred while resetting fee status.' });
+    }
   },
 };

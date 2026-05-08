@@ -125,10 +125,10 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     // Fetch existing payments for all applications
     const applicationIds = allApplications.map(app => app.id);
     const { data: payments, error: paymentsError } = await supabase
-        .from('payments')
-        .select('id, application_id, payment_type, amount, status, payment_date, transaction_id')
+        .from('transactions')
+        .select('id, application_id, gateway_response, amount, status, created_at')
         .in('application_id', applicationIds)
-        .order('payment_date', { ascending: false });
+        .order('created_at', { ascending: false });
 
     if (paymentsError) {
         console.error('Error fetching payments:', paymentsError.message);
@@ -196,14 +196,15 @@ export const actions: Actions = {
             return fail(400, { message: paymentMessage, error: true });
         }
 
-        // Record payment in the payments table
-        const { error: insertError } = await supabase.from('payments').insert({
+        // Record payment in the transactions table
+        const { error: insertError } = await supabase.from('transactions').insert({
+            student_id: authenticatedUser.id,
             application_id,
             amount,
-            transaction_id,
-            status: paymentStatus,
-            payment_type,
-            payment_date: new Date().toISOString()
+            currency: 'INR',
+            status: paymentStatus === 'completed' ? 'success' : 'failed',
+            gateway_transaction_id: transaction_id,
+            gateway_response: { payment_type }
         });
 
         if (insertError) {

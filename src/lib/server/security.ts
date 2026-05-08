@@ -42,7 +42,7 @@ export function applyRoleBasedCollegeFilter(query: any, userProfile: any, entity
                 return query.eq('applications.courses.college_id', cid);
                 
             case 'fee_structures':
-                 return query.eq('course_id.college_id', cid); // Assuming join path exists or handled via course_id lookup
+                 return query.eq('courses.college_id', cid); // Join path 'courses' must be included in .select()
             
             case 'circulars':
                 // circulars -> course_id -> college_id OR college_id column if exists
