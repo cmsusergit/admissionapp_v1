@@ -61,6 +61,31 @@
             default: return 'background-color: #ffffff; border-left: 5px solid #dee2e6;'; // Default White
         }
     }
+
+    // Helper to get payment fee status badge
+    function getPaymentStatusBadge(status: string) {
+        switch (status?.toLowerCase()) {
+            case 'paid':
+            case 'completed':
+                return { class: 'bg-success', icon: 'bi-check-circle-fill', text: 'Paid' };
+            case 'pending':
+            case 'initiated':
+                return { class: 'bg-warning text-dark', icon: 'bi-hourglass-split', text: 'Pending' };
+            case 'submitted':
+                return { class: 'bg-info', icon: 'bi-check2-square', text: 'Submitted' };
+            case 'processing':
+                return { class: 'bg-primary', icon: 'bi-arrow-repeat', text: 'Processing' };
+            case 'failed':
+            case 'rejected':
+                return { class: 'bg-danger', icon: 'bi-x-circle-fill', text: 'Failed' };
+            case 'cancelled':
+                return { class: 'bg-secondary', icon: 'bi-stop-circle-fill', text: 'Cancelled' };
+            case 'not_applicable':
+                return { class: 'bg-light text-dark border', icon: 'bi-dash-circle', text: 'N/A' };
+            default:
+                return { class: 'bg-secondary', icon: 'bi-question-circle', text: status || 'Unknown' };
+        }
+    }
 </script>
 
 <div class="container-fluid">
@@ -178,15 +203,31 @@
                                 {@const pendingDocs = app.documents?.filter((d: any) => d.status === 'pending').length || 0}
                                 {@const approvedDocs = app.documents?.filter((d: any) => d.status === 'approved').length || 0}
                                 {@const rejectedDocs = app.documents?.filter((d: any) => d.status === 'rejected').length || 0}
-                                <div class="list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm" style="{getStatusRowStyle(app.status)}">
-                                    <div>
+                                {@const feeStatusBadge = getPaymentStatusBadge(app.application_fee_status)}
+                                <div class="list-group-item d-flex justify-content-between align-items-start mb-2 shadow-sm" style="{getStatusRowStyle(app.status)}">
+                                    <div style="flex: 1;">
                                         <strong>{appAny.courses?.name}</strong>
                                         {#if appAny.branches?.name} <span class="badge bg-secondary ms-1">{appAny.branches.name}</span> {/if}
                                         <span class="badge bg-light text-dark border ms-1">{app.form_type || 'N/A'}</span>
                                         <br/>
                                         <small class="text-muted">{appAny.admission_cycles?.name} ({appAny.admission_cycles?.academic_years?.name})</small>
                                         <br />
-                                        <small class="fw-bold">Status: {app.status.toUpperCase()}</small>
+                                        <small class="fw-bold">Application Status: 
+                                            <span class="badge {app.status === 'approved' ? 'bg-success' : app.status === 'rejected' ? 'bg-danger' : app.status === 'submitted' ? 'bg-info' : 'bg-warning'}">
+                                                {app.status.toUpperCase()}
+                                            </span>
+                                        </small>
+                                        
+                                        <!-- Payment Fee Status Badge -->
+                                        {#if app.form_fee > 0}
+                                            <br />
+                                            <small class="fw-bold mt-2 d-inline-block">Application Fee: 
+                                                <span class="badge {feeStatusBadge.class} d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 0.3rem 0.5rem; margin-top: 0.2rem;">
+                                                    <i class="bi {feeStatusBadge.icon}"></i>
+                                                    {feeStatusBadge.text}
+                                                </span>
+                                            </small>
+                                        {/if}
                                         
                                         <!-- Merit Status (Prominent) -->
                                         {#if app.is_merit_published && app.merit_rank}
@@ -194,7 +235,7 @@
                                                 <div class="d-flex align-items-center justify-content-between">
                                                     <div>
                                                         <h5 class="mb-0 text-primary fw-bold">
-                                                            Merit Rank: #{app.merit_rank}
+                                                            <i class="bi bi-trophy-fill me-1"></i>Merit Rank: #{app.merit_rank}
                                                         </h5>
                                                     </div>
                                                     {#if app.status === 'waitlisted'}
@@ -209,11 +250,16 @@
                                         {/if}
 
                                         <div class="mt-2">
-                                            <span class="badge bg-secondary">Docs: {approvedDocs} Approved, {pendingDocs} Pending, {rejectedDocs} Rejected</span>
+                                            <span class="badge bg-secondary">
+                                                <i class="bi bi-file-earmark me-1"></i>
+                                                Docs: {approvedDocs} <span class="text-success">✓</span>, {pendingDocs} <span class="text-warning">⏳</span>, {rejectedDocs} <span class="text-danger">✗</span>
+                                            </span>
                                         </div>
                                     </div>
-                                    <div>
-                                        <a href="/student/apply?applicationId={app.id}" class="btn btn-sm btn-outline-primary me-2">View/Edit</a>
+                                    <div style="margin-left: 1rem;">
+                                        <a href="/student/apply?applicationId={app.id}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-pencil-square me-1"></i>View/Edit
+                                        </a>
                                     </div>
                                 </div>
                             {/each}
@@ -233,5 +279,55 @@
 <style>
     .modal {
         background-color: rgba(0, 0, 0, 0.5); /* Dim the background */
+    }
+
+    .badge {
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.2s ease;
+    }
+
+    .badge i {
+        font-size: 0.85em;
+    }
+
+    .list-group-item {
+        border-radius: 0.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .list-group-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .card {
+        border: 1px solid #dee2e6;
+        transition: all 0.3s ease;
+    }
+
+    .card:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+        font-weight: 600;
+    }
+
+    .btn-sm {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.6rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-sm:hover {
+        transform: translateY(-1px);
+    }
+
+    .alert {
+        border-radius: 0.5rem;
+        border-left: 4px solid currentColor;
     }
 </style>

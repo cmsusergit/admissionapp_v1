@@ -29,6 +29,45 @@
         const paid = getTuitionPaidAmount(appId);
         return totalFee - paid;
     };
+
+    // Helper to get payment status badge styling and icon
+    function getPaymentStatusBadge(status: string) {
+        switch (status?.toLowerCase()) {
+            case 'paid':
+            case 'completed':
+                return { class: 'bg-success', icon: 'bi-check-circle-fill', text: 'Paid' };
+            case 'pending':
+            case 'initiated':
+                return { class: 'bg-warning text-dark', icon: 'bi-hourglass-split', text: 'Pending' };
+            case 'submitted':
+                return { class: 'bg-info', icon: 'bi-check2-square', text: 'Submitted' };
+            case 'processing':
+                return { class: 'bg-primary', icon: 'bi-arrow-repeat', text: 'Processing' };
+            case 'failed':
+            case 'rejected':
+                return { class: 'bg-danger', icon: 'bi-x-circle-fill', text: 'Failed' };
+            case 'cancelled':
+                return { class: 'bg-secondary', icon: 'bi-stop-circle-fill', text: 'Cancelled' };
+            case 'not_applicable':
+                return { class: 'bg-light text-dark border', icon: 'bi-dash-circle', text: 'N/A' };
+            default:
+                return { class: 'bg-secondary', icon: 'bi-question-circle', text: status || 'Unknown' };
+        }
+    }
+
+    // Helper to get payment type badge color
+    function getPaymentTypeBadge(paymentType: string) {
+        switch (paymentType?.toLowerCase()) {
+            case 'application_fee':
+                return { class: 'bg-info text-white', text: 'Application Fee', icon: 'bi-file-earmark' };
+            case 'provisional_fee':
+                return { class: 'bg-warning text-dark', text: 'Provisional Fee', icon: 'bi-hourglass' };
+            case 'tuition_fee':
+                return { class: 'bg-primary text-white', text: 'Tuition Fee', icon: 'bi-book' };
+            default:
+                return { class: 'bg-secondary', text: paymentType || 'Unknown', icon: 'bi-info-circle' };
+        }
+    }
 </script>
 
 <div class="container-fluid">
@@ -62,18 +101,23 @@
                         <tbody>
                             {#each data.applicationsWithFees as app}
                                 {@const appAny = app as any}
+                                {@const statusBadge = getPaymentStatusBadge(appAny.application_fee_status)}
                                 <tr>
                                     <td>{appAny.courses?.name}</td>
                                     <td>{appAny.admission_cycles?.academic_years?.name}</td>
-                                    <td>{appAny.form_fee}</td>
+                                    <td>₹{appAny.form_fee}</td>
                                     <td>
-                                        <span class="badge {appAny.application_fee_status === 'paid' ? 'bg-success' : 'bg-warning text-dark'}">
-                                            {appAny.application_fee_status === 'not_applicable' ? 'Pending' : appAny.application_fee_status}
+                                        <span class="badge {statusBadge.class} d-inline-flex align-items-center gap-1" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                            <i class="bi {statusBadge.icon}"></i>
+                                            {statusBadge.text}
                                         </span>
                                     </td>
                                     <td>
-                                        {#if appAny.application_fee_status === 'paid'}
-                                            <span class="badge bg-success">Paid</span>
+                                        {#if appAny.application_fee_status === 'paid' || appAny.application_fee_status === 'completed'}
+                                            <span class="badge bg-success d-inline-flex align-items-center gap-1" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                                <i class="bi bi-check-circle-fill"></i>
+                                                Paid
+                                            </span>
                                         {:else if appAny.form_fee > 0}
                                             <PaymentButton 
                                                 applicationId={appAny.id} 
@@ -113,19 +157,28 @@
                                 <th>Course</th>
                                 <th>Academic Year</th>
                                 <th>Fee Amount</th>
+                                <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {#each data.provisionalFeeApps as app}
                                 {@const appAny = app as any}
+                                {@const provEnrollmentStatus = appAny.account_admissions?.[0]?.enrollment_status || 'pending'}
+                                {@const statusBadge = getPaymentStatusBadge(provEnrollmentStatus)}
                                 <tr>
                                     <td>{appAny.account_admissions?.[0]?.admission_number || 'N/A'}</td>
                                     <td>{appAny.courses?.name}</td>
                                     <td>{appAny.admission_cycles?.academic_years?.name}</td>
-                                    <td>{appAny.prov_fee || 'N/A'}</td>
+                                    <td><strong>₹{appAny.prov_fee || 'N/A'}</strong></td>
                                     <td>
-                                        {#if appAny.prov_fee > 0}
+                                        <span class="badge {statusBadge.class} d-inline-flex align-items-center gap-1" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+                                            <i class="bi {statusBadge.icon}"></i>
+                                            {statusBadge.text}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {#if appAny.prov_fee > 0 && provEnrollmentStatus !== 'confirmed'}
                                             <PaymentButton 
                                                 applicationId={appAny.id} 
                                                 studentId={$page.data.session?.user?.id || ''} 
@@ -134,6 +187,11 @@
                                                 buttonText="Pay Provisional Fee" 
                                                 buttonClass="btn btn-sm btn-info" 
                                             />
+                                        {:else if provEnrollmentStatus === 'confirmed'}
+                                            <span class="badge bg-success d-inline-flex align-items-center gap-1" style="font-size: 0.8rem; padding: 0.4rem 0.6rem;">
+                                                <i class="bi bi-check-circle-fill"></i>
+                                                Confirmed
+                                            </span>
                                         {:else}
                                             <span class="text-muted small">No Fee Required</span>
                                         {/if}
@@ -166,6 +224,7 @@
                                 <th>Total Fee</th>
                                 <th>Paid</th>
                                 <th>Outstanding</th>
+                                <th>Progress</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -175,13 +234,34 @@
                                 {@const feeStructure = getFeeStructure(appAny.id)}
                                 {@const paidAmount = getTuitionPaidAmount(appAny.id)}
                                 {@const outstanding = getOutstandingTuition(appAny.id)}
+                                {@const progressPercent = feeStructure ? Math.round((paidAmount / feeStructure.total_fee) * 100) : 0}
+                                {@const isFullyPaid = outstanding !== null && outstanding <= 0}
                                 <tr>
                                     <td>{appAny.account_admissions?.[0]?.admission_number || 'N/A'}</td>
                                     <td>{appAny.courses?.name}</td>
                                     <td>{appAny.admission_cycles?.academic_years?.name}</td>
-                                    <td>{feeStructure?.total_fee || 'N/A'}</td>
-                                    <td>{paidAmount}</td>
-                                    <td>{outstanding !== null ? outstanding : 'N/A'}</td>
+                                    <td><strong>₹{feeStructure?.total_fee || 'N/A'}</strong></td>
+                                    <td><span class="badge bg-success">₹{paidAmount}</span></td>
+                                    <td>
+                                        {#if outstanding !== null}
+                                            <span class="badge {outstanding > 0 ? 'bg-danger' : 'bg-success'}">
+                                                ₹{outstanding > 0 ? outstanding : 0}
+                                            </span>
+                                        {:else}
+                                            <span class="text-muted">N/A</span>
+                                        {/if}
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px; width: 100px;">
+                                            <div 
+                                                class="progress-bar {isFullyPaid ? 'bg-success' : 'bg-info'}" 
+                                                role="progressbar" 
+                                                style="width: {progressPercent}%"
+                                                title="{progressPercent}% paid">
+                                                <small>{progressPercent}%</small>
+                                            </div>
+                                        </div>
+                                    </td>
                                     <td>
                                         {#if outstanding && outstanding > 0}
                                             <PaymentButton 
@@ -192,8 +272,11 @@
                                                 buttonText="Pay Tuition" 
                                                 buttonClass="btn btn-sm btn-success" 
                                             />
-                                        {:else if outstanding !== null}
-                                            <span class="badge bg-success">Paid</span>
+                                        {:else if isFullyPaid}
+                                            <span class="badge bg-success d-inline-flex align-items-center gap-1" style="font-size: 0.8rem; padding: 0.4rem 0.6rem;">
+                                                <i class="bi bi-check-circle-fill"></i>
+                                                Paid
+                                            </span>
                                         {/if}
                                     </td>
                                 </tr>
@@ -229,24 +312,32 @@
                         </thead>
                         <tbody>
                             {#each data.payments as payment}
+                                {@const typeBadge = getPaymentTypeBadge(payment.payment_type)}
+                                {@const statusBadge = getPaymentStatusBadge(payment.status)}
                                 <tr>
-                                    <td title={payment.application_id}>{payment.application_id.substring(0, 8)}...</td>
+                                    <td title={payment.application_id}><small>{payment.application_id.substring(0, 8)}...</small></td>
                                     <td>
-                                        <span class="badge {payment.payment_type === 'application_fee' ? 'bg-info text-dark' : payment.payment_type === 'provisional_fee' ? 'bg-warning text-dark' : 'bg-primary'}">
-                                            {payment.payment_type === 'application_fee' ? 'App Fee' : payment.payment_type === 'provisional_fee' ? 'Prov. Fee' : 'Tuition'}
+                                        <span class="badge {typeBadge.class} d-inline-flex align-items-center gap-1" style="font-size: 0.8rem; padding: 0.4rem 0.6rem;">
+                                            <i class="bi {typeBadge.icon}"></i>
+                                            {typeBadge.text}
                                         </span>
                                     </td>
-                                    <td>{payment.amount}</td>
-                                    <td>{payment.transaction_id}</td>
-                                    <td><span class="badge {payment.status === 'completed' ? 'bg-success' : 'bg-danger'}">{payment.status}</span></td>
-                                    <td>{new Date(payment.payment_date).toLocaleDateString()}</td>
+                                    <td><strong>₹{payment.amount}</strong></td>
+                                    <td><small class="text-muted">{payment.transaction_id?.substring(0, 12)}...</small></td>
+                                    <td>
+                                        <span class="badge {statusBadge.class} d-inline-flex align-items-center gap-1" style="font-size: 0.8rem; padding: 0.4rem 0.6rem;">
+                                            <i class="bi {statusBadge.icon}"></i>
+                                            {statusBadge.text}
+                                        </span>
+                                    </td>
+                                    <td><small>{new Date(payment.payment_date).toLocaleDateString()}</small></td>
                                     <td>
                                         {#if payment.status === 'completed'}
-                                            <a href="/receipts/print?payment_id={payment.id}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                            <a href="/receipts/print?payment_id={payment.id}" target="_blank" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1">
                                                 <i class="bi bi-printer"></i> Print
                                             </a>
                                         {:else}
-                                            <span class="text-muted">-</span>
+                                            <span class="text-muted small">-</span>
                                         {/if}
                                     </td>
                                 </tr>
@@ -260,3 +351,51 @@
         </div>
     </div>
 </div>
+
+<style>
+    .badge {
+        font-weight: 500;
+        letter-spacing: 0.3px;
+    }
+
+    .badge i {
+        font-size: 0.9em;
+    }
+
+    .progress {
+        background-color: #e9ecef;
+        border-radius: 0.25rem;
+    }
+
+    .progress-bar {
+        transition: width 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .table-hover tbody tr:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
+
+    .card {
+        border: 1px solid #dee2e6;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        transition: box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+        font-weight: 600;
+    }
+
+    .btn-sm {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.6rem;
+    }
+</style>
