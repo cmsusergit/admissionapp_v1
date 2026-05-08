@@ -117,7 +117,8 @@ export async function createPaymentOrder(
 
              // 2. Construct Hash using the exact PayU sequence.
              // Sequence: key|txnid|amount|productinfo|firstname|email|udf1..udf10|salt
-             const udfFields = Array(10).fill('');
+             const udf1 = transaction.id;
+             const udfFields = [udf1, '', '', '', '', '', '', '', '', ''];
              const hashString = [key, txnid, amount, productinfo, firstname, email, ...udfFields, salt].join('|');
              const hash = crypto.createHash('sha512').update(hashString).digest('hex');
 
@@ -128,7 +129,7 @@ export async function createPaymentOrder(
              payuParams = {
                  key, txnid, amount, productinfo, firstname, email, phone, hash, surl, furl,
                  service_provider: 'payu_paisa',
-                 udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+                 udf1, udf2: '', udf3: '', udf4: '', udf5: '',
                  udf6: '', udf7: '', udf8: '', udf9: '', udf10: ''
              };
 
@@ -206,7 +207,17 @@ export async function verifyPayment(
     
     if (gateway.provider_name === 'PayU' && salt) {
         // Reverse Hash: sha512(salt|status|udf10|udf9|udf8|udf7|udf6|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
-        const status = gatewayResponse.status;
+        const status = gatewayResponse.status || '';
+        const udf10 = gatewayResponse.udf10 || '';
+        const udf9 = gatewayResponse.udf9 || '';
+        const udf8 = gatewayResponse.udf8 || '';
+        const udf7 = gatewayResponse.udf7 || '';
+        const udf6 = gatewayResponse.udf6 || '';
+        const udf5 = gatewayResponse.udf5 || '';
+        const udf4 = gatewayResponse.udf4 || '';
+        const udf3 = gatewayResponse.udf3 || '';
+        const udf2 = gatewayResponse.udf2 || '';
+        const udf1 = gatewayResponse.udf1 || '';
         const email = gatewayResponse.email || '';
         const firstname = gatewayResponse.firstname || '';
         const productinfo = gatewayResponse.productinfo || '';
@@ -214,8 +225,26 @@ export async function verifyPayment(
         const txnid = gatewayResponse.txnid || '';
         const key = gatewayResponse.key || '';
         
-        // Exactly 17 pipes for 18 items: salt|status|udf10|udf9|udf8|udf7|udf6|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
-        const reverseHashString = `${salt}|${status}|||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
+        const reverseHashString = [
+            salt,
+            status,
+            udf10,
+            udf9,
+            udf8,
+            udf7,
+            udf6,
+            udf5,
+            udf4,
+            udf3,
+            udf2,
+            udf1,
+            email,
+            firstname,
+            productinfo,
+            amount,
+            txnid,
+            key
+        ].join('|');
         const calculatedHash = crypto.createHash('sha512').update(reverseHashString).digest('hex');
         
         isValid = (calculatedHash === gatewayResponse.hash);

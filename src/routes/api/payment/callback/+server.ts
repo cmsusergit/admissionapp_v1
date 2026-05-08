@@ -29,11 +29,13 @@ export const POST: RequestHandler = async ({ request, locals: { supabase } }) =>
 };
 
 async function handleCallback(params: URLSearchParams, supabase: any) {
-    const transactionId = params.get('transaction_id') || params.get('txnid');
+    const providedTransactionId = params.get('transaction_id');
+    const payuTxnId = params.get('txnid');
+    const internalTransactionId = providedTransactionId || params.get('udf1');
     const status = params.get('status'); 
-    
-    if (!transactionId) {
-        throw redirect(303, '/student/payments?error=Missing transaction ID');
+
+    if (!providedTransactionId && !payuTxnId && !internalTransactionId) {
+        throw redirect(303, '/student/payments?error=Missing transaction reference');
     }
 
     const gatewayResponse = Object.fromEntries(params.entries());
@@ -44,27 +46,40 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
     });
 
     try {
-        // Fetch transaction to preserve metadata before verifyPayment overwrites it
-        const { data: initialTx } = await supabaseAdmin.from('transactions').select('gateway_response').eq('id', transactionId).single();
-        const initMeta = initialTx?.gateway_response?.init_meta;
+        // Resolve the transaction by internal ID or gateway txnid.
+        let transactionQuery = supabaseAdmin.from('transactions').select('id, gateway_response');
+        if (internalTransactionId) {
+            transactionQuery = transactionQuery.eq('id', internalTransactionId);
+        } else if (payuTxnId) {
+            transactionQuery = transactionQuery.eq('gateway_transaction_id', payuTxnId);
+        }
+
+        const { data: initialTx, error: txError } = await transactionQuery.single();
+        if (txError || !initialTx) {
+            console.error('Transaction not found for callback:', { internalTransactionId, payuTxnId, txError });
+            throw redirect(303, '/student/payments?error=Invalid transaction reference');
+        }
+
+        const initMeta = initialTx.gateway_response?.init_meta;
         const returnUrl = initMeta?.returnUrl;
         const redirectUrl = returnUrl || '/';
+        const lookupTransactionId = initialTx.id;
 
         if (status === 'failure' || status === 'failed') {
             await supabaseAdmin
                 .from('transactions')
                 .update({ status: 'failed', gateway_response: gatewayResponse })
-                .eq('id', transactionId);
+                .eq('id', lookupTransactionId);
             throw redirect(303, redirectUrl);
         }
 
-        const verification = await verifyPayment(supabaseAdmin, transactionId, gatewayResponse);
+        const verification = await verifyPayment(supabaseAdmin, lookupTransactionId, gatewayResponse);
         
         if (verification.success) {
             const { data: transaction } = await supabaseAdmin
                 .from('transactions')
                 .select('*, applications(course_id, cycle_id, courses(college_id), admission_cycles(academic_year_id))')
-                .eq('id', transactionId)
+                .eq('id', lookupTransactionId)
                 .single();
 
             if (transaction) {
