@@ -291,16 +291,20 @@ export const actions: Actions = {
         
         const transaction_id = `HYBRID-${Date.now()}`;
 
-        const { error } = await supabase.from('payments').insert({
+        const { error } = await supabase.from('transactions').insert({
+            student_id: authenticatedUser?.id || userProfile.id,
             application_id,
             amount,
-            transaction_id,
-            receipt_number, 
-            status: 'completed',
-            payment_type,
-            payment_date: new Date(payment_date).toISOString(),
-            payment_breakdown,
-            fee_components_breakdown: currentFeeStructure?.fee_components || null
+            currency: 'INR',
+            status: 'success',
+            gateway_transaction_id: transaction_id,
+            gateway_response: { 
+                payment_type,
+                receipt_number,
+                payment_date: new Date(payment_date).toISOString(),
+                payment_breakdown,
+                fee_components_breakdown: currentFeeStructure?.fee_components || null
+            }
         });
 
         if (error) {
