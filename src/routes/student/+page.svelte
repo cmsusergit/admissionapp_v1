@@ -219,7 +219,7 @@
                                         </small>
                                         
                                         <!-- Payment Fee Status Badge -->
-                                        {#if app.form_fee > 0}
+                                        {#if app.application_fee_status}
                                             <br />
                                             <small class="fw-bold mt-2 d-inline-block">Application Fee: 
                                                 <span class="badge {feeStatusBadge.class} d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 0.3rem 0.5rem; margin-top: 0.2rem;">

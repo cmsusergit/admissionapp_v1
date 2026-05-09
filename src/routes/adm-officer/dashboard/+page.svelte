@@ -2,7 +2,6 @@
     import type { PageData } from './$types';
     import { goto } from '$app/navigation';
     import { page } from '$app/stores';
-    import * as XLSX from 'xlsx';
 
     export let data: PageData;
 
@@ -133,55 +132,15 @@
         }
     }
 
-    async function downloadCapacityReport() {
-        try {
-            const response = await fetch('/api/reports/capacity-export');
-            if (!response.ok) throw new Error('Failed to fetch data');
-            const reportData = await response.json();
-
-            if (!reportData || reportData.length === 0) {
-                alert('No data available to export.');
-                return;
-            }
-
-            const workbook = XLSX.utils.book_new();
-
-            reportData.forEach((course: any) => {
-                if (course.branches && course.branches.length > 0) {
-                    const sheetData = course.branches.map((b: any) => ({
-                        'Branch Name': b.name,
-                        'Intake Capacity': b.capacity,
-                        'Approved Applications': b.approved,
-                        'Admissions Done': b.admissions,
-                        'Vacancy': Math.max(0, b.capacity - b.admissions)
-                    }));
-
-                    const worksheet = XLSX.utils.json_to_sheet(sheetData);
-                    const sheetName = course.courseName.substring(0, 31).replace(/[\\/?*\[\]]/g, '');
-                    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-                }
-            });
-
-            if (workbook.SheetNames.length === 0) {
-                alert('No branch data found to export.');
-                return;
-            }
-
-            XLSX.writeFile(workbook, 'Admissions_Capacity_Report.xlsx');
-        } catch (error) {
-            console.error('Error generating report:', error);
-            alert('Failed to generate report.');
-        }
-    }
 </script>
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="mb-0">Admission Officer Dashboard</h1>
         <div class="d-flex gap-2">
-            <button class="btn btn-outline-success" on:click={downloadCapacityReport}>
-                <i class="bi bi-file-earmark-excel"></i> Capacity Report
-            </button>
+            <a href="/adm-officer/capacity-report" class="btn btn-outline-success">
+                <i class="bi bi-bar-chart-line"></i> Capacity Report
+            </a>
             <a href={exportUrl} class="btn btn-outline-primary" download>
                 <i class="bi bi-file-earmark-spreadsheet"></i> Export List
             </a>

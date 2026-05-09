@@ -130,6 +130,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         exact: true,
       },
       {
+        title: "Capacity Report",
+        href: "/adm-officer/capacity-report",
+        icon: "bi-bar-chart-line",
+      },
+      {
         title: "Saved Reports",
         href: "/adm-officer/saved-reports",
         icon: "bi-file-earmark-spreadsheet",
