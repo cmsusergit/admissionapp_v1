@@ -4,20 +4,20 @@
     export let data: PageData;
 
     // Extract all active admission cycle IDs to check against existing applications
-    $: activeCycleIds = (data.activeYears || []).flatMap(year => 
-        year.admission_cycles?.map(cycle => cycle.id) || []
+    $: activeCycleIds = (data.activeYears || []).flatMap((year: any) => 
+        year.admission_cycles?.map((cycle: any) => cycle.id) || []
     );
 
     // Helper to find if an application already exists for a course in an active cycle
     $: getExistingApplication = (courseId: string) => {
-        return (data.applications || []).find(app => 
+        return (data.applications || []).find((app: any) => 
             app.course_id === courseId && 
             activeCycleIds.includes(app.cycle_id)
         );
     };
 
     // Derived alerts from applications and documents
-    $: applicationAlerts = (data.applications || []).flatMap(app => {
+    $: applicationAlerts = (data.applications || []).flatMap((app: any) => {
         const alerts = [];
         const appAny = app as any;
         const courseName = appAny.courses?.name || 'Unknown Course';
@@ -31,8 +31,8 @@
         }
 
         if (app.documents) {
-            const rejectedDocs = app.documents.filter(d => d.status === 'rejected');
-            rejectedDocs.forEach(d => {
+            const rejectedDocs = app.documents.filter((d: any) => d.status === 'rejected');
+            rejectedDocs.forEach((d: any) => {
                 const doc = d as any;
                 alerts.push({ type: 'danger', message: `Document '${doc.document_type}' for ${courseName} was REJECTED. Reason: ${doc.rejection_reason || 'N/A'}` });
             });
