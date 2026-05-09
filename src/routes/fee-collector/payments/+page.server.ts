@@ -288,6 +288,9 @@ export const actions: Actions = {
         // 2. Create Receipt Record (this handles sequence generation internally)
         let receipt;
         try {
+            // Ensure we use the components from the specific scheme we just validated
+            const components = currentFeeStructure?.fee_components || [];
+            
             receipt = await createFeeReceipt(supabase, {
                 transactionId: transaction_id,
                 studentId: studentId,
@@ -299,8 +302,8 @@ export const actions: Actions = {
                 yearName: academicYearName,
                 collegeId: collegeId,
                 courseId: courseId,
-                paymentBreakdown: payment_breakdown,
-                feeComponentsBreakdown: currentFeeStructure?.fee_components || []
+                paymentBreakdown: payment_breakdown.map((m: any) => ({ ...m, mode: m.type || m.mode })),
+                feeComponentsBreakdown: components
             });
         } catch (e) {
             console.error('Error generating receipt:', e);
@@ -320,7 +323,7 @@ export const actions: Actions = {
                 payment_type,
                 receipt_number,
                 payment_date: new Date(payment_date).toISOString(),
-                payment_breakdown,
+                payment_breakdown: payment_breakdown.map((m: any) => ({ ...m, mode: m.type || m.mode })),
                 fee_components_breakdown: currentFeeStructure?.fee_components || null
             }
         });
@@ -339,7 +342,7 @@ export const actions: Actions = {
             receipt_number,
             status: 'completed',
             payment_date: new Date(payment_date).toISOString(),
-            payment_breakdown: payment_breakdown,
+            payment_breakdown: payment_breakdown.map((m: any) => ({ ...m, mode: m.type || m.mode })),
             fee_components_breakdown: currentFeeStructure?.fee_components || []
         });
 
