@@ -140,6 +140,7 @@
             alert('Failed to delete template');
         }
     }
+
 </script>
 
 <div class="container-fluid mt-4">
@@ -167,7 +168,7 @@
             {/if}
         </div>
     </div>
-    </div>
+</div>
 
     <p class="text-muted">Select filters and columns to generate a custom CSV report.</p>
 
