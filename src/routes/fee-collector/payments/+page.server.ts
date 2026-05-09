@@ -73,11 +73,21 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     admQuery = applyRoleBasedCollegeFilter(admQuery, userProfile, 'admissions');
 
-    const { data: admissions, error: admError } = await admQuery.order('admission_number');
+    const { data: rawAdmissions, error: admError } = await admQuery.order('admission_number');
 
     if (admError) {
         console.error('Error fetching admissions:', admError.message);
     }
+
+    // Fetch form types to filter non-provisional applications
+    const { data: formTypesData } = await supabase.from('form_types').select('name, is_prov');
+    const formTypesMap = new Map((formTypesData || []).map(ft => [ft.name, ft.is_prov]));
+
+    const admissions = rawAdmissions?.filter(adm => {
+        const formType = (adm.applications as any)?.form_type;
+        const isProv = formTypesMap.get(formType) || false;
+        return !isProv; // Only include non-provisional
+    }) || [];
 
     // Fetch fee schemes for dropdown
     const { data: feeSchemes } = await supabase
@@ -273,25 +283,33 @@ export const actions: Actions = {
             return fail(500, { message: 'Missing critical application details.', error: true });
         }
 
-        // 2. Generate Receipt Number
-        let receipt_number;
-        try {
-            receipt_number = await generateReceiptNumber(
-                supabase,
-                payment_type,
-                academicYearId,
-                academicYearName,
-                collegeId,
-                courseId
-            );
-        } catch (e) {
-            console.error('Error generating receipt number:', e);
-            return fail(500, { message: 'Failed to generate receipt number.', error: true });
-        }
-        
         const transaction_id = `HYBRID-${Date.now()}`;
 
-        const { error } = await supabase.from('transactions').insert({
+        // 2. Create Receipt Record (this handles sequence generation internally)
+        let receipt;
+        try {
+            receipt = await createFeeReceipt(supabase, {
+                transactionId: transaction_id,
+                studentId: studentId,
+                applicationId: application_id,
+                amount,
+                generatedBy: authenticatedUser?.id || userProfile.id,
+                paymentType: payment_type,
+                academicYearId: academicYearId,
+                yearName: academicYearName,
+                collegeId: collegeId,
+                courseId: courseId,
+                paymentBreakdown: payment_breakdown,
+                feeComponentsBreakdown: currentFeeStructure?.fee_components || []
+            });
+        } catch (e) {
+            console.error('Error generating receipt:', e);
+            return fail(500, { message: 'Failed to generate receipt.', error: true });
+        }
+        
+        const receipt_number = receipt.receipt_no;
+
+        const { error: txError } = await supabase.from('transactions').insert({
             student_id: authenticatedUser?.id || userProfile.id,
             application_id,
             amount,
@@ -307,14 +325,32 @@ export const actions: Actions = {
             }
         });
 
-        if (error) {
-            console.error('Error recording payment:', error.message);
+        if (txError) {
+            console.error('Error recording transaction:', txError.message);
+            return fail(500, { message: 'Failed to record transaction.', error: true });
+        }
+
+        // Record in `payments` table as well since it's the source of truth for categorized fees
+        const { error: payError } = await supabase.from('payments').insert({
+            application_id,
+            amount,
+            payment_type, // 'tuition_fee'
+            transaction_id,
+            receipt_number,
+            status: 'completed',
+            payment_date: new Date(payment_date).toISOString(),
+            payment_breakdown: payment_breakdown,
+            fee_components_breakdown: currentFeeStructure?.fee_components || []
+        });
+
+        if (payError) {
+            console.error('Error recording payment in payments table:', payError.message);
             return fail(500, { message: 'Failed to record payment.', error: true });
         }
 
         // Trigger auto-enrollment if this was a tuition payment
         if (payment_type === 'tuition_fee') {
-            await ensureStudentEnrolled(supabase, application_id);
+            await ensureStudentEnrolled(supabase, application_id, admission_category_code);
         }
 
         return { success: true, message: 'Payment recorded successfully!' };

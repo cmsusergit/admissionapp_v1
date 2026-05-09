@@ -7,8 +7,19 @@
     import { supabase } from '$lib/supabase'; // Client-side supabase client
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; // Import loading controls
     import PaymentButton from '$lib/components/PaymentButton.svelte';
+    import { toastStore } from '$lib/stores/toastStore';
 
     let { data, form } = $props<{ data: PageData, form: ActionData }>();
+
+    $effect(() => {
+        if (form?.message) {
+            if (form.error) {
+                toastStore.error(form.message);
+            } else {
+                toastStore.success(form.message);
+            }
+        }
+    });
 
     let studentSearchContainer: HTMLElement;
 
@@ -59,7 +70,7 @@
 
     // Initialize from preloaded application data (if loading from applicationId)
     $effect(() => {
-        if (data.preloadedApplicationData) {
+        if (data.preloadedApplicationData && !isLoadedFromApplicationId) {
             const appData = data.preloadedApplicationData;
             console.log('[DEO] Loading preloaded application data:', appData);
             
@@ -67,6 +78,7 @@
             applicationFormData = appData.form_data || {};
             currentApplicationId = appData.id;
             isEditingExistingApplication = true;
+            isLoadedFromApplicationId = true; // Mark as loaded from URL
             
             // Pre-select course, cycle, form type
             if (appData.course_id) selectedCourseId = appData.course_id;
@@ -186,7 +198,7 @@
         matchingInquiry = null; 
         
         setTimeout(() => { isProgrammaticUpdate = false; }, 1000);
-        alert('Data from inquiry has been loaded successfully.');
+        toastStore.info('Data from inquiry has been loaded successfully.');
     }
 
     $effect(() => {
@@ -693,11 +705,11 @@
 
     async function handleSaveDraft() {
         if (!selectedStudentId) {
-            alert('Please select or create a student first.');
+            toastStore.error('Please select or create a student first.');
             return;
         }
         if (branchesForSelectedCourse.length > 0 && !selectedBranchId && !isBranchSelectionDisabled) {
-            alert('Please select a Branch for this course.');
+            toastStore.error('Please select a Branch for this course.');
             return;
         }
         
@@ -710,23 +722,31 @@
         formPayload.append('form_data', JSON.stringify(applicationFormData));
         if (currentApplicationId) formPayload.append('application_id', currentApplicationId);
 
-        const response = await fetch('?/saveApplication', { method: 'POST', body: formPayload });
-        const result = deserialize(await response.text());
-        if (result.type === 'success' && result.data?.success) {
-            if (!currentApplicationId && result.data.applicationId) {
-                await goto(`/deo/apply?studentId=${selectedStudentId}&applicationId=${result.data.applicationId}`, { replaceState: true });
-                currentApplicationId = result.data.applicationId;
+        try {
+            const response = await fetch('?/saveApplication', { method: 'POST', body: formPayload });
+            const result = deserialize(await response.text());
+            if (result.type === 'success' && result.data?.success) {
+                toastStore.success('Draft saved successfully.');
+                if (!currentApplicationId && result.data.applicationId) {
+                    await goto(`/deo/apply?studentId=${selectedStudentId}&applicationId=${result.data.applicationId}`, { replaceState: true });
+                    currentApplicationId = result.data.applicationId;
+                }
+            } else if (result.type === 'failure') {
+                toastStore.error(result.data?.message || 'Failed to save draft.');
             }
+        } catch (e) {
+            console.error(e);
+            toastStore.error('An error occurred while saving.');
         }
     }
 
     async function handleSubmitApplication() {
         if (!currentApplicationId || !selectedStudentId) {
-            alert('Cannot submit without saving as draft first.');
+            toastStore.error('Cannot submit without saving as draft first.');
             return;
         }
         if (dynamicForm && !dynamicForm.validate()) {
-            alert('Please fill in all required fields.');
+            toastStore.error('Please fill in all required fields.');
             return;
         }
 
@@ -748,9 +768,15 @@
                         await goto('/deo/dashboard');
                     }
                 } else {
+                    toastStore.success('Application submitted successfully!');
                     await goto('/deo/dashboard'); 
                 }
+            } else if (result.type === 'failure') {
+                toastStore.error(result.data?.message || 'Submission failed.');
             }
+        } catch (e) {
+            console.error(e);
+            toastStore.error('An error occurred during submission.');
         } finally {
             stopLoading();
         }
@@ -770,31 +796,48 @@
         formData.append('payment_mode', paymentMode);
         formData.append('transaction_ref', transactionRef || `OFFLINE-${Date.now()}`);
 
-        const response = await fetch('?/recordPayment', { method: 'POST', body: formData });
-        const result = deserialize(await response.text());
-        stopLoading();
+        try {
+            const response = await fetch('?/recordPayment', { method: 'POST', body: formData });
+            const result = deserialize(await response.text());
+            stopLoading();
 
-        if (result.type === 'success') {
-            alert('Payment recorded successfully!');
-            showPaymentModal = false;
-            await goto('/deo/dashboard');
+            if (result.type === 'success') {
+                toastStore.success('Payment recorded successfully!');
+                showPaymentModal = false;
+                await goto('/deo/dashboard');
+            } else {
+                toastStore.error(result.data?.message || 'Failed to record payment.');
+            }
+        } catch (e) {
+            console.error(e);
+            stopLoading();
+            toastStore.error('An error occurred while recording payment.');
         }
     }
 
     async function handleDeleteDraft() {
         if (!currentApplicationId) return;
-        if (!confirm('Are you sure?')) return;
+        if (!confirm('Are you sure you want to delete this draft?')) return;
 
         startLoading();
         const formData = new FormData();
         formData.append('application_id', currentApplicationId);
-        const response = await fetch('?/deleteDraft', { method: 'POST', body: formData });
-        const result = deserialize(await response.text());
-        stopLoading();
+        
+        try {
+            const response = await fetch('?/deleteDraft', { method: 'POST', body: formData });
+            const result = deserialize(await response.text());
+            stopLoading();
 
-        if (result.type === 'success') {
-            alert('Draft deleted successfully.');
-            await goto('/deo/dashboard');
+            if (result.type === 'success') {
+                toastStore.success('Draft deleted successfully.');
+                await goto('/deo/dashboard');
+            } else {
+                toastStore.error(result.data?.message || 'Failed to delete draft.');
+            }
+        } catch (e) {
+            console.error(e);
+            stopLoading();
+            toastStore.error('An error occurred while deleting.');
         }
     }
 
@@ -806,7 +849,7 @@
 
     async function handleUpdateProfile() {
         if (profileForm && !profileForm.validate()) {
-            alert('Please fill in all required profile fields.');
+            toastStore.error('Please fill in all required profile fields.');
             return;
         }
 
@@ -823,15 +866,15 @@
             const result = deserialize(await response.text());
             
             if (result.type === 'success') {
-                alert('Profile updated successfully!');
+                toastStore.success('Profile updated successfully!');
                 showEditProfileModal = false;
                 await fetchStudentProfile(selectedStudentId);
             } else {
-                alert(result.data?.message || 'Failed to update profile.');
+                toastStore.error(result.data?.message || 'Failed to update profile.');
             }
         } catch (e) {
             console.error(e);
-            alert('An error occurred.');
+            toastStore.error('An error occurred during profile update.');
         } finally {
             stopLoading();
         }

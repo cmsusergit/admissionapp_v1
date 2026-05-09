@@ -65,20 +65,23 @@ export const POST: RequestHandler = async ({ request, locals: { getSession } }) 
             yearName = ay?.name;
         }
 
-        const paymentType = (transaction.gateway_response as any)?.init_meta?.paymentType || 'tuition_fee';
+        const initMeta = (transaction.gateway_response as any)?.init_meta || {};
+        const paymentType = initMeta.paymentType || 'tuition_fee';
 
         const receipt = await createFeeReceipt(supabaseAdmin, {
             transactionId: transaction.id,
             studentId: transaction.student_id,
             applicationId: transaction.application_id,
             amount: transaction.amount,
-            details: transaction.gateway_response, // Store full response or parsed details
+            details: transaction.gateway_response, 
             generatedBy: session.user.id,
             paymentType: paymentType,
             academicYearId: academicYearId,
             yearName: yearName,
             collegeId: (transaction.applications as any)?.courses?.college_id,
-            courseId: transaction.applications?.course_id
+            courseId: transaction.applications?.course_id,
+            paymentBreakdown: initMeta.paymentBreakdown || [],
+            feeComponentsBreakdown: initMeta.feeComponentsBreakdown || []
         });
 
         // Record in `payments` table
@@ -86,9 +89,12 @@ export const POST: RequestHandler = async ({ request, locals: { getSession } }) 
             application_id: transaction.application_id,
             amount: transaction.amount,
             transaction_id: transaction.id,
+            receipt_number: receipt.receipt_no,
             status: 'completed',
             payment_type: paymentType,
-            payment_date: new Date().toISOString()
+            payment_date: new Date().toISOString(),
+            payment_breakdown: initMeta.paymentBreakdown || [],
+            fee_components_breakdown: initMeta.feeComponentsBreakdown || []
         });
 
         if (paymentType === 'application_fee') {

@@ -1,4 +1,4 @@
-# University Admission System - Implementation Plan
+# University Admission System - Implementation Plan 
 
 ## Overview
 This document outlines the step-by-step implementation strategy for the University Admission System using **SvelteKit + Supabase** with **Bootstrap** styling. The design prioritizes flexibility to accommodate changing academic rules, dynamic forms, and multi-tenant requirements.
