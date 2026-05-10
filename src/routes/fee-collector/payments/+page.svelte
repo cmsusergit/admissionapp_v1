@@ -62,6 +62,30 @@
     let selectedFeeSchemeId = '';
     let lastSetAdmissionId = '';
 
+    let studentSearchQuery = '';
+    let showStudentDropdown = false;
+    $: filteredAdmissions = data.admissions.filter(adm => {
+        if (!studentSearchQuery) return true;
+        const term = studentSearchQuery.toLowerCase();
+        const admNo = adm.admission_number?.toLowerCase() || '';
+        const name = (adm.applications as any)?.student_user?.full_name?.toLowerCase() || '';
+        const email = (adm.applications as any)?.student_user?.email?.toLowerCase() || '';
+        return admNo.includes(term) || name.includes(term) || email.includes(term);
+    });
+
+    function selectStudent(adm: any) {
+        selectedAdmissionId = adm.id;
+        studentSearchQuery = `${adm.admission_number} - ${(adm.applications as any)?.student_user?.full_name || (adm.applications as any)?.student_user?.email}`;
+        showStudentDropdown = false;
+    }
+
+    function handleWindowClick(event: MouseEvent) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.student-autocomplete-container')) {
+            showStudentDropdown = false;
+        }
+    }
+
     $: {
         const selectedAdmission = data.admissions.find(a => a.id === selectedAdmissionId);
         actualApplicationId = selectedAdmission?.application_id || '';
@@ -135,6 +159,8 @@
 
     function openRecordModal() {
         selectedAdmissionId = ''; 
+        studentSearchQuery = '';
+        showStudentDropdown = false;
         actualApplicationId = '';
         admissionCategoryCode = '';
         totalAmount = 0;
@@ -216,6 +242,8 @@
         generateReceiptPDF(receiptData);
     }
 </script>
+
+<svelte:window on:click={handleWindowClick} />
 
 <div class="container-fluid">
     <h1 class="mb-4">Payment History</h1>
@@ -331,18 +359,48 @@
                 } 
             }}>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="student-select" class="form-label">Select Student (Admission No.)</label>
-                        <select class="form-select" id="student-select" bind:value={selectedAdmissionId} required>
-                            <option value="">-- Select Student --</option>
-                            {#each data.admissions as adm}
-                                {@const admAny = adm as any}
-                                <option value={admAny.id}>
-                                    {admAny.admission_number} - {admAny.applications?.users?.full_name || admAny.applications?.users?.email}
-                                </option>
-                            {/each}
-                        </select>
+                    <div class="mb-3 position-relative student-autocomplete-container">
+                        <label for="student-search" class="form-label">Select Student (Admission No.)</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input 
+                                type="text" 
+                                class="form-control" 
+                                id="student-search"
+                                placeholder="Type Admission No. or Name..."
+                                bind:value={studentSearchQuery}
+                                on:focus={() => showStudentDropdown = true}
+                                required
+                            />
+                            {#if selectedAdmissionId}
+                                <button type="button" class="btn btn-outline-secondary" on:click={() => { selectedAdmissionId = ''; studentSearchQuery = ''; }}>
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            {/if}
+                        </div>
+                        
+                        {#if showStudentDropdown && filteredAdmissions.length > 0}
+                            <div class="list-group position-absolute w-100 shadow-sm z-3" style="max-height: 200px; overflow-y: auto;">
+                                {#each filteredAdmissions as adm}
+                                    {@const admAny = adm as any}
+                                    <button 
+                                        type="button" 
+                                        class="list-group-item list-group-item-action text-start"
+                                        on:click={() => selectStudent(adm)}
+                                    >
+                                        <div class="fw-bold">{admAny.admission_number}</div>
+                                        <small class="text-muted">{admAny.applications?.student_user?.full_name || admAny.applications?.student_user?.email}</small>
+                                    </button>
+                                {/each}
+                            </div>
+                        {:else if showStudentDropdown && studentSearchQuery}
+                            <div class="list-group position-absolute w-100 shadow-sm z-3">
+                                <div class="list-group-item disabled">No non-provisional students found matching "{studentSearchQuery}"</div>
+                            </div>
+                        {/if}
+                        
                         <input type="hidden" name="application_id" value={actualApplicationId} />
+                        <div class="form-text">Only showing students with non-provisional admissions.</div>
                     </div>
 
                     {#if selectedAdmissionId}
@@ -467,12 +525,19 @@
 
                     <div class="mb-3">
                         <label for="payment-date" class="form-label">Payment Date</label>
-                        <input type="date" class="form-control" id="payment-date" name="payment_date" bind:value={paymentDate} required />
+                        <input type="date" class="form-control" id="payment-date" name="payment_date" bind:value={paymentDate} required disabled={initialRemainingAmount <= 0} />
                     </div>
+                    
+                    {#if initialRemainingAmount <= 0 && feeStructureToCollect}
+                        <div class="alert alert-danger mt-3">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            This student has already fully paid the tuition fees based on the assigned scheme. Further payments are not permitted unless reset by an administrator.
+                        </div>
+                    {/if}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" on:click={() => (showRecordModal = false)}>Cancel</button>
-                    <button type="submit" class="btn btn-primary" disabled={totalAmount <= 0}>Record Payment</button>
+                    <button type="submit" class="btn btn-primary" disabled={totalAmount <= 0 || initialRemainingAmount <= 0}>Record Payment</button>
                 </div>
             </form>
         </div>

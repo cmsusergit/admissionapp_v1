@@ -11,7 +11,8 @@ export async function generateEnrollmentNumber(
     courseId: string,
     academicYearId: string,
     branchId: string | null = null,
-    formType: string = 'MQ/NRI'
+    formType: string = 'MQ/NRI',
+    categoryAliasOverride?: string
 ): Promise<string> {
     
     // 1. Fetch required metadata
@@ -48,7 +49,7 @@ export async function generateEnrollmentNumber(
         'Vacant': 'V',
         'D2D': 'D'
     };
-    const categoryChar = categoryMap[formType] || formType.charAt(0).toUpperCase();
+    const categoryChar = categoryAliasOverride || categoryMap[formType] || formType.charAt(0).toUpperCase();
 
     // The sequence tracking still happens per college/course/year/branch
     const sequencePrefix = `${yearShort}${courseAlias}${branchCode}${categoryChar}`;
@@ -119,7 +120,8 @@ export async function generateEnrollmentNumber(
  */
 export async function ensureStudentEnrolled(
     supabase: SupabaseClient,
-    applicationId: string
+    applicationId: string,
+    categoryAliasOverride?: string
 ) {
     // 1. Fetch application and student details
     const { data: app, error: appError } = await supabase
@@ -161,7 +163,8 @@ export async function ensureStudentEnrolled(
             app.course_id,
             academicYearId,
             app.branch_id,
-            app.form_type
+            app.form_type,
+            categoryAliasOverride
         );
 
         // Update student profile and official college affiliation in users table

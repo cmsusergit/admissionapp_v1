@@ -86,29 +86,9 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                 // Determine payment type from metadata
                 const paymentType = initMeta?.paymentType || 'tuition_fee';
                 
-                // Record in `payments` table
-                await supabaseAdmin.from('payments').insert({
-                    application_id: transaction.application_id,
-                    amount: transaction.amount,
-                    transaction_id: transaction.id,
-                    status: 'completed',
-                    payment_type: paymentType,
-                    payment_date: new Date().toISOString()
-                });
-
-                if (paymentType === 'application_fee') {
-                    await supabaseAdmin
-                        .from('applications')
-                        .update({ application_fee_status: 'paid' })
-                        .eq('id', transaction.application_id);
-                }
-
-                if (paymentType === 'provisional_fee') {
-                    await supabaseAdmin
-                        .from('account_admissions')
-                        .update({ enrollment_status: 'confirmed' })
-                        .eq('application_id', transaction.application_id);
-                }
+                // Resolve breakdowns from meta
+                const paymentBreakdown = initMeta.paymentBreakdown || [];
+                const feeComponentsBreakdown = initMeta.feeComponentsBreakdown || [];
 
                 let yearName = undefined;
                 const academicYearId = (transaction.applications as any)?.admission_cycles?.academic_year_id;
@@ -122,7 +102,7 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                     yearName = ay?.name;
                 }
 
-                await createFeeReceipt(supabaseAdmin, {
+                const receipt = await createFeeReceipt(supabaseAdmin, {
                     transactionId: transaction.id,
                     studentId: transaction.student_id,
                     applicationId: transaction.application_id,
@@ -133,7 +113,22 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                     academicYearId: academicYearId,
                     yearName: yearName,
                     collegeId: (transaction.applications as any)?.courses?.college_id,
-                    courseId: transaction.applications?.course_id
+                    courseId: transaction.applications?.course_id,
+                    paymentBreakdown,
+                    feeComponentsBreakdown
+                });
+
+                // Record in `payments` table
+                await supabaseAdmin.from('payments').insert({
+                    application_id: transaction.application_id,
+                    amount: transaction.amount,
+                    transaction_id: transaction.id,
+                    receipt_number: receipt.receipt_no,
+                    status: 'completed',
+                    payment_type: paymentType,
+                    payment_date: new Date().toISOString(),
+                    payment_breakdown: paymentBreakdown,
+                    fee_components_breakdown: feeComponentsBreakdown
                 });
             }
             

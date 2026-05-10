@@ -111,7 +111,9 @@ export interface ReceiptCreationParams {
     studentId: string;
     applicationId?: string;
     amount: number;
-    details?: any; // JSONB fee breakdown
+    details?: any; // JSONB generic metadata
+    paymentBreakdown?: any[]; // JSONB detailed payment modes
+    feeComponentsBreakdown?: any[]; // JSONB fee sections/items
     generatedBy?: string; // User ID
     paymentType?: string; // e.g. 'tuition_fee', 'application_fee'
     academicYearId?: string;
@@ -137,6 +139,14 @@ export async function createFeeReceipt(
         params.courseId
     );
 
+    // Prepare composite details object for the receipt record
+    const compositeDetails = {
+        ...(params.details || {}),
+        payment_breakdown: params.paymentBreakdown || [],
+        fee_components_breakdown: params.feeComponentsBreakdown || [],
+        payment_type: params.paymentType || 'tuition_fee'
+    };
+
     // 2. Create Receipt Record
     const { data: receipt, error } = await supabase
         .from('fee_receipts')
@@ -146,7 +156,7 @@ export async function createFeeReceipt(
             application_id: params.applicationId,
             student_id: params.studentId,
             amount: params.amount,
-            details: params.details || {},
+            details: compositeDetails,
             generated_by: params.generatedBy
         })
         .select()

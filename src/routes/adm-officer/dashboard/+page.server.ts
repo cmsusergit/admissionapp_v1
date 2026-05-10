@@ -29,8 +29,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     ] = await Promise.all([
         supabase.rpc('get_application_status_counts'),
         supabase.rpc('get_application_course_counts'),
-        supabase.from('transactions').select('amount', { count: 'exact' }).eq('status', 'success'),
-        supabase.from('transactions').select('amount', { count: 'exact' }).eq('status', 'success'),
+        supabase.from('payments').select('amount').eq('status', 'completed').eq('payment_type', 'application_fee'),
+        supabase.from('payments').select('amount').eq('status', 'completed').eq('payment_type', 'provisional_fee'),
         supabase.from('applications').select('*', { count: 'exact', head: true }),
         supabase.from('courses').select('id, name, code').order('name'),
         supabase.from('branches').select('id, name, course_id, courses(name)').order('name'),

@@ -13,6 +13,8 @@ export interface ReceiptData {
   provisionalAdmissionId?: string;
   courseName: string;
   branchName?: string;
+  academicYear?: string;
+  semester?: string;
   paymentType: string;
   transactionId?: string;
   amount: number;
@@ -25,6 +27,8 @@ export interface ReceiptData {
     mode: string;
     amount: number;
     ref?: string;
+    date?: string;
+    bankName?: string;
   }>;
   university: {
     name: string;
@@ -34,388 +38,242 @@ export interface ReceiptData {
   };
 }
 
-function formatCurrency(amount: number): string {
-  return `Rs. ${amount.toFixed(2)}`;
+function formatCurrency(amount: any): string {
+  if (typeof amount === 'number') {
+    return amount.toLocaleString("en-IN", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  }
+  if (!amount) return "0";
+  // Clean string of everything except numbers, dots, and minus signs
+  const clean = String(amount).replace(/[^0-9.-]+/g, '');
+  const parsed = parseFloat(clean);
+  if (isNaN(parsed)) return "0";
+  return parsed.toLocaleString("en-IN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
 }
 
 function formatDate(dateStr: string): string {
+  if (!dateStr) return "-";
   return new Date(dateStr).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "2-digit",
+    day: "numeric",
+    month: "numeric",
     year: "numeric",
   });
 }
 
-function createReceiptContent(data: ReceiptData, copyLabel: string): any[] {
-  const isPartial = data.totalStructureFee > data.amount;
-  const balanceDue = Math.max(0, data.totalStructureFee - data.amount);
-  const hasBreakdown = data.feeBreakdown && data.paymentType === "tuition_fee";
+function numberToWords(num: number): string {
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-  const institutionColumns: any[] = [];
+  let numStr = num.toString();
+  if (numStr.length > 9) return 'overflow';
+  const n: any = ('000000000' + numStr).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+  if (!n) return ''; 
+  let str = '';
+  str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[Number(n[1][0])] + ' ' + a[Number(n[1][1])]) + 'Crore ' : '';
+  str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[Number(n[2][0])] + ' ' + a[Number(n[2][1])]) + 'Lakh ' : '';
+  str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[Number(n[3][0])] + ' ' + a[Number(n[3][1])]) + 'Thousand ' : '';
+  str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[Number(n[4][0])] + ' ' + a[Number(n[4][1])]) + 'Hundred ' : '';
+  str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[Number(n[5][0])] + ' ' + a[Number(n[5][1])]) + 'Only' : 'Only';
+  return str.trim();
+}
+
+function createReceiptContent(data: ReceiptData, copyLabel: string): any[] {
+  const content: any[] = [];
+
+  // Header
+  const headerColumns: any[] = [];
   
   if (data.university.logoUrl) {
-    institutionColumns.push({
-      width: 50,
+    headerColumns.push({
+      width: 60,
       image: data.university.logoUrl,
-      margin: [0, 0, 10, 0]
+      fit: [50, 50],
     });
   }
 
-  institutionColumns.push({
+  headerColumns.push({
     width: "*",
     stack: [
-      {
-        text: data.university.name || "Institution Name",
-        style: "universityName",
-      },
-      { text: data.university.address || "", style: "universityAddress" },
-      {
-        text: data.university.contactEmail || "",
-        style: "universityAddress",
-      },
-    ]
+      { text: data.university.name.toUpperCase(), style: "headerTitle" },
+      { text: `Academic Year: ${data.academicYear || "-"}`, style: "subHeader", margin: [0, 5, 0, 0] },
+    ],
+    alignment: "center",
   });
 
-  const content: any[] = [
-    { text: copyLabel, style: "copyLabel" },
-    {
-      columns: institutionColumns,
-      margin: [0, 0, 0, 5],
-    },
-    {
-      text: "FEE RECEIPT",
-      style: "receiptTitle",
-      alignment: "center",
-      margin: [0, 10, 0, 10],
-    },
-    {
-      canvas: [
-        {
-          type: "line",
-          x1: 0,
-          y1: 0,
-          x2: 515,
-          y2: 0,
-          lineWidth: 1,
-          lineColor: "#cccccc",
-        },
-      ],
-      margin: [0, 0, 0, 10],
-    },
-  ];
+  content.push({
+    columns: headerColumns,
+    margin: [0, 0, 0, 15],
+  });
 
-  // Add Receipt Metadata Row
+  // Metadata Row 1
   content.push({
     columns: [
-      {
-        text: `Receipt No: ${data.receiptNumber || data.transactionId || "PENDING"}`,
-        style: "info",
-        bold: true
-      },
-      {
-        text: `Date: ${formatDate(data.date)}`,
-        style: "info",
-        alignment: "right"
-      }
+      { text: `Student ID: ${data.enrollmentNumber || data.admissionNumber || "-"}`, style: "metaText" },
+      { text: `Receipt Number: ${data.receiptNumber || "-"}`, style: "metaText", alignment: "right" },
     ],
-    margin: [0, 0, 0, 10]
   });
 
-  if (hasBreakdown) {
-    content.push({
-      columns: [
-        {
-          width: "50%",
-          stack: [
-            { text: "Student Details", style: "sectionHeader" },
-            { text: `Name: ${data.studentName}`, style: "info" },
-            { text: `Email: ${data.email}`, style: "info" },
-          ],
-        },
-        {
-          width: "50%",
-          stack: [
-            { text: "Admission Details", style: "sectionHeader" },
-            ...(data.enrollmentNumber
-              ? [
-                  {
-                    text: `College ID: ${data.enrollmentNumber}`,
-                    style: "info",
-                  },
-                  {
-                    text: `Adm No: ${data.admissionNumber || "N/A"}`,
-                    style: "info",
-                  },
-                ]
-              : [
-                  {
-                    text: `Prov Adm ID: ${data.admissionNumber || data.provisionalAdmissionId || "N/A"}`,
-                    style: "info",
-                  },
-                ]),
-            { text: `Course: ${data.courseName}`, style: "info" },
-            ...(data.branchName
-              ? [{ text: `Branch: ${data.branchName}`, style: "info" }]
-              : []),
-          ],
-        },
-      ],
-      margin: [0, 0, 0, 10],
-    });
+  // Metadata Row 2
+  content.push({
+    columns: [
+      { text: `Branch Name: ${data.branchName || "-"}`, style: "metaText" },
+      { text: `Date: ${formatDate(data.date)}`, style: "metaText", alignment: "right" },
+    ],
+    margin: [0, 0, 0, 5],
+  });
 
-    content.push({
-      columns: [
-        {
-          width: "50%",
-          stack: [
-            { text: "Payment Details", style: "sectionHeader" },
-            {
-              table: {
-                widths: ["*"],
-                body: [
-                  [
-                    {
-                      text: data.paymentType.replace("_", " ").toUpperCase(),
-                      bold: true,
-                    },
-                  ],
-                  ...(data.transactionId
-                    ? [
-                        [
-                          {
-                            text: `Ref: ${data.transactionId}`,
-                            style: "smallText",
-                            color: "#666",
-                          },
-                        ],
-                      ]
-                    : []),
-                  [{ text: "AMOUNT PAID", alignment: "right" }],
-                  [
-                    {
-                      text: formatCurrency(data.amount),
-                      alignment: "right",
-                      bold: true,
-                      fontSize: 14,
-                    },
-                  ],
-                  ...(isPartial
-                    ? [
-                        [
-                          {
-                            text: "Balance Due",
-                            alignment: "right",
-                            color: "#dc3545",
-                          },
-                        ],
-                        [
-                          {
-                            text: formatCurrency(balanceDue),
-                            alignment: "right",
-                            bold: true,
-                            color: "#dc3545",
-                          },
-                        ],
-                      ]
-                    : []),
-                ],
-              },
-              layout: "noBorders",
-            },
-          ],
-        },
-        {
-          width: "50%",
-          stack: [
-            { text: "Fee Structure Breakdown", style: "sectionHeader" },
-            ...data.feeBreakdown!.flatMap((section) => [
-              ...(section.name
-                ? [
-                    {
-                      text: section.name,
-                      style: "sectionLabel",
-                      fillColor: "#f0f0f0",
-                    },
-                  ]
-                : []),
-              ...(section.items || []).map((item) => ({
-                columns: [
-                  { text: item.name, width: "*" },
-                  {
-                    text: formatCurrency(item.amount),
-                    width: 80,
-                    alignment: "right",
-                  },
-                ],
-                margin: [0, 2, 0, 2] as [number, number, number, number],
-              })),
-            ]),
-            ...(isPartial
-              ? [
-                  {
-                    columns: [
-                      { text: "Total Fee", width: "*", bold: true },
-                      {
-                        text: formatCurrency(data.totalStructureFee),
-                        width: 80,
-                        alignment: "right",
-                        bold: true,
-                      },
-                    ],
-                    margin: [0, 6, 0, 0] as [number, number, number, number],
-                  },
-                ]
-              : []),
-          ],
-        },
-      ],
-      margin: [0, 0, 0, 10],
-    });
-  } else {
-    content.push({
-      columns: [
-        {
-          width: "50%",
-          stack: [
-            { text: "Student Details", style: "sectionHeader" },
-            { text: `Name: ${data.studentName}`, style: "info" },
-            { text: `Email: ${data.email}`, style: "info" },
-          ],
-        },
-        {
-          width: "50%",
-          stack: [
-            { text: "Admission Details", style: "sectionHeader" },
-            ...(data.enrollmentNumber
-              ? [
-                  {
-                    text: `College ID: ${data.enrollmentNumber}`,
-                    style: "info",
-                  },
-                  {
-                    text: `Adm No: ${data.admissionNumber || "N/A"}`,
-                    style: "info",
-                  },
-                ]
-              : [
-                  {
-                    text: `Prov Adm ID: ${data.admissionNumber || data.provisionalAdmissionId || "N/A"}`,
-                    style: "info",
-                  },
-                ]),
-            { text: `Course: ${data.courseName}`, style: "info" },
-            ...(data.branchName
-              ? [{ text: `Branch: ${data.branchName}`, style: "info" }]
-              : []),
-          ],
-        },
-      ],
-      margin: [0, 0, 0, 10],
-    });
+  // Received From
+  content.push({ text: "Received From,", style: "metaText", margin: [0, 5, 0, 0] });
+  content.push({ text: data.studentName.toUpperCase(), style: "studentName", margin: [0, 2, 0, 5] });
 
-    content.push({
-      table: {
-        widths: ["*", 120],
-        body: [
-          [
-            { text: "Description", style: "tableHeader" },
-            { text: "Amount", style: "tableHeader", alignment: "right" },
-          ],
-          [
-            {
-              stack: [
-                {
-                  text: data.paymentType.replace("_", " ").toUpperCase(),
-                  bold: true,
-                },
-                ...(data.transactionId
-                  ? [
-                      {
-                        text: `Ref: ${data.transactionId}`,
-                        style: "smallText",
-                        color: "#666",
-                      },
-                    ]
-                  : []),
-              ],
-            },
-            {
-              text: formatCurrency(data.amount),
-              alignment: "right",
-              bold: true,
-            },
-          ],
-          ...(isPartial
-            ? [
-                [
-                  {
-                    text: "Balance Due",
-                    alignment: "right",
-                    bold: true,
-                    color: "#dc3545",
-                  },
-                  {
-                    text: formatCurrency(balanceDue),
-                    alignment: "right",
-                    bold: true,
-                    color: "#dc3545",
-                  },
-                ],
-              ]
-            : []),
-        ],
-      },
-      layout: "lightHorizontalLines",
-      margin: [0, 0, 0, 10],
-    });
-  }
+  // Fees Statement
+  content.push({
+    text: [
+      "The Following amount as Fees for the ",
+      { text: data.courseName || "Course", bold: true },
+      " for a ",
+      { text: data.semester || "FIRST SEMESTER", bold: true },
+      " ",
+      { text: data.academicYear || "", bold: true },
+    ],
+    style: "metaText",
+    margin: [0, 0, 0, 10],
+  });
 
-  if (data.paymentModes && data.paymentModes.length > 0) {
-    content.push({
-      text: "Transaction Details",
-      style: "sectionHeader",
-      margin: [0, 0, 0, 5],
-    });
+  // Fee Table
+  const tableBody: any[][] = [
+    [
+      { text: "Sr.", style: "tableHeader", alignment: "center" },
+      { text: "Particulars", style: "tableHeader" },
+      { text: "Fees in Rs.", style: "tableHeader", alignment: "right" },
+    ],
+  ];
 
-    const modesTableBody: any[] = [
-      [
-        { text: "Mode", style: "tableHeader" },
-        { text: "Reference", style: "tableHeader" },
-        { text: "Amount", style: "tableHeader", alignment: "right" },
-      ],
-    ];
+  if (data.feeBreakdown && data.feeBreakdown.length > 0) {
+    data.feeBreakdown.forEach((section) => {
+      // Section Header row
+      if (section.name) {
+        tableBody.push([
+          { text: "", border: [true, true, true, true] },
+          { text: section.name, style: "sectionHeader", border: [true, true, true, true] },
+          { text: "", border: [true, true, true, true] },
+        ]);
+      }
 
-    data.paymentModes.forEach((mode) => {
-      modesTableBody.push([
-        { text: mode.mode.charAt(0).toUpperCase() + mode.mode.slice(1) },
-        { text: mode.ref || "-" },
-        { text: formatCurrency(mode.amount), alignment: "right" },
+      let sectionSubtotal = 0;
+      (section.items || []).forEach((item, idx) => {
+        sectionSubtotal += Number(item.amount) || 0;
+        tableBody.push([
+          { text: idx + 1, alignment: "center" },
+          { text: item.name },
+          { text: formatCurrency(item.amount), alignment: "right" },
+        ]);
+      });
+
+      // SubTotal row
+      tableBody.push([
+        { text: "", border: [true, false, false, true] },
+        { text: "SubTotal", style: "subTotalLabel", alignment: "right", border: [false, false, false, true] },
+        { text: formatCurrency(sectionSubtotal), style: "subTotalValue", alignment: "right" },
       ]);
     });
-
-    content.push({
-      table: {
-        widths: ["auto", "*", 100],
-        body: modesTableBody,
-      },
-      layout: "lightHorizontalLines",
-      margin: [0, 0, 0, 10],
-    });
+  } else {
+      // Fallback for simple payment without breakdown
+      tableBody.push([
+          { text: "1", alignment: "center" },
+          { text: data.paymentType.replace('_', ' ').toUpperCase() },
+          { text: formatCurrency(data.amount), alignment: "right" }
+      ]);
   }
-  content.push({
 
-    text: "Signature:__________________________",
-    style: "smallText",
-    alignment: "right",
-    margin: [0, 10, 0, 0],
+  // Grand Total row
+  tableBody.push([
+    { text: "", border: [true, true, false, true] },
+    { text: "Grand Total in Rs.", style: "grandTotalLabel", alignment: "right", border: [false, true, false, true] },
+    { text: formatCurrency(data.amount), style: "grandTotalValue", alignment: "right" },
+  ]);
+
+  content.push({
+    table: {
+      widths: [30, "*", 100],
+      body: tableBody,
+    },
+    margin: [0, 0, 0, 5],
   });
 
+  // Amount in Words
+  const totalAmount = typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount).replace(/[^0-9.-]+/g, '')) || 0;
+  content.push({
+    text: `In Words: ${numberToWords(totalAmount)}`,
+    style: "metaText",
+    bold: true,
+    margin: [0, 5, 0, 15],
+  });
+
+  // Payment Info Grid
+  const modes = data.paymentModes || [];
+  const cash = modes.find(m => m.mode.toLowerCase() === 'cash');
+  const cheque = modes.find(m => m.mode.toLowerCase() === 'cheque' || m.mode.toLowerCase() === 'dd');
+  const online = modes.find(m => m.mode.toLowerCase() === 'online');
+  const acpc = modes.find(m => m.mode.toLowerCase() === 'acpc');
 
   content.push({
-    text: "Sardar Vallbhbhai Patel Institute of Technology,Vasad",
-    style: "footer",
-    alignment: "center",
-    margin: [0, 20, 0, 0],
+    table: {
+      widths: ["*", "*", "*", "*"],
+      body: [
+        [
+          { text: "CASH", style: "gridHeader" },
+          { text: `Amount: ${cash ? formatCurrency(cash.amount) : "0"}`, style: "gridText" },
+          { text: "ADVANCE Amount: 0", style: "gridText" },
+          { text: "Freeship Amount: 0", style: "gridText" },
+        ],
+        [
+          { text: "DD/Cheque", style: "gridHeader" },
+          { text: `Amount: ${cheque ? formatCurrency(cheque.amount) : "0"}`, style: "gridText" },
+          { text: `Bank Name: ${cheque?.bankName || "-"}`, style: "gridText" },
+          { text: `Ref.: ${cheque?.ref || "-"}  Date: ${cheque?.date ? formatDate(cheque.date) : "-"}`, style: "gridText" },
+        ],
+        [
+          { text: "Online", style: "gridHeader" },
+          { text: `Amount: ${online ? formatCurrency(online.amount) : "0"}`, style: "gridText", colSpan: 1 },
+          { text: `Reference Number: ${online?.ref || "-"}`, style: "gridText", colSpan: 2 },
+          {},
+        ],
+        [
+          { text: "ACPC", style: "gridHeader" },
+          { text: `Amount: ${acpc ? formatCurrency(acpc.amount) : "0"}`, style: "gridText" },
+          { text: `Rec.Number: ${acpc?.ref || "-"}`, style: "gridText" },
+          { text: `Payment Date: ${acpc?.date ? formatDate(acpc.date) : "-"}`, style: "gridText" },
+        ],
+      ],
+    },
+    margin: [0, 0, 0, 20],
+  });
+
+  // Signature
+  content.push({
+    stack: [
+        { text: "Authorized Signature", style: "metaText", bold: true },
+        { text: "SVIT,Vasad", style: "metaText" }
+    ],
+    alignment: "right",
+    margin: [0, 0, 0, 20]
+  });
+
+  // Notes
+  content.push({
+    text: [
+        { text: "Note:: ", bold: true },
+        "In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year 2025-26\n",
+        { text: "Note:: ", bold: true },
+        "Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet"
+    ],
+    style: "noteText"
   });
 
   return content;
@@ -423,68 +281,28 @@ function createReceiptContent(data: ReceiptData, copyLabel: string): any[] {
 
 function buildReceiptDocument(data: ReceiptData, filename?: string): void {
   const styles: any = {
-    copyLabel: {
-      fontSize: 10,
-      bold: true,
-      color: "#666",
-      alignment: "center",
-      margin: [0, 0, 0, 5],
-    },
-    universityName: { fontSize: 16, bold: true },
-    universityAddress: { fontSize: 9, color: "#666" },
-    receiptTitle: { fontSize: 13, bold: true, alignment: "right" },
-    receiptInfo: { fontSize: 9, alignment: "right" },
-    sectionHeader: { fontSize: 11, bold: true, margin: [0, 0, 0, 4], color: "#333", background: "#f8f9fa" },
-    info: { fontSize: 10, margin: [0, 2, 0, 0] },
-    tableHeader: { fontSize: 10, bold: true, fillColor: "#f5f5f5" },
-    sectionLabel: { fontSize: 9, italics: true, color: "#666" },
-    smallText: { fontSize: 8, color: "#666" },
-    footer: { fontSize: 9, color: "#999", italics: true },
+    headerTitle: { fontSize: 14, bold: true },
+    subHeader: { fontSize: 11, bold: true },
+    metaText: { fontSize: 10 },
+    studentName: { fontSize: 11, bold: true },
+    tableHeader: { fontSize: 10, bold: true, fillColor: "#eeeeee", margin: [0, 2, 0, 2] },
+    sectionHeader: { fontSize: 10, bold: true, margin: [0, 2, 0, 2] },
+    subTotalLabel: { fontSize: 9, bold: true },
+    subTotalValue: { fontSize: 9, bold: true },
+    grandTotalLabel: { fontSize: 11, bold: true },
+    grandTotalValue: { fontSize: 11, bold: true },
+    gridHeader: { fontSize: 9, bold: true, fillColor: "#f9f9f9" },
+    gridText: { fontSize: 8 },
+    noteText: { fontSize: 8, italics: true },
   };
 
-  const officeCopy = createReceiptContent(data, "OFFICE COPY");
-  const studentCopy = createReceiptContent(data, "STUDENT COPY");
-
-  // A4 height is 842. Margins are 40+40 = 80. Available = 762.
-  // Each copy gets 381. We use a bit less to avoid overflow issues.
-  const copyHeight = 365; 
+  const content = createReceiptContent(data, "ORIGINAL");
 
   const docDefinition: any = {
     pageSize: "A4",
-    pageMargins: [40, 30, 40, 30],
+    pageMargins: [40, 40, 40, 40],
     styles,
-    content: [
-      {
-        table: {
-          widths: ["*"],
-          heights: [copyHeight, copyHeight],
-          body: [
-            [
-              { 
-                stack: officeCopy, 
-                margin: [0, 0, 0, 0] 
-              }
-            ],
-            [
-              { 
-                stack: studentCopy, 
-                margin: [0, 15, 0, 0] 
-              }
-            ]
-          ]
-        },
-        layout: {
-          hLineWidth: (i: number) => (i === 1 ? 1 : 0),
-          vLineWidth: () => 0,
-          hLineColor: () => "#aaaaaa",
-          hLineStyle: () => ({ dash: { length: 4, space: 2 } }),
-          paddingLeft: () => 0,
-          paddingRight: () => 0,
-          paddingTop: (i: number) => (i === 0 ? 0 : 10),
-          paddingBottom: (i: number) => (i === 0 ? 10 : 0)
-        }
-      }
-    ]
+    content: content,
   };
 
   const pdfDoc = pdfMake.createPdf(docDefinition);
