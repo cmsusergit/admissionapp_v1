@@ -66,6 +66,28 @@
         }
     }
 
+    function handleSort(field: string) {
+        const query = new URLSearchParams($page.url.searchParams);
+        const currentSort = query.get('sort');
+        const currentOrder = query.get('order') || 'desc';
+        
+        let newOrder = 'desc';
+        if (currentSort === field && currentOrder === 'desc') {
+            newOrder = 'asc';
+        }
+        
+        query.set('sort', field);
+        query.set('order', newOrder);
+        goto(`?${query.toString()}`);
+    }
+
+    function handleLimitChange(newLimit: number) {
+        const query = new URLSearchParams($page.url.searchParams);
+        query.set('limit', newLimit.toString());
+        query.set('page', '1'); // Reset to first page
+        goto(`?${query.toString()}`);
+    }
+
     function gotoPage(newPage: number) {
         if (newPage >= 1 && newPage <= totalPages) {
             const query = new URLSearchParams($page.url.searchParams); // Preserve existing params
@@ -238,9 +260,37 @@
 
     <!-- Applications Table -->
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Applications List</span>
-            <span class="badge bg-secondary">{totalItems} Found</span>
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-3">
+                <span class="fw-bold">Applications List</span>
+                <span class="badge bg-secondary">{totalItems} Found</span>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">Per Page:</small>
+                    <select class="form-select form-select-sm" style="width: auto;" value={currentLimit} on:change={(e) => handleLimitChange(parseInt(e.currentTarget.value))}>
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+
+                {#if totalPages > 1}
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="text-muted">Page {currentPage} of {totalPages}</small>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-secondary" disabled={currentPage === 1} on:click={() => gotoPage(currentPage - 1)}>
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" disabled={currentPage === totalPages} on:click={() => gotoPage(currentPage + 1)}>
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+            </div>
         </div>
         <div class="card-body">
             {#if data.applications.length > 0}
@@ -251,15 +301,23 @@
                                 <th style="width: 50px">#</th>
                                 <th>Student</th>
                                 <th>Course & Cycle</th>
-                                <th>Status</th>
-                                <th>Created By</th>
-                                <th>Last Updated</th>
+                                <th style="cursor: pointer;" on:click={() => handleSort('status')}>
+                                    Status {data.filters.sort === 'status' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                                </th>
+                                <th class="text-nowrap" style="cursor: pointer;" on:click={() => handleSort('receipt_number')}>
+                                    Receipt No {data.filters.sort === 'receipt_number' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                                </th>
+                                <th style="cursor: pointer;" on:click={() => handleSort('updated_at')}>
+                                    Last Updated {data.filters.sort === 'updated_at' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                                </th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {#each data.applications as app, i}
                                 {@const appAny = app as any}
+                                {@const isProvType = data.formTypesMap?.[appAny.form_type] === true}
+                                {@const appReceiptPayment = (appAny.payments || []).find(p => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) || (appAny.payments || []).find(p => p.receipt_number)}
                                 <tr>
                                     <td>{(currentPage - 1) * currentLimit + i + 1}</td>
                                     <td>
@@ -285,13 +343,11 @@
                                             {appAny.status}
                                         </span>
                                     </td>
-                                    <td>
-                                        {#if appAny.creator?.role === 'student'}
-                                            <span class="badge bg-secondary">Student</span>
-                                        {:else if appAny.creator}
-                                            <span class="badge bg-info text-dark" title={appAny.creator.role}>{appAny.creator.full_name}</span>
+                                    <td class="text-nowrap">
+                                        {#if appReceiptPayment?.receipt_number}
+                                            <small class="fw-bold">{appReceiptPayment.receipt_number}</small>
                                         {:else}
-                                            <span class="text-muted">-</span>
+                                            <small class="text-muted">-</small>
                                         {/if}
                                     </td>
                                     <td>

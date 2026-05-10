@@ -449,6 +449,47 @@ export const actions: Actions = {
     return { success: true, message: "Application rejected." };
   },
 
+  revertRejection: async ({
+    request,
+    locals: { supabase, getAuthenticatedUser, userProfile },
+  }) => {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (
+      !authenticatedUser ||
+      !["college_auth", "adm_officer"].includes(userProfile?.role || "")
+    ) {
+      throw redirect(303, "/login");
+    }
+
+    const formData = await request.formData();
+    const application_id = formData.get("application_id") as string;
+
+    const supabaseAdmin = createClient(
+      PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    const { error } = await supabaseAdmin
+      .from("applications")
+      .update({ 
+        status: "submitted", 
+        rejection_reason: null,
+        updated_at: new Date().toISOString(),
+        updated_by: userProfile.id
+      })
+      .eq("id", application_id);
+
+    if (error) {
+      console.error("Error reverting rejection:", error.message);
+      return fail(500, {
+        message: "Failed to revert rejection.",
+        error: true,
+      });
+    }
+
+    return { success: true, message: "Rejection reverted. Application is now back in pending queue." };
+  },
+
   markFeePaid: async ({
     request,
     locals: { supabase, getAuthenticatedUser, userProfile },

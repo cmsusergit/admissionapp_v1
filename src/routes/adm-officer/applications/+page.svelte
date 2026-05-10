@@ -23,6 +23,20 @@
         updateQuery({ status, page: '1', search: '' });
     }
 
+    function handleLimitChange(newLimit: number) {
+        updateQuery({ limit: newLimit.toString(), page: '1' });
+    }
+
+    function handleSort(field: string) {
+        const currentSort = data.sort;
+        const currentOrder = data.order || 'desc';
+        let newOrder = 'desc';
+        if (currentSort === field && currentOrder === 'desc') {
+            newOrder = 'asc';
+        }
+        updateQuery({ sort: field, order: newOrder, page: '1' });
+    }
+
     function updateQuery(updates: Record<string, string>) {
         const params = new URLSearchParams($page.url.searchParams);
         for (const [key, value] of Object.entries(updates)) {
@@ -71,19 +85,70 @@
 
     <!-- List -->
     <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold">Applications</span>
+                <span class="badge bg-secondary">{data.count} Found</span>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted text-nowrap">Sort By:</small>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn {data.sort === 'submitted_at' ? 'btn-primary' : 'btn-outline-secondary'}" on:click={() => handleSort('submitted_at')}>
+                            Date {data.sort === 'submitted_at' ? (data.order === 'asc' ? '↑' : '↓') : ''}
+                        </button>
+                        <button class="btn {data.sort === 'receipt_number' ? 'btn-primary' : 'btn-outline-secondary'}" on:click={() => handleSort('receipt_number')}>
+                            Receipt {data.sort === 'receipt_number' ? (data.order === 'asc' ? '↑' : '↓') : ''}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">Per Page:</small>
+                    <select class="form-select form-select-sm" style="width: auto;" value={data.limit} on:change={(e) => handleLimitChange(parseInt(e.currentTarget.value))}>
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+
+                {#if totalPages > 1}
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="text-muted">Page {data.page} of {totalPages}</small>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-secondary" disabled={data.page === 1} on:click={() => changePage(data.page - 1)}>
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" disabled={data.page >= totalPages} on:click={() => changePage(data.page + 1)}>
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+            </div>
+        </div>
         <div class="list-group list-group-flush">
             {#each data.applications as app}
+                {@const isProvType = data.formTypesMap?.[app.form_type] === true}
+                {@const appReceiptPayment = (app.payments || []).find(p => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) || (app.payments || []).find(p => p.receipt_number)}
                 <a href="/adm-officer/applications/{app.id}" class="list-group-item list-group-item-action">
                     <div class="d-flex w-100 justify-content-between">
                         <h5 class="mb-1">{app.student_user?.full_name || 'Unknown User'}</h5>
                         <small class="text-muted">{new Date(app.submitted_at).toLocaleDateString()}</small>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
-                        <p class="mb-1 text-muted">
-                            {app.courses?.name} 
-                            {#if app.branches} - {app.branches.name}{/if}
-                            <span class="badge bg-secondary ms-2">{app.form_type}</span>
-                        </p>
+                        <div>
+                            <p class="mb-1 text-muted">
+                                {app.courses?.name} 
+                                {#if app.branches} - {app.branches.name}{/if}
+                                <span class="badge bg-secondary ms-2">{app.form_type}</span>
+                            </p>
+                            {#if appReceiptPayment?.receipt_number}
+                                <small class="text-muted text-nowrap">Receipt: <span class="fw-bold text-dark">{appReceiptPayment.receipt_number}</span></small>
+                            {/if}
+                        </div>
                         <span class="badge 
                             {app.status === 'approved' ? 'bg-success' : 
                              app.status === 'verified' ? 'bg-info' : 

@@ -75,6 +75,13 @@
         goto(url.toString());
     }
 
+    function handleLimitChange(newLimit: number) {
+        const url = new URL($page.url);
+        url.searchParams.set('limit', newLimit.toString());
+        url.searchParams.set('page', '1');
+        goto(url.toString());
+    }
+
     // Export URL builder
     $: exportUrl = `/adm-officer/export${$page.url.search}`;
 
@@ -295,16 +302,48 @@
     <div class="card mt-4">
                 <div class="card-header">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                        <h5 class="mb-0">
-                            Application List 
-                            {#if data.filters.status}
-                                <span class="badge bg-secondary ms-2">Status: {data.filters.status}</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <h5 class="mb-0">
+                                Application List 
+                                {#if data.filters.status}
+                                    <span class="badge bg-secondary ms-2">Status: {data.filters.status}</span>
+                                {/if}
+                                {#if data.filters.course}
+                                    {@const cName = data.options.courses.find(c => c.id === data.filters.course)?.name}
+                                    <span class="badge bg-info ms-2">Course: {cName}</span>
+                                {/if}
+                            </h5>
+                            <span class="badge bg-light text-dark border">{data.pagination.total} Total</span>
+                        </div>
+                        
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <small class="text-muted">Per Page:</small>
+                                <select class="form-select form-select-sm" style="width: auto;" value={data.pagination.limit} on:change={(e) => handleLimitChange(parseInt(e.currentTarget.value))}>
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+
+                            {#if data.pagination.totalPages > 1}
+                                <div class="d-flex align-items-center gap-2">
+                                    <small class="text-muted text-nowrap">Page {data.pagination.page} of {data.pagination.totalPages}</small>
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-outline-secondary" disabled={data.pagination.page === 1} on:click={() => handlePage(data.pagination.page - 1)}>
+                                            <i class="bi bi-chevron-left"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary" disabled={data.pagination.page >= data.pagination.totalPages} on:click={() => handlePage(data.pagination.page + 1)}>
+                                            <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             {/if}
-                            {#if data.filters.course}
-                                {@const cName = data.options.courses.find(c => c.id === data.filters.course)?.name}
-                                <span class="badge bg-info ms-2">Course: {cName}</span>
-                            {/if}
-                        </h5>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                         <div class="d-flex gap-2 flex-wrap align-items-center">
                             <!-- Filters -->
                             <select class="form-select form-select-sm" style="max-width: 250px;" value={data.filters.branch || ''} on:change={(e) => handleFilterChange('branch', e.currentTarget.value)}>
@@ -346,6 +385,9 @@
                             <th style="cursor: pointer;" on:click={() => handleSort('status')}>
                                 Status {data.filters.sort === 'status' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
                             </th>
+                            <th style="cursor: pointer;" on:click={() => handleSort('receipt_number')}>
+                                Receipt {data.filters.sort === 'receipt_number' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                            </th>
                             <th>Approval Comment</th>
                             <th style="cursor: pointer;" on:click={() => handleSort('updated_at')}>
                                 Date {data.filters.sort === 'updated_at' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
@@ -358,6 +400,8 @@
                         {#if data.filteredApplications && data.filteredApplications.length > 0}
                             {#each data.filteredApplications as app}
                                 {@const appAny = app as any}
+                                {@const isProvType = data.formTypesMap?.[app.form_type] === true}
+                                {@const appReceiptPayment = (appAny.payments || []).find(p => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) || (appAny.payments || []).find(p => p.receipt_number)}
                                 <tr>
                                     <td><small>{app.id.slice(0, 8)}...</small></td>
                                     <td>
@@ -383,6 +427,13 @@
                                         ">
                                             {app.status}
                                         </span>
+                                    </td>
+                                    <td class="text-nowrap">
+                                        {#if appReceiptPayment?.receipt_number}
+                                            <small class="fw-bold">{appReceiptPayment.receipt_number}</small>
+                                        {:else}
+                                            <small class="text-muted">-</small>
+                                        {/if}
                                     </td>
                                     <td>
                                         <div class="d-flex align-items-center gap-2">

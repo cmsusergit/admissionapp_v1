@@ -80,7 +80,7 @@ export const load: PageServerLoad = async ({
             admission_cycles(name),
             creator:created_by(full_name, role),
             updater:updated_by(full_name, role),
-            payments(id, amount, status, payment_type)
+            payments(id, amount, status, payment_type, receipt_number)
         `,
     { count: "exact" },
   );
@@ -91,160 +91,102 @@ export const load: PageServerLoad = async ({
     "applications",
   );
 
-  // Sort
-  baseQuery = baseQuery.order("updated_at", { ascending: false });
+  const sortField = url.searchParams.get('sort') || 'updated_at';
+  const sortOrder = url.searchParams.get('order') || 'desc';
 
-  if (courseId) baseQuery = baseQuery.eq("course_id", courseId);
-  if (cycleId) baseQuery = baseQuery.eq("cycle_id", cycleId);
-  if (status) baseQuery = baseQuery.eq("status", status);
-
-  // Created By Filter
-  if (createdBy === "student") {
-    baseQuery = baseQuery.eq("creator.role", "student");
-  } else if (createdBy) {
-    // Assume UUID
-    baseQuery = baseQuery.eq("created_by", createdBy);
-  }
-
-  // Updated By Filter
-  if (updatedBy === "student") {
-    baseQuery = baseQuery.eq("updater.role", "student");
-  } else if (updatedBy) {
-    // Assume UUID
-    baseQuery = baseQuery.eq("updated_by", updatedBy);
-  }
-
-  if (search) {
-    console.log("🔍 DEO Search Term:", search);
-    console.log("⚠️ Fetching all records for client-side filtering");
+  if (search || sortField === 'receipt_number') {
+    console.log(`🔍 DEO applications: ${search ? 'Searching' : 'Sorting by receipt'}. Fetching all records for in-memory processing.`);
   }
 
   const page = parseInt(url.searchParams.get("page") || "1");
-  const limit = parseInt(url.searchParams.get("limit") || "10");
+  const limit = parseInt(url.searchParams.get("limit") || "50");
   const offset = (page - 1) * limit;
 
-  console.log("📋 DEO Applications Page Load");
-  console.log("Filters:", { courseId, cycleId, status, search, createdBy, updatedBy });
-  console.log("Pagination:", { page, limit, offset });
-
-  // Execute the query - if no search, use pagination; if search exists, fetch all for filtering
+  // Execute the query - if no search AND not sorting by receipt, use pagination
   let executeQuery = baseQuery;
-  if (!search) {
+  if (!search && sortField !== 'receipt_number') {
+    // Standard server-side sorting for status/updated_at
+    if (sortField === 'status') {
+      executeQuery = executeQuery.order('status', { ascending: sortOrder === 'asc' });
+    } else {
+      executeQuery = executeQuery.order('updated_at', { ascending: sortOrder === 'asc' });
+    }
     executeQuery = executeQuery.range(offset, offset + limit - 1);
   }
   
   const {
-    data: applications,
+    data: rawApplications,
     count: totalCount,
     error,
   } = await executeQuery;
 
-  // Fetch admission forms to get form_fee for the 'Pay App Fee' button
-  const { data: admissionForms } = await supabase
-    .from("admission_forms")
-    .select("course_id, cycle_id, form_type, form_fee");
-
-  // Helper to join form fee
-  const enrich = (list: any[]) => (list || []).map((app: any) => {
-    const form = admissionForms?.find(
-        (f) => 
-            f.course_id === app.course_id && 
-            f.cycle_id === app.cycle_id && 
-            f.form_type === app.form_type
-    );
+  // Helper to extract sorting receipt
+  const getSortReceipt = (app: any) => {
+    const isProvType = formTypesMap.get(app.form_type) === true;
+    const payment = (app.payments || []).find((p: any) => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) 
+                 || (app.payments || []).find((p: any) => p.receipt_number);
+    if (!payment?.receipt_number) return { num: '', seq: 0 };
+    const seqMatch = payment.receipt_number.match(/(\d+)$/);
     return {
-        ...app,
-        form_fee: form?.form_fee || 0
+      num: payment.receipt_number,
+      seq: seqMatch ? parseInt(seqMatch[1]) : 0
     };
-  });
+  };
 
   if (error) {
     console.error("❌ Error fetching DEO applications:", error.message);
-    console.error("Error details:", error);
-    console.error("Error code:", error.code);
   } else {
-    console.log("✅ DEO Applications fetched successfully");
-    console.log("📊 Total Count (before filter):", totalCount);
-    console.log("📋 Results Count (before filter):", applications?.length);
-    
-    // If search is active, filter client-side
-    if (search && applications) {
+    let processedApplications = rawApplications || [];
+
+    // Filter if search active
+    if (search) {
       const searchLower = search.toLowerCase().trim();
-      const filteredApplications = applications.filter((app: any) => {
+      processedApplications = processedApplications.filter((app: any) => {
         const firstName = (app.form_data?.first_name || '').toLowerCase();
         const middleName = (app.form_data?.middle_name || '').toLowerCase();
         const lastName = (app.form_data?.last_name || '').toLowerCase();
-        
-        return firstName.includes(searchLower) || 
-               middleName.includes(searchLower) || 
-               lastName.includes(searchLower);
+        return firstName.includes(searchLower) || middleName.includes(searchLower) || lastName.includes(searchLower);
       });
-      
-      console.log("🔍 Search filtered results:");
-      console.log({
-        searchTerm: search,
-        totalMatches: filteredApplications.length,
-        hasResults: filteredApplications.length > 0
-      });
-      
-      if (filteredApplications.length > 0) {
-        console.log("✅ First matching result:", {
-          first_name: filteredApplications[0].form_data?.first_name,
-          middle_name: filteredApplications[0].form_data?.middle_name,
-          last_name: filteredApplications[0].form_data?.last_name
-        });
-      }
-      
-      // Apply pagination to filtered results
-      const paginatedResults = filteredApplications.slice(offset, offset + limit);
-      
-      // Since we defined enrich below, we need to handle it. Actually let's move enrich up.
-      return {
-        applications: enrich(paginatedResults) || [],
-        courses: courses || [],
-        cycles: cycles || [],
-        colleges: colleges || [],
-        staffUsers: staffUsers || [],
-        filters: { courseId, cycleId, status, search, createdBy, updatedBy },
-        page,
-        limit,
-        totalCount: filteredApplications.length, // Total matches, not total records
-        formTypesMap: Object.fromEntries(formTypesMap),
-      };
     }
-    
-    console.log("📊 Search returned:", {
-      searchTerm: search,
-      totalCount,
-      resultsCount: applications?.length,
-      hasResults: (applications?.length || 0) > 0
-    });
-    
-    if (applications && applications.length > 0) {
-      console.log("📝 First result form_data (showing name fields):");
-      const sample = applications[0];
-      console.log({
-        first_name: sample.form_data?.first_name,
-        middle_name: sample.form_data?.middle_name,
-        last_name: sample.form_data?.last_name
-      });
-    } else if (search) {
-      console.warn("⚠️ Search found no results. Search term:", search);
-    }
-  }
 
-  return {
-    applications: enrich(applications || []),
-    courses: courses || [],
-    cycles: cycles || [],
-    colleges: colleges || [],
-    staffUsers: staffUsers || [],
-    filters: { courseId, cycleId, status, search, createdBy, updatedBy },
-    page,
-    limit,
-    totalCount: totalCount || 0,
-    formTypesMap: Object.fromEntries(formTypesMap), // Convert Map to object for JSON serialization
-  };
+    // Sort if receipt sorting requested
+    if (sortField === 'receipt_number') {
+      processedApplications.sort((a, b) => {
+        const rA = getSortReceipt(a);
+        const rB = getSortReceipt(b);
+        if (rA.seq !== rB.seq) {
+          return sortOrder === 'asc' ? rA.seq - rB.seq : rB.seq - rA.seq;
+        }
+        return sortOrder === 'asc' ? rA.num.localeCompare(rB.num) : rB.num.localeCompare(rA.num);
+      });
+    }
+
+    // Apply pagination if we did in-memory processing
+    const finalCount = (search || sortField === 'receipt_number') ? processedApplications.length : (totalCount || 0);
+    const paginatedApplications = (search || sortField === 'receipt_number') 
+      ? processedApplications.slice(offset, offset + limit) 
+      : processedApplications;
+
+    // Fetch admission forms for enrichment
+    const { data: admissionForms } = await supabase.from("admission_forms").select("course_id, cycle_id, form_type, form_fee");
+    const enrich = (list: any[]) => (list || []).map((app: any) => {
+      const form = admissionForms?.find(f => f.course_id === app.course_id && f.cycle_id === app.cycle_id && f.form_type === app.form_type);
+      return { ...app, form_fee: form?.form_fee || 0 };
+    });
+
+    return {
+      applications: enrich(paginatedApplications),
+      courses: courses || [],
+      cycles: cycles || [],
+      colleges: colleges || [],
+      staffUsers: staffUsers || [],
+      filters: { courseId, cycleId, status, search, createdBy, updatedBy, sort: sortField, order: sortOrder },
+      page,
+      limit,
+      totalCount: finalCount,
+      formTypesMap: Object.fromEntries(formTypesMap),
+    };
+  }
 };
 
 export const actions: Actions = {

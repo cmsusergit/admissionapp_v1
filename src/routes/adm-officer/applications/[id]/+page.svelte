@@ -402,9 +402,18 @@
 
                 <!-- Reject Form -->
                 <div class="d-flex flex-column gap-2">
-                     <button class="btn btn-danger" on:click={() => rejecting = !rejecting} disabled={application.status === 'rejected' || application.status === 'approved'}>
-                        {application.status === 'rejected' ? 'Already Rejected' : 'Reject Application'}
-                    </button>
+                    {#if application.status === 'rejected'}
+                        <form method="POST" action="?/revertRejection" use:enhance>
+                            <input type="hidden" name="application_id" value={application.id} />
+                            <button type="submit" class="btn btn-outline-warning w-100">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i> Revert Rejection
+                            </button>
+                        </form>
+                    {:else}
+                        <button class="btn btn-danger" on:click={() => rejecting = !rejecting} disabled={application.status === 'approved'}>
+                            Reject Application
+                        </button>
+                    {/if}
                     
                     {#if rejecting && application.status !== 'rejected'}
                         <form method="POST" action="?/rejectApplication" use:enhance on:submit|preventDefault={(e) => { if(!confirmReject()) e.preventDefault(); }}>

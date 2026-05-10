@@ -4,16 +4,13 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
+import { applyRoleBasedCollegeFilter } from '$lib/server/security';
+
 export const load: PageServerLoad = async ({ url, locals: { supabase, getSession, userProfile } }) => {
     const session = await getSession();
 
-    if (!session || !['deo', 'admin', 'college_auth'].includes(userProfile?.role || '')) {
+    if (!session || !['deo', 'admin', 'college_auth', 'adm_officer'].includes(userProfile?.role || '')) {
         throw redirect(303, '/login');
-    }
-
-    const collegeId = userProfile.college_id;
-    if (!collegeId) {
-        return { applications: [] };
     }
 
     // Use Service Role to ensure we get all data cleanly for bulk processing
@@ -26,38 +23,35 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     });
 
     // Filter Params
-    const status = url.searchParams.get('status') || 'submitted'; // Default to Pending Verification
+    const status = url.searchParams.get('status') || 'submitted'; 
     const courseId = url.searchParams.get('courseId') || null;
-    const search = url.searchParams.get('search') || ''; // Extract search term
+    const search = url.searchParams.get('search') || ''; 
 
-    // 1. Get Course IDs for this college
-    const { data: courses } = await supabaseAdmin
-        .from('courses')
-        .select('id, name')
-        .eq('college_id', collegeId);
-    
-    const validCourseIds = courses?.map(c => c.id) || [];
+    // 1. Get Course Options for Filter Dropdown
+    let coursesQuery = supabaseAdmin.from('courses').select('id, name, college_id');
+    coursesQuery = applyRoleBasedCollegeFilter(coursesQuery, userProfile, 'courses');
+    const { data: courses } = await coursesQuery;
 
     // Pagination
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '50');
     const offset = (page - 1) * limit;
 
-    if (validCourseIds.length === 0) return { applications: [], courses: [], statusFilter: status, courseFilter: courseId, search, count: 0, page: 1, limit };
-
-    // 2. Build Query
+    // 2. Build Main Applications Query
     let query = supabaseAdmin
         .from('applications')
         .select(`
             id, status, form_type, submitted_at,
             student_user:users!student_id!inner (full_name, email),
-            courses (name),
+            courses!inner (name, college_id),
             branches (name),
             documents (*)
-        `, { count: 'exact' })
-        .in('course_id', validCourseIds);
+        `, { count: 'exact' });
 
-    // Apply Status Filter
+    // Apply Central Security Filtering (Same as Dashboard)
+    query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
+
+    // Apply UI Filters
     if (status === 'submitted') {
         query = query.in('status', ['submitted', 'needs_correction']);
     } else {
@@ -68,51 +62,32 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         query = query.eq('course_id', courseId);
     }
 
-    // Add Search Filter
     if (search) {
         query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`, { foreignTable: 'student_user' });
     }
 
+    // Sort: Newest updates first so "reverted" or "newly submitted" ones appear at the top
     query = query
-        .order('submitted_at', { ascending: true })
+        .order('updated_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-    console.log(`[BulkLoad] Executing query for validCourseIds:`, validCourseIds);
+    console.log(`[BulkLoad] Loading Verification Center. User: ${userProfile.full_name}, Role: ${userProfile.role}, College: ${userProfile.college_id}`);
+    
     const { data: applications, count, error } = await query;
 
     if (error) {
         console.error('[BulkLoad] Query Error:', error.message);
+        console.error('[BulkLoad] Error Details:', error);
     }
 
-    console.log(`[BulkLoad] Found ${applications?.length || 0} applications.`);
-
-    // Generate signed URLs for documents
-    if (applications) {
-        for (const app of applications) {
-            console.log(`[BulkLoad] App ${app.id}: Documents count: ${app.documents?.length || 0}`);
-            if (app.documents && Array.isArray(app.documents)) {
-                for (const doc of app.documents) {
-                    console.log(`[BulkLoad] Signing: ${doc.file_path}`);
-                    const { data: signed, error: signError } = await supabaseAdmin.storage
-                        .from('documents')
-                        .createSignedUrl(doc.file_path, 3600);
-                    
-                    if (signError) {
-                        console.error(`[BulkLoad] Signed URL Error:`, signError.message);
-                    } else if (signed) {
-                        doc.signed_url = signed.signedUrl;
-                    }
-                }
-            }
-        }
-    }
+    console.log(`[BulkLoad] Found ${applications?.length || 0} applications on current page. Total: ${count || 0}`);
 
     return {
         applications: applications || [],
         courses: courses || [],
         statusFilter: status,
         courseFilter: courseId,
-        search, // Include search in return
+        search,
         count: count || 0,
         page,
         limit
@@ -120,10 +95,48 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
 };
 
 export const actions: Actions = {
-    // Note: DEO usually prepares/checks data. 
-    // If DEO is allowed to FULLY VERIFY, use same logic. 
-    // If DEO only "Checks", maybe update a different flag? 
-    // Assuming verification authority for now as per request.
+    bulkVerify: async ({ request, locals: { getSession, userProfile } }) => {
+        const session = await getSession();
+        if (!session || !['deo', 'college_auth', 'admin'].includes(userProfile?.role || '')) {
+            return fail(403, { message: 'Unauthorized' });
+        }
+
+        const formData = await request.formData();
+        const applicationIds = JSON.parse(formData.get('application_ids') as string);
+
+        if (!Array.isArray(applicationIds) || applicationIds.length === 0) {
+            return fail(400, { message: 'No applications selected.' });
+        }
+
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+        // 1. Approve all documents for these applications
+        const { error: docError } = await supabaseAdmin
+            .from('documents')
+            .update({ status: 'approved', rejection_reason: null })
+            .in('application_id', applicationIds);
+
+        if (docError) {
+            console.error('Bulk Doc Update Error:', docError);
+            return fail(500, { message: 'Failed to approve documents in bulk.' });
+        }
+
+        // 2. If Adm Officer/Admin, also verify the applications
+        if (userProfile.role !== 'deo') {
+            const { error: appError } = await supabaseAdmin
+                .from('applications')
+                .update({ status: 'verified' })
+                .in('id', applicationIds);
+
+            if (appError) {
+                console.error('Bulk App Verify Error:', appError);
+                return fail(500, { message: 'Failed to verify applications in bulk.' });
+            }
+        }
+
+        return { success: true, message: `Successfully processed ${applicationIds.length} applications.` };
+    },
+
     verifyStudent: async ({ request, locals: { getSession, userProfile } }) => {
         const session = await getSession();
         if (!session || !['deo', 'college_auth'].includes(userProfile?.role || '')) {

@@ -25,7 +25,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         { data: allBranches },
         { data: distinctTypes },
         { data: allAppBranches },
-        { data: activeYear }
+        { data: activeYear },
+        { data: formTypesData }
     ] = await Promise.all([
         supabase.rpc('get_application_status_counts'),
         supabase.rpc('get_application_course_counts'),
@@ -36,7 +37,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         supabase.from('branches').select('id, name, course_id, courses(name)').order('name'),
         supabase.from('applications').select('form_type').limit(100),
         supabase.from('applications').select('branch_id, form_type'),
-        supabase.from('academic_years').select('id, name').eq('is_active', true).maybeSingle()
+        supabase.from('academic_years').select('id, name').eq('is_active', true).maybeSingle(),
+        supabase.from('form_types').select('name, is_prov')
     ]);
 
     // Fetch Inquiry counts for the active year
@@ -96,6 +98,13 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         .map(([type, count]) => ({ form_type: type, count }))
         .sort((a, b) => b.count - a.count);
 
+    const formTypesMap = new Map<string, boolean>();
+    formTypesData?.forEach(ft => {
+        if (ft?.name) {
+            formTypesMap.set(ft.name, Boolean(ft.is_prov));
+        }
+    });
+
     // --- Filtered Applications List ---
     const statusFilter = url.searchParams.get('status');
     const searchQuery = url.searchParams.get('search');
@@ -107,15 +116,18 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     
     // Pagination & Sorting
     const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '10');
+    const limit = parseInt(url.searchParams.get('limit') || '50');
     const sortField = url.searchParams.get('sort') || 'updated_at';
     const sortOrder = url.searchParams.get('order') || 'desc';
     
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
+    if (searchQuery || sortField === 'receipt_number') {
+        console.log(`🔍 Adm-Officer dashboard: ${searchQuery ? 'Searching' : 'Sorting by receipt'}. Fetching all records for in-memory processing.`);
+    }
+
     // Main List Query (Filtered)
-    // FIX: Use explicit relationship 'users!student_id' and apply role-based filter
     let applicationsQuery = supabase
         .from('applications')
         .select(`
@@ -124,13 +136,78 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
             users!student_id!inner(full_name, email),
             courses(name, code, colleges(name)),
             branches(name),
-            merit_list_entries(merit_score, merit_rank)
+            merit_list_entries(merit_score, merit_rank),
+            payments(receipt_number, payment_type, status, created_at)
         `, { count: 'exact' });
     
     applicationsQuery = applyRoleBasedCollegeFilter(applicationsQuery, userProfile, 'applications');
 
+    // Add filters
+    if (statusFilter) applicationsQuery = applicationsQuery.eq('status', statusFilter);
+    if (courseFilter) applicationsQuery = applicationsQuery.eq('course_id', courseFilter);
+    if (branchFilter) applicationsQuery = applicationsQuery.eq('branch_id', branchFilter);
+    if (formTypeFilter) applicationsQuery = applicationsQuery.eq('form_type', formTypeFilter);
+    if (startDate) applicationsQuery = applicationsQuery.gte('updated_at', startDate);
+    if (endDate) applicationsQuery = applicationsQuery.lte('updated_at', endDate + 'T23:59:59');
+
+    if (searchQuery) {
+        applicationsQuery = applicationsQuery.or(`email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`, { foreignTable: 'users' });
+    }
+
+    // Execute query
+    // If NOT searching or sorting by receipt, use pagination and server-side sort
+    if (!searchQuery && sortField !== 'receipt_number') {
+        const allowedSorts = ['updated_at', 'status', 'merit_score'];
+        if (sortField === 'merit_score') {
+            applicationsQuery = applicationsQuery.order('merit_score', { foreignTable: 'merit_list_entries', ascending: sortOrder === 'asc' });
+        } else if (allowedSorts.includes(sortField)) {
+            applicationsQuery = applicationsQuery.order(sortField, { ascending: sortOrder === 'asc' });
+        } else {
+            applicationsQuery = applicationsQuery.order('updated_at', { ascending: false });
+        }
+        applicationsQuery = applicationsQuery.range(from, to);
+    }
+
+    const { data: rawApplications, count: totalCount, error: filteredAppError } = await applicationsQuery;
+    
+    if (filteredAppError) {
+        console.error('Error fetching filtered applications:', filteredAppError.message);
+    }
+
+    let processedApplications = rawApplications || [];
+
+    // Helper to extract sorting receipt
+    const getSortReceipt = (app: any) => {
+        const isProvType = formTypesMap.get(app.form_type) === true;
+        const payment = (app.payments || []).find((p: any) => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) 
+                     || (app.payments || []).find((p: any) => p.receipt_number);
+        if (!payment?.receipt_number) return { num: '', seq: 0 };
+        const seqMatch = payment.receipt_number.match(/(\d+)$/);
+        return {
+            num: payment.receipt_number,
+            seq: seqMatch ? parseInt(seqMatch[1]) : 0
+        };
+    };
+
+    // In-memory sorting for receipt_number
+    if (sortField === 'receipt_number') {
+        processedApplications.sort((a, b) => {
+            const rA = getSortReceipt(a);
+            const rB = getSortReceipt(b);
+            if (rA.seq !== rB.seq) {
+                return sortOrder === 'asc' ? rA.seq - rB.seq : rB.seq - rA.seq;
+            }
+            return sortOrder === 'asc' ? rA.num.localeCompare(rB.num) : rB.num.localeCompare(rA.num);
+        });
+    }
+
+    // Final pagination
+    const finalApplications = (searchQuery || sortField === 'receipt_number') 
+        ? processedApplications.slice(from, to + 1) 
+        : processedApplications;
+    const finalCount = (searchQuery || sortField === 'receipt_number') ? processedApplications.length : (totalCount || 0);
+
     // Fetch recent applications for this college officer (Dashboard Card)
-    // FIX: Use explicit relationship 'users!student_id'
     let recentAppsQuery = supabase
         .from('applications')
         .select(`
@@ -142,50 +219,9 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     
     recentAppsQuery = applyRoleBasedCollegeFilter(recentAppsQuery, userProfile, 'applications');
 
-    const { data: recentApplications, error: recentAppError } = await recentAppsQuery
+    const { data: recentApplications } = await recentAppsQuery
         .order('submitted_at', { ascending: false })
         .limit(10);
-
-    if (statusFilter) {
-        applicationsQuery = applicationsQuery.eq('status', statusFilter);
-    }
-    if (courseFilter) {
-        applicationsQuery = applicationsQuery.eq('course_id', courseFilter);
-    }
-    if (branchFilter) {
-        applicationsQuery = applicationsQuery.eq('branch_id', branchFilter);
-    }
-    if (formTypeFilter) {
-        applicationsQuery = applicationsQuery.eq('form_type', formTypeFilter);
-    }
-    if (startDate) {
-        applicationsQuery = applicationsQuery.gte('updated_at', startDate);
-    }
-    if (endDate) {
-        applicationsQuery = applicationsQuery.lte('updated_at', endDate + 'T23:59:59'); 
-    }
-
-    if (searchQuery) {
-        applicationsQuery = applicationsQuery.or(`email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`, { foreignTable: 'users' });
-    }
-    
-    const allowedSorts = ['updated_at', 'status', 'merit_score'];
-    
-    if (sortField === 'merit_score') {
-         applicationsQuery = applicationsQuery.order('merit_score', { foreignTable: 'merit_list_entries', ascending: sortOrder === 'asc' });
-    } else if (allowedSorts.includes(sortField)) {
-        applicationsQuery = applicationsQuery.order(sortField, { ascending: sortOrder === 'asc' });
-    } else {
-        applicationsQuery = applicationsQuery.order('updated_at', { ascending: false });
-    }
-
-    applicationsQuery = applicationsQuery.range(from, to);
-
-    const { data: filteredApplications, count: filteredCount, error: filteredAppError } = await applicationsQuery;
-    
-    if (filteredAppError) {
-        console.error('Error fetching filtered applications:', filteredAppError.message);
-    }
 
     return {
         statusCounts: statusCounts || [],
@@ -198,8 +234,9 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         totalInquiries: totalInquiries,
         processedInquiries: processedInquiries,
         activeYearName: activeYear?.data?.name || 'Current Year',
-        filteredApplications: filteredApplications || [],
-        recentApplications: recentApplications || [], // Pass recent apps to UI
+        formTypesMap: Object.fromEntries(formTypesMap),
+        filteredApplications: finalApplications,
+        recentApplications: recentApplications || [],
         filters: {
             status: statusFilter,
             search: searchQuery,
@@ -214,10 +251,10 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
             order: sortOrder
         },
         pagination: {
-            total: filteredCount || 0,
+            total: finalCount,
             page,
             limit,
-            totalPages: Math.ceil((filteredCount || 0) / limit)
+            totalPages: Math.ceil(finalCount / limit)
         },
         options: {
             courses: allCourses || [],
