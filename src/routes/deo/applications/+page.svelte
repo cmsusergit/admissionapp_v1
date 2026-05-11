@@ -323,7 +323,7 @@
                                     <td>
                                         {getDisplayName(appAny)}
                                         {#if appAny.users?.student_profiles?.enrollment_number}
-                                            <br/><small class="text-muted">ID: {appAny.users.student_profiles.enrollment_number}</small>
+                                            <br/><small class="text-muted">College ID: {appAny.users.student_profiles.enrollment_number}</small>
                                         {/if}
                                         <br/>
                                         <small class="text-muted">{appAny.users?.email}</small>

@@ -9,69 +9,92 @@
     import { toastStore } from '$lib/stores/toastStore';
     import { generateReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
 
-    export let data: PageData;
-    export let form: ActionData;
+    let { data, form } = $props();
 
-    let showRecordModal = false;
-    let showReceiptModal = false;
-    let searchTerm = '';
-    let activeTab: 'tuition' | 'application' | 'provisional' = 'tuition';
+    let showRecordModal = $state(false);
+    let showReceiptModal = $state(false);
+    let searchTerm = $state('');
+    let activeTab: 'tuition' | 'application' | 'provisional' = $state('tuition');
 
-    $: if (form?.message) {
-        if (form.error) {
-            toastStore.error(form.message);
-        } else {
-            toastStore.success(form.message);
+    $effect(() => {
+        if (form?.message) {
+            if (form.error) {
+                toastStore.error(form.message);
+            } else {
+                toastStore.success(form.message);
+            }
         }
-    }
+    });
 
-    $: currentList = activeTab === 'tuition' ? data.tuitionPayments : 
+    let currentList = $derived(activeTab === 'tuition' ? data.tuitionPayments : 
                      activeTab === 'application' ? data.applicationFeePayments : 
-                     data.provisionalFeePayments;
+                     data.provisionalFeePayments);
     
-    $: filteredPayments = currentList.filter(p => {
+    let filteredPayments = $derived(currentList.filter(p => {
         const term = searchTerm.toLowerCase();
         const admNo = p.applications?.account_admissions?.[0]?.admission_number?.toLowerCase() || '';
         const name = p.applications?.users?.full_name?.toLowerCase() || '';
         const email = p.applications?.users?.email?.toLowerCase() || '';
         const txId = p.transaction_id?.toLowerCase() || '';
         return admNo.includes(term) || name.includes(term) || email.includes(term) || txId.includes(term);
-    });
+    }));
 
-    let selectedAdmissionId = ''; 
-    let showSchemeEdit = false; 
-    let totalAmount = 0;
-    let paymentDate = new Date().toISOString().split('T')[0];
+    let selectedAdmissionId = $state(''); 
+    let showSchemeEdit = $state(false); 
+    let paymentDate = $state(new Date().toISOString().split('T')[0]);
 
-    let paymentModes = [
+    let paymentModes = $state([
         { type: 'cash', amount: 0, reference: '' },
         { type: 'online', amount: 0, reference: '' },
         { type: 'cheque', amount: 0, reference: '' },
         { type: 'dd', amount: 0, reference: '' }
-    ];
+    ]);
 
-    let feeStructureToCollect: any = null; 
-    let amountDue: number = 0; 
-    let actualApplicationId = ''; 
-    let admissionCategoryCode = ''; 
-
-    let totalPaidForStudent: number = 0; 
-    let initialRemainingAmount: number = 0; 
-    let currentRemainingAmount: number = 0; 
-
-    let selectedFeeSchemeId = '';
+    let admissionCategoryCode = $state(''); 
+    let selectedFeeSchemeId = $state('');
     let lastSetAdmissionId = '';
 
-    let studentSearchQuery = '';
-    let showStudentDropdown = false;
-    $: filteredAdmissions = data.admissions.filter(adm => {
+    let studentSearchQuery = $state('');
+    let showStudentDropdown = $state(false);
+
+    // DERIVED VALUES (Replace $effect for pure calculations)
+    let selectedAdmission = $derived(data.admissions.find(a => a.id === selectedAdmissionId));
+    let actualApplicationId = $derived(selectedAdmission?.application_id || '');
+    
+    let feeStructureToCollect = $derived(data.feeStructures.find(fs => fs.admissionId === selectedAdmissionId)?.feeStructure || null);
+    let amountDue = $derived(feeStructureToCollect?.total_fee || 0);
+
+    let totalPaidForStudent = $derived(data.payments.filter(p => 
+        p.applications?.id === actualApplicationId && p.status === 'completed'
+    ).reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
+
+    let initialRemainingAmount = $derived(amountDue - totalPaidForStudent); 
+    let totalAmount = $derived(paymentModes.reduce((sum, mode) => sum + (Number(mode.amount) || 0), 0));
+    let currentRemainingAmount = $derived(initialRemainingAmount - totalAmount); 
+
+    let paymentBreakdownJson = $derived(JSON.stringify(paymentModes.filter(m => m.amount > 0).map(m => ({
+        mode: m.type,
+        amount: Number(m.amount) || 0,
+        ref: m.reference
+    }))));
+
+    // SIDE EFFECT (Only for resetting UI state when student changes)
+    $effect(() => {
+        if (selectedAdmissionId && selectedAdmissionId !== lastSetAdmissionId) {
+            const adm = data.admissions.find(a => a.id === selectedAdmissionId);
+            selectedFeeSchemeId = adm?.applications?.assigned_fee_scheme_id || '';
+            lastSetAdmissionId = selectedAdmissionId;
+        }
+    });
+
+    let filteredAdmissions = $derived(data.admissions.filter(adm => {
         if (!studentSearchQuery) return true;
         const term = studentSearchQuery.toLowerCase();
         const admNo = adm.admission_number?.toLowerCase() || '';
         const name = (adm.applications as any)?.student_user?.full_name?.toLowerCase() || '';
         const email = (adm.applications as any)?.student_user?.email?.toLowerCase() || '';
         return admNo.includes(term) || name.includes(term) || email.includes(term);
-    });
+    }));
 
     function selectStudent(adm: any) {
         selectedAdmissionId = adm.id;
@@ -86,28 +109,6 @@
         }
     }
 
-    $: {
-        const selectedAdmission = data.admissions.find(a => a.id === selectedAdmissionId);
-        actualApplicationId = selectedAdmission?.application_id || '';
-        
-        // Only auto-set scheme ID when student changes to avoid overwriting user selection during refreshes
-        if (selectedAdmissionId !== lastSetAdmissionId) {
-            selectedFeeSchemeId = selectedAdmission?.applications?.assigned_fee_scheme_id || '';
-            lastSetAdmissionId = selectedAdmissionId;
-        }
-
-        feeStructureToCollect = data.feeStructures.find(fs => fs.admissionId === selectedAdmissionId)?.feeStructure || null;
-        amountDue = feeStructureToCollect?.total_fee || 0;
-
-        totalPaidForStudent = data.payments.filter(p => 
-            p.applications?.id === actualApplicationId && p.status === 'completed'
-        ).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-
-        initialRemainingAmount = amountDue - totalPaidForStudent;
-        currentRemainingAmount = initialRemainingAmount - totalAmount;
-    }
-    
-    $: totalAmount = paymentModes.reduce((sum, mode) => sum + (Number(mode.amount) || 0), 0);
 
     onMount(() => {
         const admissionIdParam = $page.url.searchParams.get('admissionId');
@@ -161,12 +162,7 @@
         selectedAdmissionId = ''; 
         studentSearchQuery = '';
         showStudentDropdown = false;
-        actualApplicationId = '';
         admissionCategoryCode = '';
-        totalAmount = 0;
-        totalPaidForStudent = 0;
-        initialRemainingAmount = 0;
-        currentRemainingAmount = 0;
         paymentModes = [
             { type: 'cash', amount: 0, reference: '' },
             { type: 'online', amount: 0, reference: '' },
@@ -174,8 +170,6 @@
             { type: 'dd', amount: 0, reference: '' }
         ];
         paymentDate = new Date().toISOString().split('T')[0];
-        feeStructureToCollect = null;
-        amountDue = 0;
         showRecordModal = true;
     }
 
@@ -197,49 +191,81 @@
     }
 
     function printReceipt(payment: any) {
-        const app = payment.applications;
-        const student = app?.student_user;
-        const profile = student?.student_profiles;
-        const course = app?.courses;
-        const university = app?.courses?.colleges?.universities || {};
-        const admissionNo = Array.isArray(app?.account_admissions) 
-            ? app?.account_admissions[0]?.admission_number 
-            : app?.account_admissions?.admission_number;
+        console.log('[PrintReceipt] Button clicked for payment:', payment.id);
+        if (!payment) {
+            toastStore.error('No payment data provided.');
+            return;
+        }
+
+        const app = payment.applications || {};
+        const student = app.student_user || {};
+        const profiles = student.student_profiles;
+        const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+        const course = app.courses || {};
+        const colleges = course.colleges;
+        const college = Array.isArray(colleges) ? colleges[0] : colleges;
+        const universities = college?.universities;
+        const university = Array.isArray(universities) ? universities[0] : universities;
+        
+        const accAdmissions = app.account_admissions;
+        const admissionNo = Array.isArray(accAdmissions) 
+            ? accAdmissions[0]?.admission_number 
+            : accAdmissions?.admission_number;
         
         let feeBreakdown = getFeeBreakdown(payment);
         let totalStructureFee = 0;
         if (feeBreakdown && Array.isArray(feeBreakdown)) {
             totalStructureFee = feeBreakdown.reduce((sum: number, section: any) => {
-                return sum + (section.items?.reduce((s: number, i: any) => s + (Number(i.amount) || 0), 0) || 0);
+                const items = section.items || [];
+                return sum + items.reduce((s: number, i: any) => s + (Number(i.amount) || 0), 0);
             }, 0);
+        }
+
+        // Handle hybrid/legacy payment modes
+        let paymentModes = payment.payment_breakdown?.map((m: any) => ({
+            mode: m.type || m.mode,
+            amount: Number(m.amount) || 0,
+            ref: m.reference || m.ref
+        }));
+
+        if (!paymentModes || paymentModes.length === 0) {
+            paymentModes = [{
+                mode: payment.payment_mode || 'Unknown',
+                amount: Number(payment.amount) || 0,
+                ref: payment.reference_no
+            }];
         }
 
         const receiptData: ReceiptData = {
             receiptNumber: payment.receipt_number || payment.transaction_id || 'PENDING',
             date: payment.payment_date,
-            studentName: app?.users?.full_name || student?.full_name || 'N/A',
-            email: app?.users?.email || student?.email || 'N/A',
+            studentName: student.full_name || 'N/A',
+            email: student.email || 'N/A',
             enrollmentNumber: profile?.enrollment_number,
             admissionNumber: admissionNo,
-            courseName: course?.name || 'N/A',
+            courseName: course.name || 'N/A',
             paymentType: payment.payment_type || 'fee',
+            isProvisional: payment.payment_type === 'provisional_fee',
             transactionId: payment.transaction_id,
-            amount: Number(payment.amount),
+            amount: Number(payment.amount) || 0,
             totalStructureFee,
             feeBreakdown,
-            paymentModes: payment.payment_breakdown?.map((m: any) => ({
-                mode: m.type || m.mode,
-                amount: Number(m.amount),
-                ref: m.reference || m.ref
-            })),
+            paymentModes,
             university: {
-                name: university?.name || 'University Name',
-                address: university?.address,
-                contactEmail: university?.contact_email
+                name: university?.name || college?.name || 'University Name',
+                address: university?.address || college?.address,
+                contactEmail: university?.contact_email,
+                logoUrl: university?.logo_url || college?.logo_url
             }
         };
 
-        generateReceiptPDF(receiptData);
+        try {
+            console.log('Generating PDF with data:', receiptData);
+            generateReceiptPDF(receiptData);
+        } catch (err) {
+            console.error('Error generating PDF:', err);
+            toastStore.error('Failed to generate receipt PDF. See console for details.');
+        }
     }
 </script>
 
@@ -332,7 +358,7 @@
                             </tr>
                         {:else}
                             <tr>
-                                <td colspan="8" class="text-center text-muted">No payments found.</td>
+                                <td colspan="9" class="text-center text-muted">No payments found.</td>
                             </tr>
                         {/each}
                     </tbody>
@@ -351,9 +377,14 @@
                 <button type="button" class="btn-close" on:click={() => (showRecordModal = false)}></button>
             </div>
             <form method="POST" action="?/recordPayment" use:enhance={() => { 
-                showRecordModal = false; 
                 startLoading();
-                return async ({update}) => {
+                return async ({ result, update }) => {
+                    if (result.type === 'success') {
+                        showRecordModal = false;
+                        selectedAdmissionId = '';
+                        studentSearchQuery = '';
+                        admissionCategoryCode = '';
+                    }
                     await update();
                     stopLoading();
                 } 
@@ -519,7 +550,7 @@
                                 </tfoot>
                             </table>
                         </div>
-                        <input type="hidden" name="payment_breakdown" value={JSON.stringify(paymentModes.filter(m => m.amount > 0))} />
+                        <input type="hidden" name="payment_breakdown" value={paymentBreakdownJson} />
                         <input type="hidden" name="amount" value={totalAmount} />
                     </div>
 

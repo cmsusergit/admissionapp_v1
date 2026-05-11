@@ -76,7 +76,7 @@
                 <div class="col-md-5">
                     <label class="form-label">Search</label>
                     <div class="input-group">
-                        <input type="text" class="form-control" placeholder="Name, Enrollment, Receipt..." 
+                        <input type="text" class="form-control" placeholder="Name, College ID, Receipt..." 
                                bind:value={searchQuery} on:keydown={handleKeydown}>
                         <button class="btn btn-primary" on:click={triggerSearch}>
                             <i class="bi bi-search"></i>
@@ -120,7 +120,7 @@
             {#if data.tab === 'admitted'}
                 <div class="table-responsive">
                     <table class="table table-hover">
-                        <thead><tr><th>Name</th><th>Enrollment</th><th>Course</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Name</th><th>College ID</th><th>Course</th><th>Status</th></tr></thead>
                         <tbody>
                             {#each data.admittedStudents as s}
                                 <tr>

@@ -1,10 +1,16 @@
-import pdfMake from "pdfmake/build/pdfmake.js";
-import * as pdfFonts from "pdfmake/build/vfs_fonts.js";
+import * as pdfMakeLib from "pdfmake/build/pdfmake";
+import * as pdfFontsLib from "pdfmake/build/vfs_fonts";
 
-(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts;
+const pdfMake: any = (pdfMakeLib as any).default || pdfMakeLib;
+const pdfFonts: any = (pdfFontsLib as any).default || pdfFontsLib;
+
+if (pdfMake) {
+    pdfMake.vfs = pdfFonts?.pdfMake?.vfs || pdfFonts?.vfs || pdfFonts;
+}
 
 export interface ReceiptData {
-  receiptNumber: string;
+// ... rest of interface
+
   date: string;
   studentName: string;
   email: string;
@@ -89,30 +95,33 @@ function createProvisionalReceiptContent(data: ReceiptData, copyLabel: string): 
     const content: any[] = [];
 
     // Header with Logo
-    content.push({
-        columns: [
-            {
-                width: 60,
-                image: data.university.logoUrl || "",
-                fit: [50, 50],
-            },
-            {
-                width: "*",
-                stack: [
-                    { text: data.university.name.toUpperCase(), fontSize: 16, bold: true },
-                    { text: data.university.address || "Vasad", fontSize: 9 },
-                    { text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9 },
-                ],
-                alignment: "center",
-            },
-            {
-                width: 100,
-                text: `${copyLabel} COPY`,
-                fontSize: 10,
-                bold: true,
-                alignment: "right"
-            }
+    const headerColumns: any[] = [];
+    if (data.university.logoUrl) {
+        headerColumns.push({
+            width: 60,
+            image: data.university.logoUrl,
+            fit: [50, 50],
+        });
+    }
+    headerColumns.push({
+        width: "*",
+        stack: [
+            { text: data.university.name.toUpperCase(), fontSize: 16, bold: true },
+            { text: data.university.address || "Vasad", fontSize: 9 },
+            { text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9 },
         ],
+        alignment: "center",
+    });
+    headerColumns.push({
+        width: 100,
+        text: `${copyLabel} COPY`,
+        fontSize: 10,
+        bold: true,
+        alignment: "right"
+    });
+
+    content.push({
+        columns: headerColumns,
         margin: [0, 0, 0, 10]
     });
 
@@ -234,7 +243,7 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
   if (data.university.logoUrl) { headerColumns.push({ width: 60, image: data.university.logoUrl, fit: [50, 50] }); }
   headerColumns.push({ width: "*", stack: [ { text: data.university.name.toUpperCase(), fontSize: 14, bold: true }, { text: `Academic Year: ${data.academicYear || "-"}`, fontSize: 11, bold: true, margin: [0, 5, 0, 0] } ], alignment: "center" });
   content.push({ columns: headerColumns, margin: [0, 0, 0, 15] });
-  content.push({ columns: [ { text: `Student ID: ${data.enrollmentNumber || data.admissionNumber || "-"}`, fontSize: 10 }, { text: `Receipt Number: ${data.receiptNumber || "-"}`, fontSize: 10, alignment: "right" } ] });
+  content.push({ columns: [ { text: `College ID: ${data.enrollmentNumber || data.admissionNumber || "-"}`, fontSize: 10 }, { text: `Receipt Number: ${data.receiptNumber || "-"}`, fontSize: 10, alignment: "right" } ] });
   content.push({ columns: [ { text: `Branch Name: ${data.branchName || "-"}`, fontSize: 10 }, { text: `Date: ${formatDate(data.date)}`, fontSize: 10, alignment: "right" } ], margin: [0, 0, 0, 5] });
   content.push({ text: "Received From,", fontSize: 10, margin: [0, 5, 0, 0] });
   content.push({ text: data.studentName.toUpperCase(), fontSize: 11, bold: true, margin: [0, 2, 0, 5] });

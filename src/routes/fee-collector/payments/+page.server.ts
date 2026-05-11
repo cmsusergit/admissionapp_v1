@@ -1,6 +1,6 @@
 import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import { generateReceiptNumber } from '$lib/server/receipt';
+import { generateReceiptNumber, createFeeReceipt } from '$lib/server/receipt';
 import { applyRoleBasedCollegeFilter } from '$lib/server/security';
 import { ensureStudentEnrolled } from '$lib/server/enrollment';
 import { createClient } from '@supabase/supabase-js';
@@ -283,7 +283,30 @@ export const actions: Actions = {
             return fail(500, { message: 'Missing critical application details.', error: true });
         }
 
-        const transaction_id = `HYBRID-${Date.now()}`;
+        const gateway_tx_id = `HYBRID-${Date.now()}`;
+
+        // 1. Create Transaction Record first to get UUID for linking
+        const { data: txData, error: txError } = await supabase.from('transactions').insert({
+            student_id: authenticatedUser?.id || userProfile.id,
+            application_id,
+            amount,
+            currency: 'INR',
+            status: 'success',
+            gateway_transaction_id: gateway_tx_id,
+            gateway_response: { 
+                payment_type,
+                payment_date: new Date(payment_date).toISOString(),
+                payment_breakdown: payment_breakdown.map((m: any) => ({ ...m, mode: m.type || m.mode })),
+                fee_components_breakdown: currentFeeStructure?.fee_components || null
+            }
+        }).select().single();
+
+        if (txError || !txData) {
+            console.error('Error recording transaction:', txError?.message);
+            return fail(500, { message: 'Failed to record transaction.', error: true });
+        }
+
+        const transaction_uuid = txData.id;
 
         // 2. Create Receipt Record (this handles sequence generation internally)
         let receipt;
@@ -292,7 +315,7 @@ export const actions: Actions = {
             const components = currentFeeStructure?.fee_components || [];
             
             receipt = await createFeeReceipt(supabase, {
-                transactionId: transaction_id,
+                transactionId: transaction_uuid,
                 studentId: studentId,
                 applicationId: application_id,
                 amount,
@@ -312,38 +335,28 @@ export const actions: Actions = {
         
         const receipt_number = receipt.receipt_no;
 
-        const { error: txError } = await supabase.from('transactions').insert({
-            student_id: authenticatedUser?.id || userProfile.id,
-            application_id,
-            amount,
-            currency: 'INR',
-            status: 'success',
-            gateway_transaction_id: transaction_id,
+        // Update transaction with receipt number
+        await supabase.from('transactions').update({
             gateway_response: { 
-                payment_type,
-                receipt_number,
-                payment_date: new Date(payment_date).toISOString(),
-                payment_breakdown: payment_breakdown.map((m: any) => ({ ...m, mode: m.type || m.mode })),
-                fee_components_breakdown: currentFeeStructure?.fee_components || null
+                ...(txData.gateway_response as any),
+                receipt_number
             }
-        });
-
-        if (txError) {
-            console.error('Error recording transaction:', txError.message);
-            return fail(500, { message: 'Failed to record transaction.', error: true });
-        }
+        }).eq('id', transaction_uuid);
 
         // Record in `payments` table as well since it's the source of truth for categorized fees
+        const mainBreakdown = payment_breakdown[0];
         const { error: payError } = await supabase.from('payments').insert({
             application_id,
             amount,
             payment_type, // 'tuition_fee'
-            transaction_id,
+            transaction_id: gateway_tx_id,
             receipt_number,
             status: 'completed',
             payment_date: new Date(payment_date).toISOString(),
             payment_breakdown: payment_breakdown.map((m: any) => ({ ...m, mode: m.type || m.mode })),
-            fee_components_breakdown: currentFeeStructure?.fee_components || []
+            fee_components_breakdown: currentFeeStructure?.fee_components || [],
+            payment_mode: payment_breakdown.length === 1 ? mainBreakdown.mode : 'hybrid',
+            reference_no: payment_breakdown.length === 1 ? mainBreakdown.ref : gateway_tx_id
         });
 
         if (payError) {
