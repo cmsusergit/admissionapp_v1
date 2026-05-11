@@ -41,7 +41,8 @@ export const load: PageServerLoad = async ({
                 courses(name, code, colleges(name, logo_url, address, universities(name, logo_url, address, contact_email, website))),
                 branches(name, code),
                 account_admissions(admission_number),
-                admission_cycles(name, academic_years(name))
+                admission_cycles(name, academic_years(name)),
+                form_types(is_prov)
             )
         `,
     )

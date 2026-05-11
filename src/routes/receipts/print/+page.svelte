@@ -4,13 +4,15 @@
 
     export let data: PageData;
     const { payment, university, college } = data;
-    
     const app = payment.applications;
     const student = app?.student_user;
     const profile = student?.student_profiles;
     const course = app?.courses;
     const branch = app?.branches;
     
+    // Explicitly check for is_prov
+    const isProvisional = app?.form_types?.is_prov || payment.payment_type === 'provisional_fee';
+
     const admissionNo = Array.isArray(app?.account_admissions) 
         ? app?.account_admissions[0]?.admission_number 
         : app?.account_admissions?.admission_number;
@@ -61,6 +63,7 @@
             academicYear: academicYear,
             semester: 'FIRST SEMESTER',
             paymentType: payment.payment_type || 'fee',
+            isProvisional,
             transactionId: payment.transaction_id,
             amount: grandTotal,
             totalStructureFee: grandTotal, 
@@ -98,6 +101,7 @@
             academicYear: academicYear,
             semester: 'FIRST SEMESTER',
             paymentType: payment.payment_type || 'fee',
+            isProvisional,
             transactionId: payment.transaction_id,
             amount: grandTotal,
             totalStructureFee: grandTotal,
@@ -122,7 +126,6 @@
         downloadReceiptPDF(receiptData);
     }
 
-    // Helper for finding payment modes for grid
     const getMode = (type: string) => paymentModes.find((m: any) => (m.mode || m.type).toLowerCase() === type.toLowerCase());
 
 </script>
@@ -143,212 +146,222 @@
 <div class="receipt-outer-container">
     <div class="receipt-page" id="receipt-element">
         
-        <!-- Header -->
-        <div class="receipt-header text-center mb-4">
-            <div class="d-flex align-items-center justify-content-center mb-2">
-                {#if college?.logo_url || university?.logo_url}
-                    <img src={college?.logo_url || university?.logo_url} alt="Logo" class="me-3" style="height: 60px;">
-                {/if}
-                <h2 class="m-0 fw-bold">{college?.name || university?.name || 'College Name'}</h2>
+        {#if payment.payment_type === 'tuition_fee'}
+            <!-- DETAILED TUITION LAYOUT -->
+            <div class="receipt-header text-center mb-4">
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    {#if college?.logo_url || university?.logo_url}
+                        <img src={college?.logo_url || university?.logo_url} alt="Logo" class="me-3" style="height: 60px;">
+                    {/if}
+                    <h2 class="m-0 fw-bold">{college?.name || university?.name || 'College Name'}</h2>
+                </div>
+                <h5 class="fw-bold">Academic Year: {academicYear}</h5>
             </div>
-            <h5 class="fw-bold">Academic Year: {academicYear}</h5>
-        </div>
-
-        <!-- Student Metadata -->
-        <div class="row mb-2">
-            <div class="col-7">
-                <p><strong>Student ID:</strong> {profile?.enrollment_number || admissionNo || '-'}</p>
-                <p><strong>Branch Name:</strong> {branch?.name || course?.name || '-'}</p>
+            <!-- ... Tuition layout contents remain same ... -->
+            <div class="row mb-2">
+                <div class="col-7">
+                    <p><strong>Student ID:</strong> {profile?.enrollment_number || admissionNo || '-'}</p>
+                    <p><strong>Branch Name:</strong> {branch?.name || course?.name || '-'}</p>
+                </div>
+                <div class="col-5 text-end">
+                    <p><strong>Receipt Number:</strong> {payment.receipt_number || 'PENDING'}</p>
+                    <p><strong>Date:</strong> {new Date(payment.payment_date).toLocaleDateString('en-IN')}</p>
+                </div>
             </div>
-            <div class="col-5 text-end">
-                <p><strong>Receipt Number:</strong> {payment.receipt_number || 'PENDING'}</p>
-                <p><strong>Date:</strong> {new Date(payment.payment_date).toLocaleDateString('en-IN')}</p>
+            <div class="received-section mb-3">
+                <p class="mb-1">Recieved From,</p>
+                <h5 class="fw-bold mb-2 text-uppercase">{student?.full_name}</h5>
+                <p>The Following amount as Fees for the <strong>{course?.name}</strong> for a <strong>FIRST SEMESTER {academicYear}</strong></p>
             </div>
-        </div>
-
-        <div class="received-section mb-3">
-            <p class="mb-1">Recieved From,</p>
-            <h5 class="fw-bold mb-2 text-uppercase">{student?.full_name}</h5>
-            <p>The Following amount as Fees for the <strong>{course?.name}</strong> for a <strong>FIRST SEMESTER {academicYear}</strong></p>
-        </div>
-
-        <!-- Fee Table -->
-        <table class="table table-bordered border-dark fee-table mb-2">
-            <thead>
-                <tr class="bg-light">
-                    <th style="width: 50px;" class="text-center">Sr.</th>
-                    <th>Particulars</th>
-                    <th style="width: 150px;" class="text-end">Fees in Rs.</th>
-                </tr>
-            </thead>
-            <tbody>
-                {#if feeBreakdown && Array.isArray(feeBreakdown)}
-                    {#each feeBreakdown as section}
-                        {#if section.name}
-                            <tr class="section-header">
-                                <td></td>
-                                <td class="fw-bold">{section.name}</td>
-                                <td></td>
-                            </tr>
-                        {/if}
-                        
-                        {#each section.items || [] as item, i}
-                            <tr>
-                                <td class="text-center">{i + 1}</td>
-                                <td>{item.name}</td>
-                                <td class="text-end">{parseAmount(item.amount).toLocaleString('en-IN')}</td>
-                            </tr>
-                        {/each}
-
-                        <tr class="subtotal-row">
-                            <td></td>
-                            <td class="text-end fw-bold">SubTotal</td>
-                            <td class="text-end fw-bold">
-                                {#if section.items}
-                                    {section.items.reduce((s: number, it: any) => s + parseAmount(it.amount), 0).toLocaleString('en-IN')}
-                                {:else}
-                                    0
-                                {/if}
-                            </td>
-                        </tr>
-                    {/each}
-                {:else}
-                    <tr>
-                        <td class="text-center">1</td>
-                        <td>{payment.payment_type?.replace('_', ' ').toUpperCase()}</td>
-                        <td class="text-end">{grandTotal.toLocaleString('en-IN')}</td>
-                    </tr>
-                {/if}
-            </tbody>
-            <tfoot>
-                <tr class="grand-total-row">
-                    <td></td>
-                    <td class="text-end fw-bold">Grand Total in Rs.</td>
-                    <td class="text-end fw-bold">{grandTotal.toLocaleString('en-IN')}</td>
-                </tr>
-            </tfoot>
-        </table>
-
-        <div class="words-section mb-4">
-            <p><strong>In Words:</strong> {numberToWords(grandTotal)}</p>
-        </div>
-
-        <!-- Payment Mode Grid -->
-        <div class="payment-grid mb-4">
-            <table class="table table-bordered border-dark mb-0">
+            <table class="table table-bordered border-dark fee-table mb-2">
+                <thead><tr class="bg-light"><th style="width: 50px;" class="text-center">Sr.</th><th>Particulars</th><th style="width: 150px;" class="text-end">Fees in Rs.</th></tr></thead>
                 <tbody>
-                    <tr>
-                        <td class="fw-bold bg-light" style="width: 120px;">CASH</td>
-                        <td>Amount: {getMode('cash') ? Number(getMode('cash').amount).toLocaleString('en-IN') : '0'}</td>
-                        <td>ADVANCE Amount: 0</td>
-                        <td>Freeship Amount: 0</td>
-                    </tr>
-                    
-                    <tr>
-                        <td class="fw-bold bg-light">DD/Cheque</td>
-                        <td>Amount: {(getMode('cheque') || getMode('dd')) ? Number((getMode('cheque') || getMode('dd')).amount).toLocaleString('en-IN') : '0'}</td>
-                        <td>Bank Name: {(getMode('cheque') || getMode('dd'))?.bankName || '-'}</td>
-                        <td>Ref.: {(getMode('cheque') || getMode('dd'))?.ref || '-'} Date: {(getMode('cheque') || getMode('dd'))?.date ? new Date((getMode('cheque') || getMode('dd')).date).toLocaleDateString() : '-'}</td>
-                    </tr>
-
-                    <tr>
-                        <td class="fw-bold bg-light">Online</td>
-                        <td>Amount: {getMode('online') ? Number(getMode('online').amount).toLocaleString('en-IN') : '0'}</td>
-                        <td colspan="2">Reference Number: {getMode('online')?.ref || '-'}</td>
-                    </tr>
-
-                    <tr>
-                        <td class="fw-bold bg-light">ACPC</td>
-                        <td>Amount: {getMode('acpc') ? Number(getMode('acpc').amount).toLocaleString('en-IN') : '0'}</td>
-                        <td>Rec.Number: {getMode('acpc')?.ref || '-'}</td>
-                        <td>Payment Date: {getMode('acpc')?.date ? new Date(getMode('acpc').date).toLocaleDateString() : '-'}</td>
-                    </tr>
+                    {#if feeBreakdown && Array.isArray(feeBreakdown)}
+                        {#each feeBreakdown as section}
+                            {#if section.name}<tr class="section-header"><td></td><td class="fw-bold">{section.name}</td><td></td></tr>{/if}
+                            {#each section.items || [] as item, i}
+                                <tr><td class="text-center">{i + 1}</td><td>{item.name}</td><td class="text-end">{parseAmount(item.amount).toLocaleString('en-IN')}</td></tr>
+                            {/each}
+                            <tr class="subtotal-row"><td></td><td class="text-end fw-bold">SubTotal</td><td class="text-end fw-bold">{section.items?.reduce((s, it) => s + parseAmount(it.amount), 0).toLocaleString('en-IN')}</td></tr>
+                        {/each}
+                    {:else}
+                        <tr><td class="text-center">1</td><td>{payment.payment_type?.replace('_', ' ').toUpperCase()}</td><td class="text-end">{grandTotal.toLocaleString('en-IN')}</td></tr>
+                    {/if}
                 </tbody>
+                <tfoot><tr class="grand-total-row"><td></td><td class="text-end fw-bold">Grand Total in Rs.</td><td class="text-end fw-bold">{grandTotal.toLocaleString('en-IN')}</td></tr></tfoot>
             </table>
-        </div>
-
-        <!-- Footer -->
-        <div class="d-flex justify-content-end mb-5">
-            <div class="text-center" style="width: 200px;">
-                <div style="height: 60px;"></div>
-                <p class="mb-0 fw-bold">Authorized Signature</p>
-                <p class="small">SVIT, Vasad</p>
+            <div class="words-section mb-4"><p><strong>In Words:</strong> {numberToWords(grandTotal)} Only</p></div>
+            <div class="payment-grid mb-4">
+                <table class="table table-bordered border-dark mb-0">
+                    <tbody>
+                        <tr><td class="fw-bold bg-light" style="width: 120px;">CASH</td><td>Amount: {getMode('cash') ? Number(getMode('cash').amount).toLocaleString('en-IN') : '0'}</td><td>ADVANCE Amount: 0</td><td>Freeship Amount: 0</td></tr>
+                        <tr><td class="fw-bold bg-light">DD/Cheque</td><td>Amount: {(getMode('cheque') || getMode('dd')) ? Number((getMode('cheque') || getMode('dd')).amount).toLocaleString('en-IN') : '0'}</td><td>Bank Name: {(getMode('cheque') || getMode('dd'))?.bankName || '-'}</td><td>Ref.: {(getMode('cheque') || getMode('dd'))?.ref || '-'} Date: {(getMode('cheque') || getMode('dd'))?.date ? new Date((getMode('cheque') || getMode('dd')).date).toLocaleDateString() : '-'}</td></tr>
+                        <tr><td class="fw-bold bg-light">Online</td><td>Amount: {getMode('online') ? Number(getMode('online').amount).toLocaleString('en-IN') : '0'}</td><td colspan="2">Reference Number: {getMode('online')?.ref || '-'}</td></tr>
+                        <tr><td class="fw-bold bg-light">ACPC</td><td>Amount: {getMode('acpc') ? Number(getMode('acpc').amount).toLocaleString('en-IN') : '0'}</td><td>Rec.Number: {getMode('acpc')?.ref || '-'}</td><td>Payment Date: {getMode('acpc')?.date ? new Date(getMode('acpc').date).toLocaleDateString() : '-'}</td></tr>
+                    </tbody>
+                </table>
             </div>
-        </div>
+            <div class="d-flex justify-content-end mb-5"><div class="text-center" style="width: 200px;"><div style="height: 60px;"></div><p class="mb-0 fw-bold">Authorized Signature</p><p class="small">SVIT, Vasad</p></div></div>
+            <div class="footer-notes border-top pt-3 mt-auto"><p class="small mb-1 italic"><strong>Note::</strong> In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year 2025-26</p><p class="small italic"><strong>Note::</strong> Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet</p></div>
+        {/if}
 
-        <div class="footer-notes border-top pt-3 mt-auto">
-            <p class="small mb-1 italic"><strong>Note::</strong> In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year 2025-26</p>
-            <p class="small italic"><strong>Note::</strong> Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet</p>
-        </div>
+        {#if isProvisional && payment.payment_type !== 'tuition_fee'}
+            <!-- PROVISIONAL LAYOUT (Matching IMG-20260511-WA0011.jpg) - TWO COPIES -->
+            {#each ['STUDENT', 'OFFICE'] as copyType, i}
+                {#if i === 1}
+                    <div class="cut-line-container my-4">
+                        <div class="cut-line"></div>
+                        <div class="cut-label"><i class="bi bi-scissors me-2"></i>Cut Here</div>
+                    </div>
+                {/if}
+                <div class="provisional-copy">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="d-flex align-items-center">
+                            {#if college?.logo_url || university?.logo_url}
+                                <img src={college?.logo_url || university?.logo_url} alt="Logo" class="me-3" style="height: 50px;">
+                            {/if}
+                            <div>
+                                <h3 class="fw-bold m-0" style="font-size: 1.3rem;">{college?.name || university?.name || 'SARDAR VALLABHBHAI PATEL INSTITUTE OF TECHNOLOGY'}</h3>
+                                <p class="small m-0 text-muted">{college?.address || 'Vasad'}</p>
+                                <p class="small m-0 text-muted">{university?.contact_email || 'admission@svitvasad.ac.in'}</p>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-dark px-3 py-2">{copyType} COPY</span>
+                        </div>
+                    </div>
+
+                    <h4 class="text-center fw-bold mb-4" style="text-decoration: underline;">FEE RECEIPT</h4>
+
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <p class="mb-1"><strong>Receipt No:</strong> {payment.receipt_number || 'PENDING'}</p>
+                        </div>
+                        <div class="col-6 text-end">
+                            <p class="mb-1"><strong>Date:</strong> {new Date(payment.payment_date).toLocaleDateString('en-IN')}</p>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-6">
+                            <h6 class="fw-bold border-bottom pb-1 mb-2">Student Details</h6>
+                            <p class="mb-1">Name: <span class="text-uppercase">{student?.full_name}</span></p>
+                            <p class="mb-1">Email: {student?.email}</p>
+                        </div>
+                        <div class="col-6">
+                            <h6 class="fw-bold border-bottom pb-1 mb-2">Admission Details</h6>
+                            <p class="mb-1">Prov Adm ID: {admissionNo || app?.provisional_admission_id || '-'}</p>
+                            <p class="mb-1">Course: {course?.name}</p>
+                            <p class="mb-1">Branch: {branch?.name || '-'}</p>
+                        </div>
+                    </div>
+
+                    <table class="table table-bordered border-dark mb-4">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Description</th>
+                                <th class="text-end" width="150">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="py-3">
+                                    <div class="fw-bold">PROVISIONAL FEE</div>
+                                    <small class="text-muted">Ref: {payment.transaction_id || '-'}</small>
+                                </td>
+                                <td class="text-end fw-bold py-3">Rs. {grandTotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="d-flex justify-content-between align-items-end mt-4">
+                        <p class="small italic m-0">{college?.name || university?.name}, Vasad</p>
+                        <div class="text-center">
+                            <p class="mb-0">Signature: ________________</p>
+                        </div>
+                    </div>
+                </div>
+            {/each}
+
+        {/if}
+
+        {#if payment.payment_type !== 'tuition_fee' && !isProvisional}
+            <!-- SIMPLE ORIGINAL LAYOUT (For Standard Application Fees) -->
+            <div class="receipt-header text-center mb-4">
+                <h2 class="m-0 fw-bold">{college?.name || university?.name || 'College Name'}</h2>
+                <h4 class="mt-2">FEE RECEIPT</h4>
+            </div>
+            <div class="row mb-4">
+                <div class="col-6">
+                    <p><strong>Receipt No:</strong> {payment.receipt_number || 'PENDING'}</p>
+                    <p><strong>Date:</strong> {new Date(payment.payment_date).toLocaleDateString('en-IN')}</p>
+                </div>
+                <div class="col-6 text-end">
+                    <p class="text-muted italic">ORIGINAL COPY</p>
+                    <p><strong>ID:</strong> {profile?.enrollment_number || admissionNo || '-'}</p>
+                </div>
+            </div>
+            <div class="mb-4">
+                <p><strong>Received with thanks from:</strong> <span class="text-uppercase">{student?.full_name}</span></p>
+                <p><strong>Course:</strong> {course?.name}</p>
+                <p><strong>Payment Type:</strong> {payment.payment_type?.replace('_', ' ').toUpperCase()}</p>
+            </div>
+            <table class="table table-bordered mb-4">
+                <thead class="bg-light"><tr><th>Description</th><th class="text-end" width="200">Amount (INR)</th></tr></thead>
+                <tbody><tr><td>{payment.payment_type?.replace('_', ' ').toUpperCase()} Payment</td><td class="text-end">{grandTotal.toLocaleString('en-IN')}</td></tr></tbody>
+                <tfoot><tr class="fw-bold"><td class="text-end">Total Amount Paid</td><td class="text-end">{grandTotal.toLocaleString('en-IN')}</td></tr></tfoot>
+            </table>
+            <div class="mb-5"><p><strong>Amount in words:</strong> {numberToWords(grandTotal)} Only</p></div>
+            <div class="text-center mt-5"><p class="small text-muted">This is a computer-generated receipt and does not require a signature.</p></div>
+        {/if}
 
     </div>
 </div>
 
 <style>
-    .receipt-outer-container {
-        background-color: #f0f2f5;
-        padding: 40px 0;
-        min-height: 100vh;
-    }
-
-    .receipt-page {
-        max-width: 850px;
-        margin: 0 auto;
-        background: white;
-        padding: 40px;
-        box-shadow: 0 0 20px rgba(0,0,0,0.1);
-        min-height: 297mm; /* A4 Height approx */
-        display: flex;
-        flex-direction: column;
-        color: black;
-        font-family: Arial, sans-serif;
-    }
-
+    .receipt-outer-container { background-color: #f0f2f5; padding: 40px 0; min-height: 100vh; }
+    .receipt-page { max-width: 850px; margin: 0 auto; background: white; padding: 40px; box-shadow: 0 0 20px rgba(0,0,0,0.1); min-height: 297mm; display: flex; flex-direction: column; color: black; font-family: Arial, sans-serif; }
     h2 { font-size: 1.5rem; letter-spacing: 0.5px; }
     p { margin-bottom: 0.4rem; font-size: 14px; }
-
-    .fee-table th, .fee-table td {
-        padding: 6px 12px;
-        font-size: 13px;
-        vertical-align: middle;
-    }
-
-    .section-header td {
-        background-color: #f8f9fa;
-        font-size: 13px;
-    }
-
-    .subtotal-row td {
-        border-top: 1px solid #dee2e6;
-        font-size: 13px;
-    }
-
-    .grand-total-row td {
-        border-top: 2px solid black;
-        font-size: 15px;
-    }
-
-    .payment-grid td {
-        padding: 6px 10px;
-        font-size: 12px;
-        border-color: black !important;
-    }
-
-    .footer-notes p {
-        font-size: 11px;
-        line-height: 1.4;
-    }
-
+    .fee-table th, .fee-table td { padding: 6px 12px; font-size: 13px; vertical-align: middle; }
+    .section-header td { background-color: #f8f9fa; font-size: 13px; }
+    .subtotal-row td { border-top: 1px solid #dee2e6; font-size: 13px; }
+    .grand-total-row td { border-top: 2px solid black; font-size: 15px; }
+    .payment-grid td { padding: 6px 10px; font-size: 12px; border-color: black !important; }
+    .footer-notes p { font-size: 11px; line-height: 1.4; }
     .italic { font-style: italic; }
+    .border-dashed { border-style: dashed !important; }
+    
+    .cut-line-container {
+        position: relative;
+        text-align: center;
+        width: 100%;
+    }
 
+    .cut-line {
+        border-top: 2px dotted #aaa;
+        width: 100%;
+        position: absolute;
+        top: 50%;
+        left: 0;
+        z-index: 1;
+    }
+
+    .cut-label {
+        position: relative;
+        background: white;
+        display: inline-block;
+        padding: 0 15px;
+        color: #888;
+        font-size: 12px;
+        font-style: italic;
+        z-index: 2;
+    }
+    
     @media print {
         .actions-bar { display: none !important; }
         .receipt-outer-container { padding: 0; background: white; }
-        .receipt-page { 
-            box-shadow: none; 
-            padding: 15mm;
-            width: 100%;
-            height: 100%;
-        }
+        .receipt-page { box-shadow: none; padding: 15mm; width: 100%; height: 100%; }
+        .mt-5 { margin-top: 3rem !important; }
     }
 </style>
