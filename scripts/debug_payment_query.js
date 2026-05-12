@@ -22,11 +22,16 @@ async function checkPaymentQuery() {
     const { data: allPayments, error: allError } = await supabase.from('payments').select('*');
     if (allError) { console.error('Error fetching all payments:', allError); return; }
     console.log(`Total payments in DB: ${allPayments.length}`);
+    allPayments.forEach(p => {
+        if (p.receipt_number && (p.receipt_number.startsWith('REC-') || p.receipt_number.includes('17'))) {
+             console.log(` - [${p.payment_type}] ID: ${p.id}, Receipt: ${p.receipt_number}`);
+        }
+    });
 
     // 2. Check application_fee payments
     const appFees = allPayments.filter(p => p.payment_type === 'application_fee');
     console.log(`Payments with payment_type='application_fee': ${appFees.length}`);
-    appFees.forEach(p => console.log(` - ID: ${p.id}, Status: ${p.status}, Amount: ${p.amount}`));
+    appFees.forEach(p => console.log(` - ID: ${p.id}, Status: ${p.status}, Amount: ${p.amount}, Receipt: ${p.receipt_number}`));
 
     // 3. Check completed application_fee payments
     const completedAppFees = appFees.filter(p => p.status === 'completed');

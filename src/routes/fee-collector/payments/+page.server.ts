@@ -36,6 +36,10 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                         universities(name, logo_url, contact_email, contact_phone, website, address, footer_text)
                     )
                 ),
+                branches(name),
+                admission_cycles(
+                    academic_years(name)
+                ),
                 account_admissions (admission_number)
             )
         `);
@@ -174,6 +178,7 @@ export const actions: Actions = {
         const amount = parseFloat(formData.get('amount') as string);
         const payment_date = formData.get('payment_date') as string || new Date().toISOString();
         const admission_category_code = formData.get('admission_category_code') as string; 
+        const fee_period = (formData.get('fee_period') as string) || 'year';
         
         const payment_type = 'tuition_fee';
 
@@ -352,6 +357,7 @@ export const actions: Actions = {
             transaction_id: gateway_tx_id,
             receipt_number,
             status: 'completed',
+            fee_period,
             payment_date: new Date(payment_date).toISOString(),
             payment_breakdown: payment_breakdown.map((m: any) => ({ ...m, mode: m.type || m.mode })),
             fee_components_breakdown: currentFeeStructure?.fee_components || [],

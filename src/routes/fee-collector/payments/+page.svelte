@@ -7,7 +7,7 @@
     import { invalidateAll, goto } from '$app/navigation';
     import { page } from '$app/stores';
     import { toastStore } from '$lib/stores/toastStore';
-    import { generateReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
+    import { generateReceiptPDF, downloadReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
 
     let { data, form } = $props();
 
@@ -40,6 +40,7 @@
     }));
 
     let selectedAdmissionId = $state(''); 
+    let feePeriod = $state('year'); // 'year' or 'semester'
     let showSchemeEdit = $state(false); 
     let paymentDate = $state(new Date().toISOString().split('T')[0]);
 
@@ -62,7 +63,36 @@
     let actualApplicationId = $derived(selectedAdmission?.application_id || '');
     
     let feeStructureToCollect = $derived(data.feeStructures.find(fs => fs.admissionId === selectedAdmissionId)?.feeStructure || null);
-    let amountDue = $derived(feeStructureToCollect?.total_fee || 0);
+    
+    // Calculate first semester amount based on installments or component-wise splitting
+    let firstSemAmount = $derived(() => {
+        if (!feeStructureToCollect) return 0;
+        
+        // If installments are explicitly defined, use the first one
+        if (feeStructureToCollect.installment_json && feeStructureToCollect.installment_json.length > 0) {
+            return Number(feeStructureToCollect.installment_json[0].amount) || 0;
+        }
+        
+        // Heuristic: sum up components (split by item rules)
+        const components = feeStructureToCollect.fee_components || [];
+        let total = 0;
+        components.forEach((section: any) => {
+            (section.items || []).forEach((item: any) => {
+                const val = Number(item.amount) || 0;
+                const name = (item.name || '').toLowerCase();
+                
+                // One-time/Deposit fees are 100% in first semester, else 50%
+                const isOneTime = name.includes('caution') || name.includes('enrollment') || 
+                                 name.includes('one time') || name.includes('deposit') ||
+                                 name.includes('admission');
+                
+                total += isOneTime ? val : (val / 2);
+            });
+        });
+        return total || (feeStructureToCollect.total_fee / 2);
+    });
+
+    let amountDue = $derived(feePeriod === 'semester' ? firstSemAmount() : (feeStructureToCollect?.total_fee || 0));
 
     let totalPaidForStudent = $derived(data.payments.filter(p => 
         p.applications?.id === actualApplicationId && p.status === 'completed'
@@ -190,11 +220,27 @@
         return null;
     }
 
-    function printReceipt(payment: any) {
-        console.log('[PrintReceipt] Button clicked for payment:', payment.id);
+    async function downloadReceipt(payment: any) {
+        console.log('[DownloadReceipt] Button clicked for payment:', payment.id);
+        toastStore.info('Preparing receipt PDF for download...');
+        
+        try {
+            const receiptData = prepareReceiptData(payment);
+            if (!receiptData) return;
+
+            console.log('[DownloadReceipt] Downloading PDF with data:', receiptData);
+            await downloadReceiptPDF(receiptData);
+            toastStore.success('PDF download started');
+        } catch (err) {
+            console.error('[DownloadReceipt] Error:', err);
+            toastStore.error('Failed to download: ' + (err instanceof Error ? err.message : String(err)));
+        }
+    }
+
+    function prepareReceiptData(payment: any): ReceiptData | null {
         if (!payment) {
             toastStore.error('No payment data provided.');
-            return;
+            return null;
         }
 
         const app = payment.applications || {};
@@ -207,6 +253,12 @@
         const universities = college?.universities;
         const university = Array.isArray(universities) ? universities[0] : universities;
         
+        const branch = app.branches || {};
+        const cycle = app.admission_cycles || {};
+        const academicYear = cycle.academic_years?.name || 'N/A';
+        const feePeriod = payment.fee_period || 'year';
+        const isTuitionFee = payment.payment_type === 'tuition_fee';
+
         const accAdmissions = app.account_admissions;
         const admissionNo = Array.isArray(accAdmissions) 
             ? accAdmissions[0]?.admission_number 
@@ -214,14 +266,38 @@
         
         let feeBreakdown = getFeeBreakdown(payment);
         let totalStructureFee = 0;
+        
         if (feeBreakdown && Array.isArray(feeBreakdown)) {
+            // Apply component-wise splitting for semester receipts ONLY for tuition fees
+            if (feePeriod === 'semester' && isTuitionFee) {
+                feeBreakdown = feeBreakdown.map(section => ({
+                    ...section,
+                    items: (section.items || []).map(item => {
+                        const fullVal = Number(item.amount) || 0;
+                        const name = (item.name || '').toLowerCase();
+                        
+                        // Heuristic: One-time/Deposit fees are usually 100% in the first semester.
+                        // Recurring fees (Tuition, etc.) are split 50/50.
+                        const isOneTime = name.includes('caution') || 
+                                         name.includes('enrollment') || 
+                                         name.includes('one time') || 
+                                         name.includes('deposit') ||
+                                         name.includes('admission');
+                        
+                        return { 
+                            ...item, 
+                            amount: isOneTime ? fullVal : (fullVal / 2) 
+                        };
+                    })
+                }));
+            }
+
             totalStructureFee = feeBreakdown.reduce((sum: number, section: any) => {
                 const items = section.items || [];
                 return sum + items.reduce((s: number, i: any) => s + (Number(i.amount) || 0), 0);
             }, 0);
         }
 
-        // Handle hybrid/legacy payment modes
         let paymentModes = payment.payment_breakdown?.map((m: any) => ({
             mode: m.type || m.mode,
             amount: Number(m.amount) || 0,
@@ -236,7 +312,7 @@
             }];
         }
 
-        const receiptData: ReceiptData = {
+        return {
             receiptNumber: payment.receipt_number || payment.transaction_id || 'PENDING',
             date: payment.payment_date,
             studentName: student.full_name || 'N/A',
@@ -244,6 +320,11 @@
             enrollmentNumber: profile?.enrollment_number,
             admissionNumber: admissionNo,
             courseName: course.name || 'N/A',
+            branchName: branch.name || 'N/A',
+            academicYear: academicYear,
+            semester: isTuitionFee 
+                ? (feePeriod === 'semester' ? 'SEMESTER' : 'YEAR') 
+                : 'FIRST SEMESTER', // Default for other fee types
             paymentType: payment.payment_type || 'fee',
             isProvisional: payment.payment_type === 'provisional_fee',
             transactionId: payment.transaction_id,
@@ -252,19 +333,28 @@
             feeBreakdown,
             paymentModes,
             university: {
-                name: university?.name || college?.name || 'University Name',
-                address: university?.address || college?.address,
+                name: college?.name || university?.name || 'College Name',
+                address: college?.address || university?.address,
                 contactEmail: university?.contact_email,
-                logoUrl: university?.logo_url || college?.logo_url
+                logoUrl: college?.logo_url || university?.logo_url
             }
         };
+    }
 
+    async function printReceipt(payment: any) {
+        console.log('[PrintReceipt] Button clicked for payment:', payment.id);
+        toastStore.info('Preparing receipt PDF...');
+        
         try {
-            console.log('Generating PDF with data:', receiptData);
-            generateReceiptPDF(receiptData);
+            const receiptData = prepareReceiptData(payment);
+            if (!receiptData) return;
+
+            console.log('[PrintReceipt] Generating PDF with data:', receiptData);
+            await generateReceiptPDF(receiptData);
+            toastStore.success('PDF sent to printer');
         } catch (err) {
-            console.error('Error generating PDF:', err);
-            toastStore.error('Failed to generate receipt PDF. See console for details.');
+            console.error('[PrintReceipt] Error in function:', err);
+            toastStore.error('Failed to generate receipt: ' + (err instanceof Error ? err.message : String(err)));
         }
     }
 </script>
@@ -338,9 +428,10 @@
                                     {#if payment.payment_breakdown}
                                         {#each payment.payment_breakdown as mode}
                                             {#if mode.amount > 0}
-                                                <span class="badge bg-info text-dark me-1">{mode.type}: {mode.amount}</span>
+                                                <span class="badge bg-info text-dark me-1 text-uppercase">{mode.type || mode.mode || 'N/A'}: {mode.amount}</span>
                                             {/if}
                                         {/each}
+
                                     {:else}
                                         <span class="badge bg-secondary">{payment.transaction_id?.split('-')[0] || 'Unknown'}</span>
                                     {/if}
@@ -351,9 +442,14 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm btn-secondary" on:click={() => printReceipt(payment)}>
-                                        <i class="bi bi-printer"></i> Print
-                                    </button>
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-secondary" title="Print" on:click={() => printReceipt(payment)}>
+                                            <i class="bi bi-printer"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary" title="Download" on:click={() => downloadReceipt(payment)}>
+                                            <i class="bi bi-download"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         {:else}
@@ -370,10 +466,10 @@
 
 <!-- Record Payment Modal -->
 <div class="modal" tabindex="-1" style="display: {showRecordModal ? 'block' : 'none'};">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Record Payment</h5>
+                <h5 class="modal-title">Record Admission Payment</h5>
                 <button type="button" class="btn-close" on:click={() => (showRecordModal = false)}></button>
             </div>
             <form method="POST" action="?/recordPayment" use:enhance={() => { 
@@ -384,191 +480,252 @@
                         selectedAdmissionId = '';
                         studentSearchQuery = '';
                         admissionCategoryCode = '';
+                        feePeriod = 'year';
                     }
                     await update();
                     stopLoading();
                 } 
             }}>
                 <div class="modal-body">
-                    <div class="mb-3 position-relative student-autocomplete-container">
-                        <label for="student-search" class="form-label">Select Student (Admission No.)</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-search"></i></span>
-                            <input 
-                                type="text" 
-                                class="form-control" 
-                                id="student-search"
-                                placeholder="Type Admission No. or Name..."
-                                bind:value={studentSearchQuery}
-                                on:focus={() => showStudentDropdown = true}
-                                required
-                            />
+                    <div class="row">
+                        <!-- Left Column: Summary & Info -->
+                        <div class="col-md-5 border-end bg-light p-4">
+                            <h6 class="text-uppercase fw-bold text-muted mb-3">Student & Fee Summary</h6>
+                            
                             {#if selectedAdmissionId}
-                                <button type="button" class="btn btn-outline-secondary" on:click={() => { selectedAdmissionId = ''; studentSearchQuery = ''; }}>
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            {/if}
-                        </div>
-                        
-                        {#if showStudentDropdown && filteredAdmissions.length > 0}
-                            <div class="list-group position-absolute w-100 shadow-sm z-3" style="max-height: 200px; overflow-y: auto;">
-                                {#each filteredAdmissions as adm}
-                                    {@const admAny = adm as any}
-                                    <button 
-                                        type="button" 
-                                        class="list-group-item list-group-item-action text-start"
-                                        on:click={() => selectStudent(adm)}
-                                    >
-                                        <div class="fw-bold">{admAny.admission_number}</div>
-                                        <small class="text-muted">{admAny.applications?.student_user?.full_name || admAny.applications?.student_user?.email}</small>
-                                    </button>
-                                {/each}
-                            </div>
-                        {:else if showStudentDropdown && studentSearchQuery}
-                            <div class="list-group position-absolute w-100 shadow-sm z-3">
-                                <div class="list-group-item disabled">No non-provisional students found matching "{studentSearchQuery}"</div>
-                            </div>
-                        {/if}
-                        
-                        <input type="hidden" name="application_id" value={actualApplicationId} />
-                        <div class="form-text">Only showing students with non-provisional admissions.</div>
-                    </div>
-
-                    {#if selectedAdmissionId}
-                        {@const selectedAdm = data.admissions.find(a => a.id === selectedAdmissionId)}
-                        <div class="card bg-light mb-3">
-                            <div class="card-body p-3">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <label class="form-label fw-bold mb-0">Assigned Fee Scheme:</label>
-                                        {#if selectedAdm?.applications?.assigned_fee_scheme_id}
-                                            <span class="badge bg-primary fs-6 ms-2">
-                                                {data.feeSchemes.find(s => s.id === selectedAdm?.applications?.assigned_fee_scheme_id)?.name}
-                                            </span>
-                                        {:else}
-                                            <span class="badge bg-warning text-dark fs-6 ms-2">Not Assigned</span>
-                                        {/if}
+                                {@const selectedAdm = data.admissions.find(a => a.id === selectedAdmissionId)}
+                                <div class="card mb-3 shadow-sm border-0">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                                                <i class="bi bi-person fs-3"></i>
+                                            </div>
+                                            <div>
+                                                <h6 class="mb-0 fw-bold">{selectedAdm?.applications?.student_user?.full_name}</h6>
+                                                <small class="text-muted">{selectedAdm?.admission_number || 'N/A'}</small>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <span class="badge bg-outline-primary border text-primary me-1">{selectedAdm?.applications?.courses?.name}</span>
+                                            <span class="badge bg-outline-info border text-info">{selectedAdm?.applications?.branches?.name || 'All Branches'}</span>
+                                        </div>
                                     </div>
-                                    <button type="button" class="btn btn-sm btn-outline-primary" on:click={() => showSchemeEdit = !showSchemeEdit}>
-                                        {showSchemeEdit ? 'Cancel' : 'Change Scheme'}
-                                    </button>
                                 </div>
 
-                                {#if showSchemeEdit || !selectedAdm?.applications?.assigned_fee_scheme_id}
-                                    <div class="mt-3 p-2 border rounded bg-white">
-                                        <div class="input-group">
-                                            <select class="form-select form-select-sm" bind:value={selectedFeeSchemeId} required>
-                                                <option value="">-- Assign Scheme --</option>
-                                                {#each data.feeSchemes as scheme}
-                                                    <option value={scheme.id}>
-                                                        {scheme.name}
-                                                    </option>
-                                                {/each}
-                                            </select>
-                                            <button type="button" class="btn btn-sm btn-success" on:click={handleUpdateScheme}>
-                                                Update Scheme
-                                            </button>
+                                {#if feeStructureToCollect}
+                                    <div class="card mb-3 shadow-sm border-0">
+                                        <div class="card-header bg-white border-0 py-3">
+                                            <h6 class="mb-0 fw-bold">Fee Breakdown ({feePeriod === 'semester' ? 'SEMESTER' : 'YEARLY'})</h6>
                                         </div>
-                                        <div class="form-text mt-1 text-info">Changing the scheme will update the "Total Fee Due" below.</div>
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-borderless mb-0">
+                                                    <thead class="bg-light">
+                                                        <tr>
+                                                            <th class="ps-3">Item</th>
+                                                            <th class="text-end pe-3">Amount</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {#each feeStructureToCollect.fee_components || [] as section}
+                                                            {#each section.items || [] as item}
+                                                                {@const val = Number(item.amount) || 0}
+                                                                {@const name = (item.name || '').toLowerCase()}
+                                                                {@const isOneTime = name.includes('caution') || name.includes('enrollment') || 
+                                                                                name.includes('one time') || name.includes('deposit') ||
+                                                                                name.includes('admission')}
+                                                                {@const displayAmt = (feePeriod === 'semester' && !isOneTime) ? (val / 2) : val}
+                                                                <tr>
+                                                                    <td class="ps-3 py-2 text-muted">{item.name}</td>
+                                                                    <td class="text-end pe-3 py-2 fw-medium">INR {displayAmt.toLocaleString()}</td>
+                                                                </tr>
+                                                            {/each}
+                                                        {/each}
+                                                    </tbody>
+                                                    <tfoot class="border-top">
+                                                        <tr class="table-primary">
+                                                            <th class="ps-3 py-2">Total Due</th>
+                                                            <th class="text-end pe-3 py-2">INR {amountDue.toLocaleString()}</th>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <small class="text-muted">Payment Progress</small>
+                                            <small class="fw-bold">{((totalPaidForStudent / amountDue) * 100).toFixed(0)}%</small>
+                                        </div>
+                                        <div class="progress mb-3" style="height: 10px;">
+                                            <div class="progress-bar bg-success" role="progressbar" style="width: {(totalPaidForStudent / amountDue) * 100}%"></div>
+                                        </div>
+
+                                        <div class="alert alert-warning py-2 mb-2">
+                                            <div class="d-flex justify-content-between">
+                                                <span>Previously Paid:</span>
+                                                <span class="fw-bold">INR {totalPaidForStudent.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                        <div class="alert alert-info py-2 mb-2">
+                                            <div class="d-flex justify-content-between">
+                                                <span>Remaining Due:</span>
+                                                <span class="fw-bold">INR {initialRemainingAmount.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                        <div class="alert {currentRemainingAmount <= 0 ? 'alert-success' : 'alert-danger'} py-2 mb-0">
+                                            <div class="d-flex justify-content-between">
+                                                <span>After This Payment:</span>
+                                                <span class="fw-bold">INR {currentRemainingAmount.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {:else}
+                                    <div class="alert alert-warning">Please assign a fee scheme to see the breakdown.</div>
+                                {/if}
+                            {:else}
+                                <div class="text-center py-5">
+                                    <i class="bi bi-person-search display-1 text-light"></i>
+                                    <p class="text-muted">Select a student to view details and fee breakdown</p>
+                                </div>
+                            {/if}
+                        </div>
+
+                        <!-- Right Column: Form Inputs -->
+                        <div class="col-md-7 p-4">
+                            <div class="mb-4">
+                                <label for="student-search" class="form-label fw-bold">1. Select Student</label>
+                                <div class="input-group position-relative student-autocomplete-container shadow-sm">
+                                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        id="student-search"
+                                        placeholder="Type Admission No. or Name..."
+                                        bind:value={studentSearchQuery}
+                                        on:focus={() => showStudentDropdown = true}
+                                        required
+                                    />
+                                    {#if selectedAdmissionId}
+                                        <button type="button" class="btn btn-outline-secondary" on:click={() => { selectedAdmissionId = ''; studentSearchQuery = ''; }}>
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    {/if}
+                                    
+                                    {#if showStudentDropdown && filteredAdmissions.length > 0}
+                                        <div class="list-group position-absolute w-100 shadow-lg z-3 top-100 mt-1" style="max-height: 200px; overflow-y: auto;">
+                                            {#each filteredAdmissions as adm}
+                                                {@const admAny = adm as any}
+                                                <button 
+                                                    type="button" 
+                                                    class="list-group-item list-group-item-action text-start"
+                                                    on:click={() => selectStudent(adm)}
+                                                >
+                                                    <div class="fw-bold">{admAny.admission_number}</div>
+                                                    <small class="text-muted">{admAny.applications?.student_user?.full_name}</small>
+                                                </button>
+                                            {/each}
+                                        </div>
+                                    {/if}
+                                </div>
+                                <input type="hidden" name="application_id" value={actualApplicationId} />
+                            </div>
+
+                            {#if selectedAdmissionId}
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <label for="adm-category" class="form-label fw-bold">2. Category Code</label>
+                                        <input type="text" class="form-control" id="adm-category" name="admission_category_code" bind:value={admissionCategoryCode} placeholder="e.g. V, F, M" required />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">3. Fee Period</label>
+                                        <div class="btn-group w-100" role="group">
+                                            <input type="radio" class="btn-check" name="fee_period_ui" id="period-year" value="year" bind:group={feePeriod}>
+                                            <label class="btn btn-outline-primary" for="period-year">YEAR</label>
+                                            <input type="radio" class="btn-check" name="fee_period_ui" id="period-sem" value="semester" bind:group={feePeriod}>
+                                            <label class="btn btn-outline-primary" for="period-sem">SEMESTER</label>
+                                        </div>
+                                        <input type="hidden" name="fee_period" value={feePeriod} />
+                                    </div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">4. Payment Modes (Hybrid Possible)</label>
+                                    <div class="card border-0 shadow-sm overflow-hidden">
+                                        <table class="table table-hover mb-0">
+                                            <thead class="bg-light">
+                                                <tr>
+                                                    <th class="ps-3">Mode</th>
+                                                    <th width="140">Amount</th>
+                                                    <th class="pe-3">Reference / Txn ID</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {#each paymentModes as mode}
+                                                    <tr>
+                                                        <td class="ps-3 pt-3 text-capitalize fw-medium">{mode.type}</td>
+                                                        <td>
+                                                            <input type="number" class="form-control form-control-sm" bind:value={mode.amount} min="0" placeholder="0.00">
+                                                        </td>
+                                                        <td class="pe-3">
+                                                            <input type="text" class="form-control form-control-sm" bind:value={mode.reference} placeholder="Ref No." disabled={mode.amount <= 0}>
+                                                        </td>
+                                                    </tr>
+                                                {/each}
+                                            </tbody>
+                                            <tfoot class="bg-light-primary">
+                                                <tr>
+                                                    <th class="ps-3 py-3">Collecting Now</th>
+                                                    <th class="py-3 fs-5 text-primary">INR {totalAmount.toLocaleString()}</th>
+                                                    <th></th>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                    <input type="hidden" name="payment_breakdown" value={paymentBreakdownJson} />
+                                    <input type="hidden" name="amount" value={totalAmount} />
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label for="payment-date" class="form-label fw-bold">5. Payment Date</label>
+                                        <input type="date" class="form-control" id="payment-date" name="payment_date" bind:value={paymentDate} required disabled={initialRemainingAmount <= 0} />
+                                    </div>
+                                    <div class="col-md-6 d-flex align-items-end">
+                                        {#if initialRemainingAmount <= 0}
+                                            <div class="badge bg-success py-3 w-100 fs-6">
+                                                <i class="bi bi-check-circle-fill me-2"></i>FULLY PAID
+                                            </div>
+                                        {/if}
+                                    </div>
+                                </div>
+
+                                {#if showSchemeEdit}
+                                    <div class="card mt-4 bg-light border-0 shadow-sm">
+                                        <div class="card-body">
+                                            <label class="form-label fw-bold">Change Assigned Fee Scheme</label>
+                                            <div class="input-group">
+                                                <select class="form-select" bind:value={selectedFeeSchemeId} required>
+                                                    <option value="">-- Assign Scheme --</option>
+                                                    {#each data.feeSchemes as scheme}
+                                                        <option value={scheme.id}>{scheme.name}</option>
+                                                    {/each}
+                                                </select>
+                                                <button type="button" class="btn btn-success" on:click={handleUpdateScheme}>Update</button>
+                                            </div>
+                                        </div>
                                     </div>
                                 {/if}
-                            </div>
+                            {/if}
                         </div>
-                    {/if}
-
-                    <div class="mb-3">
-                        <label for="adm-category" class="form-label">Admission Category Code (e.g., V, F)</label>
-                        <input type="text" class="form-control" id="adm-category" name="admission_category_code" bind:value={admissionCategoryCode} placeholder="e.g. V, F, M" required />
-                        <div class="form-text">Code for ID generation (e.g., V for Vacant, F for Free, M for Management)</div>
                     </div>
-
-                    {#if feeStructureToCollect}
-                        <div class="alert alert-info d-flex justify-content-between align-items-center">
-                            <span>**Total Fee Due:**</span>
-                            <span class="fw-bold fs-5">INR {feeStructureToCollect.total_fee.toFixed(2)}</span>
-                        </div>
-                        {#if feeStructureToCollect.installment_json && feeStructureToCollect.installment_json.length > 0}
-                            <h6 class="border-bottom pb-2 mb-2">Installment Breakdown</h6>
-                            <ul class="list-group mb-3">
-                                {#each feeStructureToCollect.installment_json as installment}
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        {installment.name} ({new Date(installment.due_date).toLocaleDateString()})
-                                        <span class="badge bg-primary rounded-pill">INR {Number(installment.amount).toFixed(2)}</span>
-                                    </li>
-                                {/each}
-                            </ul>
-                        {/if}
-
-                        <div class="mb-3">
-                            <div class="alert alert-success d-flex justify-content-between align-items-center mb-1">
-                                <span>**Previously Paid:**</span>
-                                <span class="fw-bold fs-5">INR {totalPaidForStudent.toFixed(2)}</span>
-                            </div>
-                            <div class="alert alert-warning d-flex justify-content-between align-items-center mb-1">
-                                <span>**Initial Remaining Due:**</span>
-                                <span class="fw-bold fs-5">INR {initialRemainingAmount.toFixed(2)}</span>
-                            </div>
-                            <div class="alert {currentRemainingAmount >= 0 ? 'alert-danger' : 'alert-success'} d-flex justify-content-between align-items-center">
-                                <span>**Remaining After Current Payment:**</span>
-                                <span class="fw-bold fs-5">INR {currentRemainingAmount.toFixed(2)}</span>
-                            </div>
-                        </div>
-                    {:else if selectedAdmissionId}
-                        <div class="alert alert-warning">No fee structure defined for this student's course/year.</div>
-                    {/if}
-                    
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Payment Breakdown (Hybrid Mode)</label>
-                        <div class="table-responsive border rounded p-2 bg-light">
-                            <table class="table table-sm mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Mode</th>
-                                        <th width="150">Amount</th>
-                                        <th>Reference / Txn ID</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {#each paymentModes as mode}
-                                        <tr>
-                                            <td class="text-capitalize pt-2 fw-bold">{mode.type}</td>
-                                            <td>
-                                                <input type="number" class="form-control form-control-sm" bind:value={mode.amount} min="0" placeholder="0.00">
-                                            </td>
-                                            <td>
-                                                <input type="text" class="form-control form-control-sm" bind:value={mode.reference} placeholder="Ref No." disabled={mode.amount <= 0}>
-                                            </td>
-                                        </tr>
-                                    {/each}
-                                </tbody>
-                                <tfoot>
-                                    <tr>
-                                        <th class="text-end">Total Paid:</th>
-                                        <th>{totalAmount.toFixed(2)}</th>
-                                        <th></th>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                        <input type="hidden" name="payment_breakdown" value={paymentBreakdownJson} />
-                        <input type="hidden" name="amount" value={totalAmount} />
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="payment-date" class="form-label">Payment Date</label>
-                        <input type="date" class="form-control" id="payment-date" name="payment_date" bind:value={paymentDate} required disabled={initialRemainingAmount <= 0} />
-                    </div>
-                    
-                    {#if initialRemainingAmount <= 0 && feeStructureToCollect}
-                        <div class="alert alert-danger mt-3">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            This student has already fully paid the tuition fees based on the assigned scheme. Further payments are not permitted unless reset by an administrator.
-                        </div>
-                    {/if}
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" on:click={() => (showRecordModal = false)}>Cancel</button>
-                    <button type="submit" class="btn btn-primary" disabled={totalAmount <= 0 || initialRemainingAmount <= 0}>Record Payment</button>
+                <div class="modal-footer bg-light border-0 py-3">
+                    <button type="button" class="btn btn-outline-secondary px-4" on:click={() => (showRecordModal = false)}>Cancel</button>
+                    <button type="submit" class="btn btn-primary px-5 fw-bold" disabled={totalAmount <= 0 || initialRemainingAmount <= 0}>
+                        <i class="bi bi-check2-circle me-2"></i>Record Payment
+                    </button>
                 </div>
             </form>
         </div>
