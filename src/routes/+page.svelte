@@ -27,7 +27,7 @@
                                 <div class="d-flex align-items-center gap-3">
                                     <div>
                                         <small class="text-muted d-block">Admission Helpdesk</small>
-                                        <span class="fw-bold"><i class="bi bi-telephone-fill me-1"></i> +91 95107 82981</span>
+                                        <span class="fw-bold"><i class="bi bi-telephone-fill me-1"></i> +91 95107 82983/84</span>
                                     </div>
                                     <div class="ms-auto">
                                         <small class="text-muted d-block">Support Email</small>

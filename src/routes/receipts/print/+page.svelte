@@ -20,7 +20,16 @@
     const academicYear = app?.admission_cycles?.academic_years?.name || '-';
     
     let feeBreakdown = payment.fee_components_breakdown; 
-    const paymentModes = payment.payment_breakdown || [];
+    let paymentModes = payment.payment_breakdown || [];
+
+    // Fallback: If JSON breakdown is empty but flat columns have data
+    if ((!paymentModes || paymentModes.length === 0) && payment.payment_mode) {
+        paymentModes = [{
+            mode: payment.payment_mode,
+            amount: payment.amount,
+            ref: payment.reference_no
+        }];
+    }
 
     // Robust amount parsing
     function parseAmount(val: any): number {
@@ -160,7 +169,7 @@
             <!-- ... Tuition layout contents remain same ... -->
             <div class="row mb-2">
                 <div class="col-7">
-                    <p><strong>Student ID:</strong> {profile?.enrollment_number || admissionNo || '-'}</p>
+                    <p><strong>College ID:</strong> {profile?.enrollment_number || admissionNo || '-'}</p>
                     <p><strong>Branch Name:</strong> {branch?.name || course?.name || '-'}</p>
                 </div>
                 <div class="col-5 text-end">
@@ -298,7 +307,7 @@
                 </div>
                 <div class="col-6 text-end">
                     <p class="text-muted italic">ORIGINAL COPY</p>
-                    <p><strong>ID:</strong> {profile?.enrollment_number || admissionNo || '-'}</p>
+                    <p><strong>College ID:</strong> {profile?.enrollment_number || admissionNo || '-'}</p>
                 </div>
             </div>
             <div class="mb-4">

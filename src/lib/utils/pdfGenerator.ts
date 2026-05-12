@@ -1,7 +1,12 @@
-import pdfMake from "pdfmake/build/pdfmake.js";
-import * as pdfFonts from "pdfmake/build/vfs_fonts.js";
+import * as pdfMakeLib from "pdfmake/build/pdfmake";
+import * as pdfFontsLib from "pdfmake/build/vfs_fonts";
 
-(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts;
+const pdfMake: any = (pdfMakeLib as any).default || pdfMakeLib;
+const pdfFonts: any = (pdfFontsLib as any).default || pdfFontsLib;
+
+if (pdfMake) {
+    pdfMake.vfs = pdfFonts?.pdfMake?.vfs || pdfFonts?.vfs || pdfFonts;
+}
 
 export interface ReceiptData {
   receiptNumber: string;
@@ -69,7 +74,10 @@ function numberToWords(num: number): string {
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-  let numStr = num.toString();
+  const val = Math.floor(num);
+  if (val === 0) return 'Zero ';
+  
+  let numStr = val.toString();
   if (numStr.length > 9) return 'overflow';
   const n: any = ('000000000' + numStr).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
   if (!n) return ''; 
@@ -83,120 +91,94 @@ function numberToWords(num: number): string {
 }
 
 /**
- * 1. PROVISIONAL FORMAT (Exactly matches IMG-20260511-WA0011.jpg)
+ * 1. PROVISIONAL FORMAT
  */
 function createProvisionalReceiptContent(data: ReceiptData, copyLabel: string): any[] {
     const content: any[] = [];
+    
+    // Centered Header Stack
+    const headerStack: any[] = [];
+    if (data.university.logoUrl) {
+        headerStack.push({
+            image: data.university.logoUrl,
+            fit: [60, 60],
+            alignment: "center",
+            margin: [0, 0, 0, 5]
+        });
+    }
+    headerStack.push({ text: data.university.name.toUpperCase(), fontSize: 16, bold: true, alignment: "center" });
+    headerStack.push({ text: data.university.address || "Vasad", fontSize: 9, alignment: "center" });
+    headerStack.push({ text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9, alignment: "center" });
 
-    // Header with Logo
     content.push({
-        columns: [
-            {
-                width: 60,
-                image: data.university.logoUrl || "",
-                fit: [50, 50],
-            },
-            {
-                width: "*",
-                stack: [
-                    { text: data.university.name.toUpperCase(), fontSize: 16, bold: true },
-                    { text: data.university.address || "Vasad", fontSize: 9 },
-                    { text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9 },
-                ],
-                alignment: "center",
-            },
-            {
-                width: 100,
-                text: `${copyLabel} COPY`,
-                fontSize: 10,
-                bold: true,
-                alignment: "right"
-            }
-        ],
+        stack: headerStack,
         margin: [0, 0, 0, 10]
     });
 
+    content.push({ text: `${copyLabel} COPY`, fontSize: 10, bold: true, alignment: "right", margin: [0, -30, 0, 10] });
     content.push({ text: "FEE RECEIPT", fontSize: 14, bold: true, alignment: "center", margin: [0, 0, 0, 15] });
-
-    // Metadata Row
+    content.push({ columns: [ { text: `Receipt No: ${data.receiptNumber}`, bold: true, fontSize: 11 }, { text: `Date: ${formatDate(data.date)}`, alignment: "right", fontSize: 11 } ], margin: [0, 0, 0, 10] });
     content.push({
         columns: [
-            { text: `Receipt No: ${data.receiptNumber}`, bold: true, fontSize: 11 },
-            { text: `Date: ${formatDate(data.date)}`, alignment: "right", fontSize: 11 }
-        ],
-        margin: [0, 0, 0, 10]
-    });
-
-    // Student & Admission Details Grid
-    content.push({
-        columns: [
-            {
-                width: "55%",
-                stack: [
-                    { text: "Student Details", fontSize: 11, bold: true, decoration: "underline", margin: [0, 0, 0, 5] },
-                    { text: `Name: ${data.studentName.toUpperCase()}`, fontSize: 10 },
-                    { text: `Email: ${data.email}`, fontSize: 10 },
-                ]
-            },
-            {
-                width: "45%",
-                stack: [
-                    { text: "Admission Details", fontSize: 11, bold: true, decoration: "underline", margin: [0, 0, 0, 5] },
-                    { text: `Prov Adm ID: ${data.admissionNumber || data.provisionalAdmissionId || "-"}`, fontSize: 10 },
-                    { text: `Course: ${data.courseName}`, fontSize: 10 },
-                    { text: `Branch: ${data.branchName || "-"}`, fontSize: 10 },
-                ]
-            }
+            { width: "55%", stack: [ { text: "Student Details", fontSize: 11, bold: true, decoration: "underline", margin: [0, 0, 0, 5] }, { text: `Name: ${data.studentName.toUpperCase()}`, fontSize: 10 }, { text: `Email: ${data.email}`, fontSize: 10 } ] },
+            { width: "45%", stack: [ { text: "Admission Details", fontSize: 11, bold: true, decoration: "underline", margin: [0, 0, 0, 5] }, { text: `Prov Adm ID: ${data.admissionNumber || data.provisionalAdmissionId || "-"}`, fontSize: 10 }, { text: `Course: ${data.courseName}`, fontSize: 10 }, { text: `Branch: ${data.branchName || "-"}`, fontSize: 10 } ] }
         ],
         margin: [0, 0, 0, 15]
     });
-
-    // Fee Table
     content.push({
         table: {
             widths: ["*", 100],
             body: [
-                [
-                    { text: "Description", bold: true, fillColor: "#f3f3f3", fontSize: 11 },
-                    { text: "Amount", bold: true, fillColor: "#f3f3f3", alignment: "right", fontSize: 11 }
-                ],
-                [
-                    {
-                        stack: [
-                            { text: "PROVISIONAL FEE", bold: true, margin: [0, 5, 0, 2] },
-                            { text: `Ref: ${data.transactionId || "-"}`, fontSize: 8, color: "#444" }
-                        ]
-                    },
-                    { text: `Rs. ${formatCurrency(data.amount)}`, alignment: "right", margin: [0, 10, 0, 0], bold: true }
-                ]
+                [ { text: "Description", bold: true, fillColor: "#f3f3f3", fontSize: 11 }, { text: "Amount", bold: true, fillColor: "#f3f3f3", alignment: "right", fontSize: 11 } ],
+                [ { stack: [ { text: "PROVISIONAL FEE", bold: true, margin: [0, 5, 0, 2] }, { text: `Ref: ${data.transactionId || "-"}`, fontSize: 8, color: "#444" } ] }, { text: `Rs. ${formatCurrency(data.amount)}`, alignment: "right", margin: [0, 10, 0, 0], bold: true } ]
             ]
         },
         margin: [0, 0, 0, 20]
     });
-
-    // Footer
-    content.push({
-        columns: [
-            { text: data.university.name + ", Vasad", fontSize: 9, italics: true, width: "*" },
-            { 
-                stack: [
-                    { text: "Signature: ________________", alignment: "right" }
-                ],
-                width: 150
-            }
-        ],
-        margin: [0, 10, 0, 0]
-    });
-
+    content.push({ columns: [ { text: data.university.name + ", Vasad", fontSize: 9, italics: true, width: "*" }, { stack: [ { text: "Signature: ________________", alignment: "right" } ], width: 150 } ], margin: [0, 10, 0, 0] });
     return content;
 }
 
 /**
- * 2. ORIGINAL SIMPLE FORMAT (For non-tuition, non-provisional Application Fees)
+ * 2. ORIGINAL SIMPLE FORMAT
  */
 function createSimpleReceiptContent(data: ReceiptData, copyLabel: string): any[] {
     const content: any[] = [];
-    content.push({ text: data.university.name.toUpperCase(), fontSize: 14, bold: true, alignment: "center", margin: [0, 0, 0, 10] });
+    
+    // Horizontal Header: Logo (left), Centered Info (middle), Placeholder (right) to balance
+    const headerRow: any[] = [];
+    
+    // Left column: Logo
+    if (data.university.logoUrl) {
+        headerRow.push({
+            width: 80,
+            image: data.university.logoUrl,
+            fit: [60, 60],
+            alignment: "left",
+            margin: [0, 0, 0, 0]
+        });
+    } else {
+        headerRow.push({ width: 80, text: "" });
+    }
+
+    // Middle column: Centered University Info
+    headerRow.push({
+        width: "*",
+        stack: [
+            { text: data.university.name.toUpperCase(), fontSize: 14, bold: true, alignment: "center" },
+            { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" }
+        ],
+        margin: [0, 5, 0, 0]
+    });
+
+    // Right column: Placeholder
+    headerRow.push({ width: 80, text: "" });
+
+    content.push({
+        columns: headerRow,
+        margin: [0, 0, 0, 15]
+    });
+
     content.push({ text: "FEE RECEIPT", fontSize: 12, bold: true, alignment: "center", margin: [0, 0, 0, 20] });
     content.push({
       columns: [
@@ -226,15 +208,46 @@ function createSimpleReceiptContent(data: ReceiptData, copyLabel: string): any[]
 }
 
 /**
- * 3. DETAILED REDESIGN (ONLY for Tuition/Admission Fees)
+ * 3. DETAILED REDESIGN
  */
 function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any[] {
   const content: any[] = [];
-  const headerColumns: any[] = [];
-  if (data.university.logoUrl) { headerColumns.push({ width: 60, image: data.university.logoUrl, fit: [50, 50] }); }
-  headerColumns.push({ width: "*", stack: [ { text: data.university.name.toUpperCase(), fontSize: 14, bold: true }, { text: `Academic Year: ${data.academicYear || "-"}`, fontSize: 11, bold: true, margin: [0, 5, 0, 0] } ], alignment: "center" });
-  content.push({ columns: headerColumns, margin: [0, 0, 0, 15] });
-  content.push({ columns: [ { text: `Student ID: ${data.enrollmentNumber || data.admissionNumber || "-"}`, fontSize: 10 }, { text: `Receipt Number: ${data.receiptNumber || "-"}`, fontSize: 10, alignment: "right" } ] });
+  
+  // Horizontal Header: Logo (left), Centered Info (middle), Placeholder (right) to balance
+  const headerRow: any[] = [];
+  
+  // Left column: Logo
+  if (data.university.logoUrl) {
+      headerRow.push({
+          width: 80,
+          image: data.university.logoUrl,
+          fit: [60, 60],
+          alignment: "left",
+          margin: [0, 0, 0, 0]
+      });
+  } else {
+      headerRow.push({ width: 80, text: "" });
+  }
+
+  // Middle column: Centered University Info
+  headerRow.push({
+      width: "*",
+      stack: [
+          { text: data.university.name.toUpperCase(), fontSize: 14, bold: true, alignment: "center" },
+          { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" },
+          { text: `Academic Year: ${data.academicYear || "-"}`, fontSize: 11, bold: true, alignment: "center", margin: [0, 5, 0, 0] },
+      ],
+      margin: [0, 5, 0, 0]
+  });
+
+  // Right column: Placeholder for balancing to keep middle text truly centered on page
+  headerRow.push({ width: 80, text: "" });
+
+  content.push({
+      columns: headerRow,
+      margin: [0, 0, 0, 15]
+  });
+  content.push({ columns: [ { text: `College ID: ${data.enrollmentNumber || data.admissionNumber || "-"}`, fontSize: 10 }, { text: `Receipt Number: ${data.receiptNumber || "-"}`, fontSize: 10, alignment: "right" } ] });
   content.push({ columns: [ { text: `Branch Name: ${data.branchName || "-"}`, fontSize: 10 }, { text: `Date: ${formatDate(data.date)}`, fontSize: 10, alignment: "right" } ], margin: [0, 0, 0, 5] });
   content.push({ text: "Received From,", fontSize: 10, margin: [0, 5, 0, 0] });
   content.push({ text: data.studentName.toUpperCase(), fontSize: 11, bold: true, margin: [0, 2, 0, 5] });
@@ -278,16 +291,43 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
   return content;
 }
 
-function buildReceiptDocument(data: ReceiptData, filename?: string): void {
-  // Branch logic based on payment type and provisional flag
+/**
+ * Helper to convert an image URL to a DataURL
+ */
+async function imageToDataURL(url: string): Promise<string | null> {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch image');
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error('[pdfGenerator] Error converting image to DataURL:', error);
+        return null;
+    }
+}
+
+async function buildReceiptDocument(data: ReceiptData, filename?: string): Promise<void> {
+  // 1. Clone data
+  const docData = JSON.parse(JSON.stringify(data));
+
+  // 2. Pre-load Logo if URL is provided
+  if (docData.university.logoUrl && docData.university.logoUrl.startsWith('http')) {
+      const dataUrl = await imageToDataURL(docData.university.logoUrl);
+      docData.university.logoUrl = dataUrl || undefined;
+  }
+
+  // 3. Build Content
   let content: any[] = [];
-  
-  if (data.paymentType === 'tuition_fee') {
-      content = createDetailedReceiptContent(data, "ORIGINAL");
-  } else if (data.isProvisional) {
-      // TWO COPIES on one page for Provisional
+  if (docData.paymentType === 'tuition_fee') {
+      content = createDetailedReceiptContent(docData, "ORIGINAL");
+  } else if (docData.isProvisional) {
       content = [
-          ...createProvisionalReceiptContent(data, "STUDENT"),
+          ...createProvisionalReceiptContent(docData, "STUDENT"),
           {
               columns: [
                   { width: "*", canvas: [{ type: 'line', x1: 0, y1: 10, x2: 210, y2: 10, lineWidth: 1, dash: { length: 2, space: 2 }, lineColor: '#aaa' }] },
@@ -296,10 +336,10 @@ function buildReceiptDocument(data: ReceiptData, filename?: string): void {
               ],
               margin: [0, 30, 0, 30]
           },
-          ...createProvisionalReceiptContent(data, "OFFICE")
+          ...createProvisionalReceiptContent(docData, "OFFICE")
       ];
   } else {
-      content = createSimpleReceiptContent(data, "ORIGINAL");
+      content = createSimpleReceiptContent(docData, "ORIGINAL");
   }
 
   const docDefinition: any = {
@@ -308,15 +348,20 @@ function buildReceiptDocument(data: ReceiptData, filename?: string): void {
     content: content,
   };
 
+  // 4. Use Original pdfmake functions
   const pdfDoc = pdfMake.createPdf(docDefinition);
-  if (filename) { pdfDoc.download(filename); } else { pdfDoc.print(); }
+  if (filename) {
+    pdfDoc.download(filename);
+  } else {
+    pdfDoc.print();
+  }
 }
 
-export function generateReceiptPDF(data: ReceiptData): void {
-  buildReceiptDocument(data);
+export async function generateReceiptPDF(data: ReceiptData): Promise<void> {
+  await buildReceiptDocument(data);
 }
 
-export function downloadReceiptPDF(data: ReceiptData): void {
+export async function downloadReceiptPDF(data: ReceiptData): Promise<void> {
   const filename = `Receipt_${data.receiptNumber || "Draft"}.pdf`;
-  buildReceiptDocument(data, filename);
+  await buildReceiptDocument(data, filename);
 }

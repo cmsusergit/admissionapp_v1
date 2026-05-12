@@ -58,7 +58,7 @@
             <div class="row g-3">
                 <div class="col-md-6">
                     <div class="input-group">
-                        <input type="text" class="form-control" placeholder="Search Name, Enrollment..." 
+                        <input type="text" class="form-control" placeholder="Search Name, College ID..." 
                                bind:value={searchQuery} on:keydown={handleKeydown}>
                         <button class="btn btn-primary" on:click={triggerSearch}>
                             <i class="bi bi-search"></i>
