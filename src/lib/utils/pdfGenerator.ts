@@ -96,26 +96,47 @@ function numberToWords(num: number): string {
 function createProvisionalReceiptContent(data: ReceiptData, copyLabel: string): any[] {
     const content: any[] = [];
     
-    // Centered Header Stack
-    const headerStack: any[] = [];
+    // Horizontal Header: Logo (left), Centered Info (middle), Copy Label (right)
+    const headerRow: any[] = [];
+    
+    // Left column: Logo
     if (data.university.logoUrl) {
-        headerStack.push({
+        headerRow.push({
+            width: 80,
             image: data.university.logoUrl,
             fit: [60, 60],
-            alignment: "center",
-            margin: [0, 0, 0, 5]
+            alignment: "left",
+            margin: [0, 0, 0, 0]
         });
+    } else {
+        headerRow.push({ width: 80, text: "" });
     }
-    headerStack.push({ text: data.university.name.toUpperCase(), fontSize: 16, bold: true, alignment: "center" });
-    headerStack.push({ text: data.university.address || "Vasad", fontSize: 9, alignment: "center" });
-    headerStack.push({ text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9, alignment: "center" });
 
-    content.push({
-        stack: headerStack,
-        margin: [0, 0, 0, 10]
+    // Middle column: Centered University Info
+    headerRow.push({
+        width: "*",
+        stack: [
+            { text: data.university.name.toUpperCase(), fontSize: 16, bold: true, alignment: "center" },
+            { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" },
+            { text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9, alignment: "center" },
+        ],
+        margin: [0, 5, 0, 0] // Vertical alignment adjustment
     });
 
-    content.push({ text: `${copyLabel} COPY`, fontSize: 10, bold: true, alignment: "right", margin: [0, -30, 0, 10] });
+    // Right column: Copy Label (Right Aligned)
+    headerRow.push({ 
+        width: 80, 
+        text: `${copyLabel} COPY`, 
+        fontSize: 10, 
+        bold: true, 
+        alignment: "right",
+        margin: [0, 5, 0, 0]
+    });
+
+    content.push({
+        columns: headerRow,
+        margin: [0, 0, 0, 15]
+    });
     content.push({ text: "FEE RECEIPT", fontSize: 14, bold: true, alignment: "center", margin: [0, 0, 0, 15] });
     content.push({ columns: [ { text: `Receipt No: ${data.receiptNumber}`, bold: true, fontSize: 11 }, { text: `Date: ${formatDate(data.date)}`, alignment: "right", fontSize: 11 } ], margin: [0, 0, 0, 10] });
     content.push({
