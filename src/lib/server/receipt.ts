@@ -56,7 +56,8 @@ export async function generateReceiptNumber(
         .select('id, current_sequence, prefix')
         .eq('college_id', collegeId)
         .eq('course_id', courseId)
-        .eq('academic_year_id', academicYearId);
+        .eq('academic_year_id', academicYearId)
+        .eq('payment_type', paymentType);
 
     let { data: sequence, error } = await query.maybeSingle();
 
@@ -66,6 +67,7 @@ export async function generateReceiptNumber(
             college_id: collegeId,
             course_id: courseId,
             academic_year_id: academicYearId,
+            payment_type: paymentType,
             prefix: prefix,
             current_sequence: 0
         };
