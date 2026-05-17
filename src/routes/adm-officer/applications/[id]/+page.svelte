@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts"> 
     import type { PageData, ActionData } from './$types';
     import { enhance } from '$app/forms';
     import { toastStore } from '$lib/stores/toastStore';

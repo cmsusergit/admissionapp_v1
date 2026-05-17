@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { PUBLIC_SUPABASE_URL } from "$env/static/public";
 import { SUPABASE_SERVICE_ROLE_KEY } from "$env/static/private";
 import { approveApplicationLogic } from "$lib/server/application";
+import { createFeeReceipt } from "$lib/server/receipt";
 
 export const load: PageServerLoad = async ({
   params,
@@ -1118,10 +1119,10 @@ export const actions: Actions = {
       SUPABASE_SERVICE_ROLE_KEY,
     );
 
-    // 1. Fetch application to get fee amount
+    // 1. Fetch application to get fee amount and IDs for receipt
     const { data: app, error: appError } = await supabaseAdmin
       .from("applications")
-      .select("course_id, cycle_id, form_type, application_fee_status")
+      .select("student_id, course_id, cycle_id, form_type, application_fee_status, courses(college_id), admission_cycles(academic_year_id)")
       .eq("id", application_id)
       .single();
 
@@ -1143,24 +1144,63 @@ export const actions: Actions = {
       .maybeSingle();
 
     const amount = form?.form_fee || 0;
+    const gateway_transaction_id = `MANUAL-${Date.now()}`;
 
     // 3. Record payment in transactions table
-    const { error: payError } = await supabaseAdmin.from("transactions").insert({
-      student_id: authenticatedUser.id,
-      application_id,
-      amount,
-      currency: 'INR',
-      status: "success",
-      gateway_transaction_id: `MANUAL-${Date.now()}`,
-      gateway_response: { manual_override_by: userProfile.id }
-    });
+    const { data: transaction, error: payError } = await supabaseAdmin
+      .from("transactions")
+      .insert({
+        student_id: app.student_id, // Use student_id from application
+        application_id,
+        amount,
+        currency: 'INR',
+        status: "success",
+        gateway_transaction_id: gateway_transaction_id,
+        gateway_response: { manual_override_by: userProfile.id }
+      })
+      .select()
+      .single();
 
-    if (payError) {
-      console.error("Error recording manual payment:", payError.message);
+    if (payError || !transaction) {
+      console.error("Error recording manual payment:", payError?.message);
       return fail(500, { message: "Failed to record payment." });
     }
 
-    // 4. Update application status
+    // 4. Generate sequential receipt (APP-)
+    let yearName = undefined;
+    const academicYearId = (app.admission_cycles as any)?.academic_year_id;
+    if (academicYearId) {
+        const { data: ay } = await supabaseAdmin.from('academic_years').select('name').eq('id', academicYearId).single();
+        yearName = ay?.name;
+    }
+
+    const receipt = await createFeeReceipt(supabaseAdmin, {
+        transactionId: transaction.id,
+        studentId: app.student_id,
+        applicationId: application_id,
+        amount: amount,
+        details: { manual_override_by: userProfile.id },
+        generatedBy: userProfile.id,
+        paymentType: 'application_fee',
+        academicYearId: academicYearId,
+        yearName: yearName,
+        collegeId: (app.courses as any)?.college_id,
+        courseId: app.course_id
+    });
+
+    // 5. Record in `payments` table for dashboard visibility
+    await supabaseAdmin.from('payments').insert({
+        application_id: application_id,
+        amount: amount,
+        transaction_id: transaction.id,
+        receipt_number: receipt.receipt_no,
+        status: 'completed',
+        payment_type: 'application_fee',
+        payment_date: new Date().toISOString(),
+        payment_breakdown: [{ mode: 'cash', amount: amount, ref: gateway_transaction_id }]
+    });
+
+    // 6. Update application status
     const { error: updateError } = await supabaseAdmin
       .from("applications")
       .update({ application_fee_status: "paid" })
