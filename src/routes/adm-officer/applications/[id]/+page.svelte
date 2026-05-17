@@ -33,31 +33,6 @@
         return true;
     }
 
-    // Helper to find field definition in schema
-    function getFieldDefinition(key: string) {
-        if (!formSchema || !formSchema.fields) return null;
-        return formSchema.fields.find((f: any) => (f.key || f.name) === key);
-    }
-
-    let meritFields: { key: string; value: any; fieldDef: any }[] = [];
-    let otherFields: { key: string; value: any; fieldDef: any }[] = [];
-
-    $: {
-        meritFields = [];
-        otherFields = [];
-        if (application.form_data) {
-            for (const [key, value] of Object.entries(application.form_data)) {
-                const fieldDef = getFieldDefinition(key);
-                const entry = { key, value, fieldDef };
-                if (fieldDef?.is_merit) {
-                    meritFields.push(entry);
-                } else {
-                    otherFields.push(entry);
-                }
-            }
-        }
-    }
-
     // Modal State
     let showCancelModal = false;
     let cancelReason = '';
@@ -174,66 +149,48 @@
         </div>
     </div>
 
-    <!-- Form Data (Other Fields) -->
-    <div class="card mb-4 border-secondary">
+    <!-- Form Data Section -->
+    <div class="card mb-4 border-secondary shadow-sm">
         <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
             <span>Submitted Form Data</span>
             <button class="btn btn-sm btn-light" on:click={openDataEditor}>
                 <i class="bi bi-pencil-square me-1"></i> Edit Data
             </button>
         </div>
-        <div class="card-body bg-light">
-            {#if otherFields.length > 0}
-                <dl class="row mb-0">
-                    {#each otherFields as { key, value, fieldDef }}
-                        <dt class="col-sm-3 text-capitalize">
-                            {fieldDef?.label || key.replace(/_/g, ' ')}
-                        </dt>
-                        <dd class="col-sm-9">
-                            {#if typeof value === 'object' && value !== null}
-                                <pre class="mb-0" style="font-size: 0.85rem;">{JSON.stringify(value, null, 2)}</pre>
-                            {:else}
-                                {value}
-                            {/if}
-                        </dd>
-                    {/each}
-                </dl>
-            {:else if meritFields.length === 0}
-                <p class="mb-0 text-muted">No form data available.</p>
+        <div class="card-body {data.formSchema ? 'p-0' : 'bg-light'}">
+            {#if data.formSchema}
+                <div class="p-3">
+                    <DynamicForm 
+                        schema={data.formSchema} 
+                        formData={application.form_data} 
+                        readonly={true} 
+                    />
+                </div>
+            {:else if application.form_data}
+                <!-- Fallback: Standard List for legacy data without schema -->
+                <div class="p-3 bg-light">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="bi bi-info-circle me-2"></i> 
+                        Displaying raw data as no form schema was found for this application type.
+                    </div>
+                    <dl class="row mb-0">
+                        {#each Object.entries(application.form_data) as [key, value]}
+                            <dt class="col-sm-3 text-capitalize text-muted small">{key.replace(/_/g, ' ')}</dt>
+                            <dd class="col-sm-9 fw-medium">
+                                {#if typeof value === 'object' && value !== null}
+                                    <pre class="mb-0" style="font-size: 0.8rem;">{JSON.stringify(value, null, 2)}</pre>
+                                {:else}
+                                    {value}
+                                {/if}
+                            </dd>
+                        {/each}
+                    </dl>
+                </div>
             {:else}
-                 <p class="mb-0 text-muted">See Merit Scores below.</p>
+                <div class="p-4 text-center text-muted">No form data available.</div>
             {/if}
         </div>
     </div>
-
-    <!-- Merit Scores (New Card) -->
-    {#if meritFields.length > 0}
-        <div class="card mb-4 border-info">
-            <div class="card-header bg-info text-white">Merit Scores</div>
-            <div class="card-body bg-light">
-                 <dl class="row mb-0">
-                    {#each meritFields as { key, value, fieldDef }}
-                        <dt class="col-sm-3 text-capitalize">
-                            {fieldDef?.label || key.replace(/_/g, ' ')}
-                        </dt>
-                        <dd class="col-sm-9">
-                            {#if typeof value === 'object' && value !== null && 'value' in value && 'max_score' in value}
-                                <p class="mb-0">
-                                    <span class="fw-bold fs-5">{value.value}</span> 
-                                    <span class="text-muted">/ {value.max_score} (Max)</span>
-                                </p>
-                            {:else}
-                                <p class="mb-0">
-                                    <span class="fw-bold fs-5">{value}</span> 
-                                    <span class="text-muted">/ {fieldDef?.max_score || 100} (Max)</span>
-                                </p>
-                            {/if}
-                        </dd>
-                    {/each}
-                </dl>
-            </div>
-        </div>
-    {/if}
 
     <!-- Documents -->
     <div class="card mb-4 border-dark">

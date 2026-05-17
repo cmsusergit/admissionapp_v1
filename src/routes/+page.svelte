@@ -1,5 +1,8 @@
 <script lang="ts">
+    import type { PageData } from './$types';
     import CrystalAnimation from '$lib/components/CrystalAnimation.svelte';
+
+    let { data }: { data: PageData } = $props();
 </script>
 
 <div class="landing-page">
@@ -18,7 +21,7 @@
                     </div>
 
                     <!-- Student Instructions -->
-                    <div class="mt-5 p-4 border rounded-3 bg-light bg-opacity-50">
+                    <div class="mt-5 p-4 border rounded-3 bg-light bg-opacity-50 text-start">
                         <h5 class="fw-bold text-dark mb-3"><i class="bi bi-info-circle-fill text-primary me-2"></i>How to Proceed?</h5>
                         <ul class="list-unstyled text-dark mb-0">
                             <li class="mb-2"><i class="bi bi-google me-2 text-primary"></i>Log in using your <strong>Gmail account</strong> (Google Login).</li>
@@ -37,6 +40,33 @@
                             </li>
                         </ul>
                     </div>
+
+                    <!-- Latest Circulars & Notices Section -->
+                    {#if data.publicCirculars && data.publicCirculars.length > 0}
+                        <div class="mt-5 text-start">
+                            <h5 class="fw-bold text-dark mb-4">
+                                <i class="bi bi-megaphone-fill text-danger me-2"></i>Latest Circulars & Notices
+                            </h5>
+                            <div class="list-group shadow-sm">
+                                {#each data.publicCirculars as circular}
+                                    <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3">
+                                        <div class="me-3">
+                                            <div class="fw-bold text-dark">{circular.title}</div>
+                                            {#if circular.description}
+                                                <small class="text-muted d-block">{circular.description}</small>
+                                            {/if}
+                                            <small class="text-muted"><i class="bi bi-calendar3 me-1"></i>{new Date(circular.created_at).toLocaleDateString()}</small>
+                                        </div>
+                                        {#if circular.signedUrl}
+                                            <a href={circular.signedUrl} target="_blank" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                                                <i class="bi bi-file-earmark-arrow-down me-1"></i>Download
+                                            </a>
+                                        {/if}
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
                 </div>
             </div>
         </div>

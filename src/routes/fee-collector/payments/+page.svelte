@@ -73,20 +73,14 @@
             return Number(feeStructureToCollect.installment_json[0].amount) || 0;
         }
         
-        // Heuristic: sum up components (split by item rules)
+        // Use component-wise splitting: 50% if splittable, 100% otherwise
         const components = feeStructureToCollect.fee_components || [];
         let total = 0;
         components.forEach((section: any) => {
             (section.items || []).forEach((item: any) => {
                 const val = Number(item.amount) || 0;
-                const name = (item.name || '').toLowerCase();
-                
-                // One-time/Deposit fees are 100% in first semester, else 50%
-                const isOneTime = name.includes('caution') || name.includes('enrollment') || 
-                                 name.includes('one time') || name.includes('deposit') ||
-                                 name.includes('admission');
-                
-                total += isOneTime ? val : (val / 2);
+                // Use admin configuration 'allow_partial' from builder
+                total += item.allow_partial ? (val / 2) : val;
             });
         });
         return total || (feeStructureToCollect.total_fee / 2);
@@ -274,19 +268,10 @@
                     ...section,
                     items: (section.items || []).map(item => {
                         const fullVal = Number(item.amount) || 0;
-                        const name = (item.name || '').toLowerCase();
-                        
-                        // Heuristic: One-time/Deposit fees are usually 100% in the first semester.
-                        // Recurring fees (Tuition, etc.) are split 50/50.
-                        const isOneTime = name.includes('caution') || 
-                                         name.includes('enrollment') || 
-                                         name.includes('one time') || 
-                                         name.includes('deposit') ||
-                                         name.includes('admission');
-                        
+                        // Use admin configuration 'allow_partial'
                         return { 
                             ...item, 
-                            amount: isOneTime ? fullVal : (fullVal / 2) 
+                            amount: item.allow_partial ? (fullVal / 2) : fullVal 
                         };
                     })
                 }));
@@ -530,11 +515,7 @@
                                                         {#each feeStructureToCollect.fee_components || [] as section}
                                                             {#each section.items || [] as item}
                                                                 {@const val = Number(item.amount) || 0}
-                                                                {@const name = (item.name || '').toLowerCase()}
-                                                                {@const isOneTime = name.includes('caution') || name.includes('enrollment') || 
-                                                                                name.includes('one time') || name.includes('deposit') ||
-                                                                                name.includes('admission')}
-                                                                {@const displayAmt = (feePeriod === 'semester' && !isOneTime) ? (val / 2) : val}
+                                                                {@const displayAmt = (feePeriod === 'semester' && item.allow_partial) ? (val / 2) : val}
                                                                 <tr>
                                                                     <td class="ps-3 py-2 text-muted">{item.name}</td>
                                                                     <td class="text-end pe-3 py-2 fw-medium">INR {displayAmt.toLocaleString()}</td>

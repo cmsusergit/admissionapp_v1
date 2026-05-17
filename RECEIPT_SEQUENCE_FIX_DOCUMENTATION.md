@@ -21,32 +21,29 @@ if (createError) {
 ```
 This is why users see long, timestamp-based numbers like `REC-1775192122828` instead of sequential ones like `APP-26CS-0005`.
 
-## 2. Proposed Fix (To be implemented)
+## 2. Implementation Status: **FIXED**
 
-### Step 1: Database Schema Update
-Modify the unique constraint on `receipt_sequences` to include the `course_id`. This allows each course to maintain its own independent counter as intended by the code.
+### Step 1: Database Schema Update (Completed by User)
+The unique constraint on `receipt_sequences` has been updated to include `course_id` and `payment_type`.
 
 ```sql
 ALTER TABLE public.receipt_sequences 
-DROP CONSTRAINT IF EXISTS receipt_sequences_unique_scope;
-
-ALTER TABLE public.receipt_sequences 
-ADD CONSTRAINT receipt_sequences_unique_scope 
-UNIQUE (college_id, course_id, academic_year_id, payment_type);
+ADD CONSTRAINT receipt_sequences_full_unique_key 
+UNIQUE (college_id, course_id, payment_type, academic_year_id);
 ```
 
-### Step 2: Code Update
-Update the lookup logic in `src/lib/server/receipt.ts` to explicitly filter by `payment_type`. This ensures that Application Fees do not increment the Tuition Fee counter and vice-versa.
+### Step 2: Code Update (Completed by Gemini CLI)
+Updated the lookup logic in `src/lib/server/receipt.ts` to explicitly filter by `payment_type`. This ensures that Application Fees do not increment the Tuition Fee counter and vice-versa.
 
 ```typescript
-// Proposed update in generateReceiptNumber
+// Fixed logic in generateReceiptNumber
 let query = supabase
     .from('receipt_sequences')
     .select('id, current_sequence, prefix')
     .eq('college_id', collegeId)
     .eq('course_id', courseId)
     .eq('academic_year_id', academicYearId)
-    .eq('payment_type', paymentType); // Missing in current code
+    .eq('payment_type', paymentType); // Added
 ```
 
 ## 3. Impact Assessment

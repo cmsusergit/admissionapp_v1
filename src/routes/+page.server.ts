@@ -88,5 +88,30 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         }
     }
 
-    return {};
+    // 3. Fetch Public Circulars for Guest Users
+    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data: publicCirculars } = await supabaseAdmin
+        .from('circulars')
+        .select('*')
+        .eq('is_public', true)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    // Generate Signed URLs for public access
+    const circularsWithUrls = await Promise.all((publicCirculars || []).map(async (c) => {
+        let signedUrl = null;
+        if (c.file_path) {
+            const { data } = await supabaseAdmin
+                .storage
+                .from('circulars')
+                .createSignedUrl(c.file_path, 86400); // 24 hours validity
+            signedUrl = data?.signedUrl;
+        }
+        return { ...c, signedUrl };
+    }));
+
+    return {
+        publicCirculars: circularsWithUrls
+    };
 };
