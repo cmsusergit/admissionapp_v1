@@ -7,7 +7,14 @@
     export let data: PageData;
 
     let showCreateModal = false;
+    let showEditModal = false;
+    let editingCircular: any = null;
     let isSubmitting = false;
+
+    function openEditModal(circular: any) {
+        editingCircular = { ...circular };
+        showEditModal = true;
+    }
 
     function changePage(newPage: number) {
         const url = new URL($page.url);
@@ -36,6 +43,7 @@
                             <th>Title</th>
                             <th>Target</th>
                             <th>Status</th>
+                            <th>Public</th>
                             <th>Attachment</th>
                             <th>Created At</th>
                             <th class="text-end">Actions</th>
@@ -44,7 +52,7 @@
                     <tbody>
                         {#if data.circulars.length === 0}
                             <tr>
-                                <td colspan="6" class="text-center py-5 text-muted">
+                                <td colspan="7" class="text-center py-5 text-muted">
                                     No circulars found. Create one to get started.
                                 </td>
                             </tr>
@@ -76,6 +84,15 @@
                                         </form>
                                     </td>
                                     <td>
+                                        <form method="POST" action="?/togglePublic" use:enhance>
+                                            <input type="hidden" name="id" value={circular.id}>
+                                            <input type="hidden" name="current_public" value={circular.is_public}>
+                                            <button class="btn btn-sm badge {circular.is_public ? 'bg-primary' : 'bg-light text-muted border'} border-0" style="cursor: pointer;">
+                                                {circular.is_public ? 'Public' : 'Internal'}
+                                            </button>
+                                        </form>
+                                    </td>
+                                    <td>
                                         {#if circular.signedUrl}
                                             <a href={circular.signedUrl} target="_blank" class="btn btn-sm btn-outline-secondary">
                                                 <i class="bi bi-file-earmark-arrow-down me-1"></i> View File
@@ -88,6 +105,13 @@
                                         {new Date(circular.created_at).toLocaleDateString()}
                                     </td>
                                     <td class="text-end">
+                                        <button 
+                                            class="btn btn-sm btn-outline-primary me-1" 
+                                            on:click={() => openEditModal(circular)}
+                                            title="Edit Circular"
+                                        >
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
                                         <form method="POST" action="?/delete" use:enhance={() => {
                                             return async ({ result }) => {
                                                 if (result.type === 'success') await invalidateAll();
@@ -167,6 +191,14 @@
                         <label for="file" class="form-label">Attachment (PDF/Image)</label>
                         <input type="file" class="form-control" id="file" name="file" accept=".pdf,.jpg,.jpeg,.png">
                     </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="is_public" name="is_public" value="true">
+                            <label class="form-check-label fw-bold" for="is_public">Show on Main Page (Public)</label>
+                        </div>
+                        <div class="form-text">Public circulars are visible to anyone on the landing page without logging in.</div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" on:click={() => showCreateModal = false} disabled={isSubmitting}>Cancel</button>
@@ -175,6 +207,83 @@
                             <span class="spinner-border spinner-border-sm me-2"></span>Publishing...
                         {:else}
                             Publish Circular
+                        {/if}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{/if}
+
+<!-- Edit Modal -->
+{#if showEditModal && editingCircular}
+<div class="modal show d-block" style="background: rgba(0,0,0,0.5)">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="?/update" enctype="multipart/form-data" use:enhance={() => {
+                isSubmitting = true;
+                return async ({ result }) => {
+                    isSubmitting = false;
+                    if (result.type === 'success') {
+                        showEditModal = false;
+                        editingCircular = null;
+                        await invalidateAll();
+                    }
+                };
+            }}>
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Circular</h5>
+                    <button type="button" class="btn-close" on:click={() => showEditModal = false}></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" value={editingCircular.id}>
+                    <input type="hidden" name="existing_file_path" value={editingCircular.file_path || ''}>
+
+                    <div class="mb-3">
+                        <label for="edit-title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-title" name="title" bind:value={editingCircular.title} required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit-description" class="form-label">Description</label>
+                        <textarea class="form-control" id="edit-description" name="description" rows="3" bind:value={editingCircular.description}></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit-course" class="form-label">Target Course</label>
+                        <select class="form-select" id="edit-course" name="course_id" bind:value={editingCircular.course_id}>
+                            <option value="">All Courses</option>
+                            {#each data.courses as course}
+                                <option value={course.id}>{course.name} ({course.code})</option>
+                            {/each}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit-file" class="form-label">Replace Attachment (Optional)</label>
+                        <input type="file" class="form-control" id="edit-file" name="file" accept=".pdf,.jpg,.jpeg,.png">
+                        {#if editingCircular.file_path}
+                            <div class="form-text text-success">
+                                <i class="bi bi-file-check"></i> Current file: {editingCircular.file_path.split('_').pop()}
+                            </div>
+                        {/if}
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="edit-is_public" name="is_public" value="true" bind:checked={editingCircular.is_public}>
+                            <label class="form-check-label fw-bold" for="edit-is_public">Show on Main Page (Public)</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showEditModal = false} disabled={isSubmitting}>Cancel</button>
+                    <button type="submit" class="btn btn-primary" disabled={isSubmitting}>
+                        {#if isSubmitting}
+                            <span class="spinner-border spinner-border-sm me-2"></span>Saving...
+                        {:else}
+                            Save Changes
                         {/if}
                     </button>
                 </div>

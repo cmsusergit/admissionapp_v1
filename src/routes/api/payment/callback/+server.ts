@@ -130,6 +130,14 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                     payment_breakdown: paymentBreakdown,
                     fee_components_breakdown: feeComponentsBreakdown
                 });
+
+                // Update application status if this was an application fee
+                if (paymentType === 'application_fee' && transaction.application_id) {
+                    await supabaseAdmin
+                        .from('applications')
+                        .update({ application_fee_status: 'paid' })
+                        .eq('id', transaction.application_id);
+                }
             }
             
             throw redirect(303, redirectUrl);

@@ -9,9 +9,38 @@
     let selectedCourseId = $state('');
     let selectedYearId = $state('');
     let selectedPaymentType = $state('');
+    let searchTerm = $state('');
+
+    // Reset course when college changes
+    $effect(() => {
+        if (selectedCollegeId) {
+            selectedCourseId = '';
+        }
+    });
 
     let showAddModal = $state(false);
     let showEditModal = $state(false);
+
+    let filteredCourses = $derived(
+        selectedCollegeId 
+            ? data.courses.filter((c: any) => c.college_id === selectedCollegeId)
+            : data.courses
+    );
+
+    let filteredSequences = $derived(data.sequences.filter((s: any) => {
+        const matchesCollege = !selectedCollegeId || s.college_id === selectedCollegeId;
+        const matchesCourse = !selectedCourseId || s.course_id === selectedCourseId;
+        const matchesYear = !selectedYearId || s.academic_year_id === selectedYearId;
+        const matchesType = !selectedPaymentType || s.payment_type === selectedPaymentType;
+        
+        const term = searchTerm.toLowerCase();
+        const matchesSearch = !term || 
+            s.prefix.toLowerCase().includes(term) || 
+            s.colleges?.name?.toLowerCase().includes(term) ||
+            s.courses?.name?.toLowerCase().includes(term);
+
+        return matchesCollege && matchesCourse && matchesYear && matchesType && matchesSearch;
+    }));
 
     let currentSequence = writable({
         id: '',
@@ -26,8 +55,9 @@
         academic_years: { name: '' }
     });
 
-    let foundSequence = $derived(data.sequences.find(s => 
+    let foundSequence = $derived(data.sequences.find((s: any) => 
         s.college_id === selectedCollegeId && 
+        s.course_id === selectedCourseId &&
         s.academic_year_id === selectedYearId &&
         s.payment_type === selectedPaymentType
     ));
@@ -96,19 +126,27 @@
                     <label class="form-label">Course</label>
                     <select class="form-select" bind:value={selectedCourseId}>
                         <option value="">All Courses</option>
-                        {#each data.courses as course}
+                        {#each filteredCourses as course}
                             <option value={course.id}>{course.name}</option>
                         {/each}
                     </select>
                 </div>
             </div>
+            <div class="row mt-3">
+                <div class="col-md-12">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" placeholder="Search by prefix, college or course name..." bind:value={searchTerm}>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    {#if data.sequences.length > 0}
+    {#if filteredSequences.length > 0}
         <div class="card">
             <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                <span>All Receipt Sequences ({data.sequences.length})</span>
+                <span>Receipt Sequences ({filteredSequences.length} of {data.sequences.length})</span>
                 <button class="btn btn-sm btn-primary" onclick={openCreateModal}>
                     <i class="bi bi-plus-circle"></i> Add New
                 </button>
@@ -129,14 +167,11 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {#each data.sequences as seq}
-                                {@const college = data.colleges.find(c => c.id === seq.college_id)}
-                                {@const course = data.courses.find(c => c.id === seq.course_id)}
-                                {@const year = data.academicYears.find(y => y.id === seq.academic_year_id)}
-                                <tr class={foundSequence?.id === seq.id ? 'table-primary' : ''}>
-                                    <td>{college?.name || 'N/A'}</td>
-                                    <td>{course?.name || 'N/A'}</td>
-                                    <td>{year?.name || 'N/A'}</td>
+                            {#each filteredSequences as seq}
+                                <tr class={foundSequence?.id === seq.id ? 'table-primary border-3 border-primary' : ''}>
+                                    <td>{seq.colleges?.name || 'N/A'}</td>
+                                    <td>{seq.courses?.name || 'N/A'}</td>
+                                    <td>{seq.academic_years?.name || 'N/A'}</td>
                                     <td>
                                         <span class="badge bg-info">{getPaymentTypeLabel(seq.payment_type)}</span>
                                     </td>

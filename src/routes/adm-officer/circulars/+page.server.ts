@@ -73,6 +73,7 @@ export const actions: Actions = {
         const title = formData.get('title') as string;
         const description = formData.get('description') as string;
         const courseId = formData.get('course_id') as string || null;
+        const isPublic = formData.get('is_public') === 'true';
         const file = formData.get('file') as File;
 
         if (!title) {
@@ -111,7 +112,8 @@ export const actions: Actions = {
                 course_id: courseId,
                 file_path: filePath,
                 created_by: session.user.id,
-                is_active: true
+                is_active: true,
+                is_public: isPublic
             });
 
         if (insertError) {
@@ -178,6 +180,93 @@ export const actions: Actions = {
 
         if (error) {
             return fail(500, { message: 'Failed to update status' });
+        }
+
+        return { success: true };
+    },
+
+    togglePublic: async ({ request, locals: { getSession } }) => {
+        const session = await getSession();
+        if (!session) return fail(401, { message: 'Unauthorized' });
+
+        const formData = await request.formData();
+        const id = formData.get('id') as string;
+        const currentPublic = formData.get('current_public') === 'true';
+
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+        const { error } = await supabaseAdmin
+            .from('circulars')
+            .update({ is_public: !currentPublic })
+            .eq('id', id);
+
+        if (error) {
+            return fail(500, { message: 'Failed to update visibility' });
+        }
+
+        return { success: true };
+    },
+
+    update: async ({ request, locals: { getSession } }) => {
+        const session = await getSession();
+        if (!session) return fail(401, { message: 'Unauthorized' });
+
+        const formData = await request.formData();
+        const id = formData.get('id') as string;
+        const title = formData.get('title') as string;
+        const description = formData.get('description') as string;
+        const courseId = formData.get('course_id') as string || null;
+        const isPublic = formData.get('is_public') === 'true';
+        const file = formData.get('file') as File;
+        const existingFilePath = formData.get('existing_file_path') as string;
+
+        if (!id || !title) {
+            return fail(400, { message: 'ID and Title are required' });
+        }
+
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        let filePath = existingFilePath;
+
+        // Handle New File Upload
+        if (file && file.size > 0) {
+            // Delete old file if it exists
+            if (existingFilePath) {
+                await supabaseAdmin.storage.from('circulars').remove([existingFilePath]);
+            }
+
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            filePath = fileName;
+
+            const { error: uploadError } = await supabaseAdmin
+                .storage
+                .from('circulars')
+                .upload(fileName, file, {
+                    contentType: file.type,
+                    upsert: false
+                });
+
+            if (uploadError) {
+                console.error('Upload error:', uploadError);
+                return fail(500, { message: 'Failed to upload new file' });
+            }
+        }
+
+        const { error: updateError } = await supabaseAdmin
+            .from('circulars')
+            .update({
+                title,
+                description,
+                course_id: courseId,
+                file_path: filePath,
+                is_public: isPublic,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (updateError) {
+            console.error('Update error:', updateError);
+            return fail(500, { message: 'Failed to update circular' });
         }
 
         return { success: true };
