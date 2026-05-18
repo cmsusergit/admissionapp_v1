@@ -27,6 +27,10 @@
         updateQuery({ limit: newLimit.toString(), page: '1' });
     }
 
+    function handleFormTypeChange(formType: string) {
+        updateQuery({ form_type: formType, page: '1' });
+    }
+
     function handleSort(field: string) {
         const currentSort = data.sort;
         const currentOrder = data.order || 'desc';
@@ -63,6 +67,17 @@
                         <button class="btn btn-primary" on:click={triggerSearch}>
                             <i class="bi bi-search"></i>
                         </button>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="text-muted fw-bold text-nowrap">Filter Type:</small>
+                        <select class="form-select" value={data.formTypeFilter || 'all'} on:change={(e) => handleFormTypeChange(e.currentTarget.value)}>
+                            <option value="all">All Form Types</option>
+                            {#each data.availableFormTypes as ft}
+                                <option value={ft.name}>{ft.name}</option>
+                            {/each}
+                        </select>
                     </div>
                 </div>
             </div>
