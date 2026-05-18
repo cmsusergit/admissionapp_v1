@@ -34,6 +34,7 @@ export async function executeReportQuery(
 ) {
     // 0. Collect all paths from both columns AND active filters to ensure joins are established
     const allPaths = [...(config.columns || []).map(c => c.path)];
+    const filteredRelations = new Set<string>();
     
     // Add paths from parameters that have values provided
     if (options.userFilters && config.parameters) {
@@ -42,12 +43,38 @@ export async function executeReportQuery(
             const param = config.parameters?.find(p => p.name === paramName);
             if (param && param.column.includes('.')) {
                 allPaths.push(param.column);
+                
+                // Track for !inner join
+                let col = param.column;
+                if (col.startsWith(baseTable + '.')) {
+                    col = col.slice(baseTable.length + 1);
+                }
+                const rootWithHint = col.split('.')[0];
+                const root = rootWithHint.split('!')[0].split(':')[0];
+                if (!JSON_COLUMNS.has(root)) {
+                    filteredRelations.add(root);
+                }
+            }
+        });
+    }
+
+    // Also track hardcoded filters for !inner join
+    if (config.filters) {
+        Object.keys(config.filters).forEach(key => {
+            let col = key;
+            if (col.startsWith(baseTable + '.')) {
+                col = col.slice(baseTable.length + 1);
+            }
+            const rootWithHint = col.split('.')[0];
+            const root = rootWithHint.split('!')[0].split(':')[0];
+            if (key.includes('.') && !JSON_COLUMNS.has(root)) {
+                filteredRelations.add(root);
             }
         });
     }
 
     // 1. Construct Select Query
-    const selectString = buildSelectString(allPaths.map(p => ({ path: p, label: '' })), baseTable);
+    const selectString = buildSelectString(allPaths.map(p => ({ path: p, label: '' })), baseTable, filteredRelations);
     
     // 2. Start Query
     let query = supabase.from(baseTable).select(selectString);
@@ -155,7 +182,7 @@ const FK_MAP: Record<string, Record<string, string>> = {
     }
 };
 
-export function buildSelectString(columns: ReportColumn[], currentTable: string): string {
+export function buildSelectString(columns: ReportColumn[], currentTable: string, filteredRelations?: Set<string>): string {
     const rootFields: string[] = [];
     const nestedFields: Record<string, string[]> = {};
 
@@ -214,10 +241,16 @@ export function buildSelectString(columns: ReportColumn[], currentTable: string)
             joinExpr = relation;
         }
 
-        const subSelect = buildSelectString(subColumns, targetTable);
+        const subSelect = buildSelectString(subColumns, targetTable, filteredRelations);
         
         // Always alias to the clean relationship name for consistent data structure
         const alias = relation.split('!')[0].split(':')[0];
+
+        // NEW: If this relation is being filtered, use !inner join to filter parent rows
+        if (filteredRelations?.has(alias)) {
+            joinExpr += '!inner';
+        }
+
         return `${alias}:${joinExpr}(${subSelect})`;
     });
 
