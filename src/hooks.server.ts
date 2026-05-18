@@ -77,7 +77,7 @@ export const handle: Handle = async ({ event, resolve }) => {
         cookieOptions: {
             path: '/',
             sameSite: 'lax',
-            secure: false
+            secure: !dev
         }
 	});
 
