@@ -15,23 +15,26 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     // Service Role to bypass RLS for complex joins/filtering if needed
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Fetch Form Types for provisional logic and filtering
+    const { data: formTypesData } = await supabaseAdmin.from('form_types').select('name, is_prov').order('name');
+    const formTypesMap = Object.fromEntries((formTypesData || []).map(ft => [ft.name, ft.is_prov]));
+    const defaultFormType = formTypesData?.find(ft => ft.is_prov)?.name || '';
+
     // --- Params ---
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '50');
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'submitted'; // Default to pending verification
 
+    // Default form type filter only if on 'Pending Verification' and not explicitly provided
+    let formTypeFilter = url.searchParams.get('form_type');
+    if (!formTypeFilter && status === 'submitted' && defaultFormType) {
+        formTypeFilter = defaultFormType;
+    }
+
     const offset = (page - 1) * limit;
     const sortField = url.searchParams.get('sort') || 'submitted_at';
     const sortOrder = url.searchParams.get('order') || 'desc';
-
-    if (search || sortField === 'receipt_number') {
-        console.log(`🔍 Adm-Officer applications: ${search ? 'Searching' : 'Sorting by receipt'}. Fetching all records for in-memory processing.`);
-    }
-
-    // Fetch Form Types for provisional logic
-    const { data: formTypesData } = await supabaseAdmin.from('form_types').select('name, is_prov');
-    const formTypesMap = Object.fromEntries((formTypesData || []).map(ft => [ft.name, ft.is_prov]));
 
     // 2. Fetch Applications
     let query = supabaseAdmin
@@ -54,6 +57,11 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         query = query.in('status', ['verified', 'approved', 'rejected', 'cancelled']);
     } else {
         query = query.eq('status', status);
+    }
+
+    // Apply Form Type Filter
+    if (formTypeFilter && formTypeFilter !== 'all') {
+        query = query.eq('form_type', formTypeFilter);
     }
 
     // Search
@@ -113,6 +121,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         limit,
         search,
         status,
+        formTypeFilter,
+        availableFormTypes: formTypesData || [],
         formTypesMap,
         sort: sortField,
         order: sortOrder
