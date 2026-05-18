@@ -39,11 +39,25 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
 
     const { data: admCounts, error: admError } = await supabaseAdmin
         .from('account_admissions')
-        .select('id, applications(branch_id)');
+        .select('id, applications(branch_id, form_type)');
 
     if (admError) {
         console.error('Capacity Report - admissions fetch error:', admError.message);
     }
+
+    // Structure for admissions: branch_id -> { total: number, formTypes: Record<string, number> }
+    const branchAdmStats: Record<string, { total: number, formTypes: Record<string, number> }> = {};
+    admCounts?.forEach((adm) => {
+        const branchId = (adm.applications as any)?.branch_id;
+        const type = (adm.applications as any)?.form_type || 'Unknown';
+        if (branchId) {
+            if (!branchAdmStats[branchId]) {
+                branchAdmStats[branchId] = { total: 0, formTypes: {} };
+            }
+            branchAdmStats[branchId].total += 1;
+            branchAdmStats[branchId].formTypes[type] = (branchAdmStats[branchId].formTypes[type] || 0) + 1;
+        }
+    });
 
     // Structure: branch_id -> { totalApproved: number, formTypes: { ... }, students: Record<string, Set<string>> }
     const branchAppStats: Record<string, { 
@@ -78,13 +92,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         }
     });
 
-    const admissionsMap: Record<string, number> = {};
-    admCounts?.forEach((adm) => {
-        const branchId = (adm.applications as any)?.branch_id;
-        if (branchId) {
-            admissionsMap[branchId] = (admissionsMap[branchId] || 0) + 1;
-        }
-    });
+    const globalFormTypesSet = new Set<string>();
 
     const capacityDataGrouped = (courses || []).reduce((acc: any, course: any) => {
         const collegeName = course.colleges?.name || 'Unknown College';
@@ -94,15 +102,27 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
 
         const mappedBranches = (course.branches || []).map((branch: any) => {
             const stats = branchAppStats[branch.id];
+            const admStats = branchAdmStats[branch.id];
             let uniqueCount = 0;
             let commonCount = 0;
             
             if (stats) {
-                // Populate global form types for this college
-                Object.keys(stats.formTypes).forEach(ft => acc[collegeName].formTypesSet.add(ft));
+                // Populate global form types
+                Object.keys(stats.formTypes).forEach(ft => {
+                    acc[collegeName].formTypesSet.add(ft);
+                    globalFormTypesSet.add(ft);
+                });
                 
                 uniqueCount = Object.keys(stats.students).length;
                 commonCount = Object.values(stats.students).filter(s => s.size > 1).length;
+            }
+
+            // Also ensure form types from admissions are in the global set
+            if (admStats) {
+                Object.keys(admStats.formTypes).forEach(ft => {
+                    acc[collegeName].formTypesSet.add(ft);
+                    globalFormTypesSet.add(ft);
+                });
             }
 
             return {
@@ -113,7 +133,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 formTypes: stats?.formTypes || {},
                 uniqueCount,
                 commonCount,
-                admissions: admissionsMap[branch.id] || 0,
+                admissions: admStats?.total || 0,
+                admissionsFormTypes: admStats?.formTypes || {},
             };
         });
 
@@ -125,6 +146,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         return acc;
     }, {});
 
+    const globalUniqueFormTypes = Array.from(globalFormTypesSet).sort();
+
     const capacityData = Object.keys(capacityDataGrouped).map(collegeName => ({
         collegeName,
         courses: capacityDataGrouped[collegeName].courses,
@@ -133,5 +156,6 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
 
     return {
         capacityData,
+        globalUniqueFormTypes
     };
 };
