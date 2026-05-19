@@ -41,7 +41,6 @@ export async function generateEnrollmentNumber(
     const yearShort = ayData?.short_code || ayData?.name.substring(0, 4).slice(-2) || new Date().getFullYear().toString().slice(-2);
     const courseAlias = courseData?.code || 'GEN';
     
-    // Mapping for Admission Category (single char)
     const categoryMap: Record<string, string> = {
         'ACPC': 'A',
         'MQ/NRI': 'M',
@@ -49,7 +48,13 @@ export async function generateEnrollmentNumber(
         'Vacant': 'V',
         'D2D': 'D'
     };
-    const categoryChar = categoryAliasOverride || categoryMap[formType] || formType.charAt(0).toUpperCase();
+    
+    let categoryChar = '';
+    if (categoryAliasOverride) {
+        categoryChar = categoryAliasOverride.trim().toUpperCase().charAt(0);
+    } else {
+        categoryChar = categoryMap[formType] || formType.trim().toUpperCase().charAt(0);
+    }
 
     // The sequence tracking still happens per college/course/year/branch
     const sequencePrefix = `${yearShort}${courseAlias}${branchCode}${categoryChar}`;

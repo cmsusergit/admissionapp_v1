@@ -31,7 +31,17 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
 
     const { data: allApps, error: appError } = await supabaseAdmin
         .from('applications')
-        .select('branch_id, id, status, form_type, student_id');
+        .select(`
+            branch_id, 
+            id, 
+            status, 
+            form_type, 
+            student_id,
+            payments (
+                payment_type,
+                status
+            )
+        `);
 
     if (appError) {
         console.error('Capacity Report - applications fetch error:', appError.message);
@@ -62,7 +72,9 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
     // Structure: branch_id -> { totalApproved: number, formTypes: { ... }, students: Record<string, Set<string>> }
     const branchAppStats: Record<string, { 
         totalApproved: number, 
+        totalPaid: number,
         formTypes: Record<string, { total: number, approved: number }>,
+        paidFormTypes: Record<string, number>,
         students: Record<string, Set<string>>
     }> = {};
     
@@ -70,7 +82,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         if (!app.branch_id) return;
         
         if (!branchAppStats[app.branch_id]) {
-            branchAppStats[app.branch_id] = { totalApproved: 0, formTypes: {}, students: {} };
+            branchAppStats[app.branch_id] = { totalApproved: 0, totalPaid: 0, formTypes: {}, paidFormTypes: {}, students: {} };
         }
 
         const type = app.form_type || 'Unknown';
@@ -89,6 +101,16 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         if (app.status === 'approved') {
             branchAppStats[app.branch_id].totalApproved += 1;
             branchAppStats[app.branch_id].formTypes[type].approved += 1;
+        }
+
+        // New Logic: Check for completed application_fee or provisional_fee
+        const hasPaidFee = (app.payments as any || []).some(
+            (p: any) => (p.payment_type === 'application_fee' || p.payment_type === 'provisional_fee') && p.status === 'completed'
+        );
+
+        if (hasPaidFee) {
+            branchAppStats[app.branch_id].paidFormTypes[type] = (branchAppStats[app.branch_id].paidFormTypes[type] || 0) + 1;
+            branchAppStats[app.branch_id].totalPaid += 1;
         }
     });
 
@@ -135,6 +157,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 commonCount,
                 admissions: admStats?.total || 0,
                 admissionsFormTypes: admStats?.formTypes || {},
+                paidApps: stats?.totalPaid || 0,
+                paidFormTypes: stats?.paidFormTypes || {},
             };
         });
 
