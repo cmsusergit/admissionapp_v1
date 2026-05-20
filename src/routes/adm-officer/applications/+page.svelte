@@ -165,10 +165,10 @@
                             {/if}
                         </div>
                         <span class="badge 
-                            {app.status === 'approved' ? 'bg-success' : 
-                             app.status === 'verified' ? 'bg-info' : 
-                             app.status === 'rejected' ? 'bg-danger' : 
-                             app.status === 'submitted' ? 'bg-warning text-dark' : 'bg-secondary'}">
+                            {app.status?.toLowerCase() === 'approved' ? 'bg-success' : 
+                             app.status?.toLowerCase() === 'verified' ? 'bg-info' : 
+                             app.status?.toLowerCase() === 'rejected' ? 'bg-danger' : 
+                             app.status?.toLowerCase() === 'submitted' ? 'bg-warning text-dark' : 'bg-secondary'}">
                             {app.status}
                         </span>
                     </div>

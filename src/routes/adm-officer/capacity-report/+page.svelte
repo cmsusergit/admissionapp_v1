@@ -5,21 +5,30 @@
     export let data: PageData;
 
     let viewMode: 'detailed' | 'simple' = 'simple';
+    let selectedMetric: 'all' | 'submitted' | 'approved' | 'paid' | 'admitted' = 'paid';
+
+    const metrics = [
+        { id: 'paid', label: 'Paid Students', icon: 'bi-currency-dollar' },
+        { id: 'submitted', label: 'Submitted Apps', icon: 'bi-file-earmark-check' },
+        { id: 'approved', label: 'Approved Apps', icon: 'bi-check-all' },
+        { id: 'admitted', label: 'Final Admissions', icon: 'bi-person-badge' },
+        { id: 'all', label: 'All Applications', icon: 'bi-list-ul' }
+    ];
 
     function calculateVacancy(capacity: number, admissions: number): number {
         return Math.max(0, capacity - admissions);
     }
 
     function branchTotal(branches: any[], field: string): number {
+        if (field === 'capacity') return (branches || []).reduce((sum, branch) => sum + (branch.capacity || 0), 0);
+        if (field === 'metric_total') {
+            return (branches || []).reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.total || 0), 0);
+        }
         return (branches || []).reduce((sum, branch) => sum + (branch?.[field] || 0), 0);
     }
 
-    function courseAdmTotal(branches: any[], fType: string): number {
-        return (branches || []).reduce((sum, branch) => sum + (branch.admissionsFormTypes?.[fType] || 0), 0);
-    }
-
-    function coursePaidTotal(branches: any[], fType: string): number {
-        return (branches || []).reduce((sum, branch) => sum + (branch.paidFormTypes?.[fType] || 0), 0);
+    function courseMetricTotal(branches: any[], fType: string): number {
+        return (branches || []).reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0), 0);
     }
 
     function grandTotal(field: string): number {
@@ -32,21 +41,11 @@
         return total;
     }
 
-    function grandAdmTotal(fType: string): number {
+    function grandMetricTotal(fType: string): number {
         let total = 0;
         data.capacityData.forEach(college => {
             college.courses.forEach((course: any) => {
-                total += courseAdmTotal(course.branches, fType);
-            });
-        });
-        return total;
-    }
-
-    function grandPaidTotal(fType: string): number {
-        let total = 0;
-        data.capacityData.forEach(college => {
-            college.courses.forEach((course: any) => {
-                total += coursePaidTotal(course.branches, fType);
+                total += courseMetricTotal(course.branches, fType);
             });
         });
         return total;
@@ -57,6 +56,8 @@
             alert('No capacity data available to export.');
             return;
         }
+
+        const metricLabel = metrics.find(m => m.id === selectedMetric)?.label.toUpperCase() || 'UNKNOWN';
 
         try {
             // Dynamic import to avoid SSR issues and only load when needed
@@ -88,9 +89,9 @@
                     course.branches.forEach((branch: any) => {
                         const row = [branch.name, branch.capacity.toString()];
                         data.globalUniqueFormTypes.forEach((fType: string) => {
-                            row.push((branch.paidFormTypes?.[fType] || 0).toString());
+                            row.push((branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0).toString());
                         });
-                        row.push(branch.paidApps.toString());
+                        row.push((branch.metrics?.[selectedMetric]?.total || 0).toString());
                         tableBody.push(row.map((text, idx) => ({ 
                             text, 
                             alignment: idx === 0 ? 'left' : 'center',
@@ -101,9 +102,9 @@
                     // Subtotal
                     const subtotalRow = [{ text: 'Total :-', alignment: 'right', bold: true }, branchTotal(course.branches, 'capacity').toString()];
                     data.globalUniqueFormTypes.forEach((fType: string) => {
-                        subtotalRow.push(coursePaidTotal(course.branches, fType).toString());
+                        subtotalRow.push(courseMetricTotal(course.branches, fType).toString());
                     });
-                    subtotalRow.push(branchTotal(course.branches, 'paidApps').toString());
+                    subtotalRow.push(branchTotal(course.branches, 'metric_total').toString());
                     
                     tableBody.push(subtotalRow.map((cell: any, idx) => {
                         const cellObj = typeof cell === 'string' ? { text: cell } : cell;
@@ -115,9 +116,9 @@
             // Grand Total
             const grandTotalRow = [{ text: 'GRAND Total :-', alignment: 'right', bold: true, fontSize: 12 }, grandTotal('capacity').toString()];
             data.globalUniqueFormTypes.forEach((fType: string) => {
-                grandTotalRow.push(grandPaidTotal(fType).toString());
+                grandTotalRow.push(grandMetricTotal(fType).toString());
             });
-            grandTotalRow.push(grandTotal('paidApps').toString());
+            grandTotalRow.push(grandTotal('metric_total').toString());
             
             tableBody.push(grandTotalRow.map((cell: any, idx) => {
                 const cellObj = typeof cell === 'string' ? { text: cell } : cell;
@@ -136,7 +137,7 @@
                 pageOrientation: data.globalUniqueFormTypes.length > 5 ? 'landscape' : 'portrait',
                 pageMargins: [20, 20, 20, 20],
                 content: [
-                    { text: 'CAPACITY REPORT (SIMPLE VIEW)', style: 'header' },
+                    { text: `CAPACITY REPORT - ${metricLabel}`, style: 'header' },
                     { text: `Report Date: ${new Date().toLocaleDateString('en-GB')}`, style: 'subheader' },
                     {
                         table: {
@@ -175,7 +176,7 @@
                 }
             };
 
-            pdfMake.createPdf(docDefinition).download(`Simple_Capacity_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+            pdfMake.createPdf(docDefinition).download(`${metricLabel.replace(' ', '_')}_Capacity_Report_${new Date().toISOString().split('T')[0]}.pdf`);
         } catch (error) {
             console.error('PDF Generation Error:', error);
             alert('Failed to generate PDF. Please try again.');
@@ -189,6 +190,7 @@
         }
 
         const workbook = XLSX.utils.book_new();
+        const metricLabel = metrics.find(m => m.id === selectedMetric)?.label || 'Metric';
 
         data.capacityData.forEach((collegeGroup: any) => {
             collegeGroup.courses.forEach((course: any) => {
@@ -200,9 +202,9 @@
                                 'INTAKE': branch.capacity,
                             };
                             data.globalUniqueFormTypes.forEach((ft: string) => {
-                                row[ft] = branch.admissionsFormTypes[ft] || 0;
+                                row[ft] = branch.metrics?.[selectedMetric]?.formTypes?.[ft] || 0;
                             });
-                            row['TOTAL ADMITTED'] = branch.admissions;
+                            row[`TOTAL ${metricLabel.toUpperCase()}`] = branch.metrics?.[selectedMetric]?.total || 0;
                             return row;
                         } else {
                             const row: any = {
@@ -234,21 +236,21 @@
                             'INTAKE': branchTotal(course.branches, 'capacity'),
                         };
                         data.globalUniqueFormTypes.forEach((ft: string) => {
-                            subtotal[ft] = coursePaidTotal(course.branches, ft);
+                            subtotal[ft] = courseMetricTotal(course.branches, ft);
                         });
-                        subtotal['TOTAL PAID'] = branchTotal(course.branches, 'paidApps');
+                        subtotal[`TOTAL ${metricLabel.toUpperCase()}`] = branchTotal(course.branches, 'metric_total');
                         sheetData.push(subtotal);
                     }
 
                     const worksheet = XLSX.utils.json_to_sheet(sheetData);
-                    const prefix = viewMode === 'simple' ? 'Simple_' : '';
+                    const prefix = viewMode === 'simple' ? `${metricLabel.replace(' ', '_')}_` : '';
                     const sheetName = `${prefix}${course.courseName.substring(0, 20)}`.replace(/[\\/?*\[\]]/g, '');
                     XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
                 }
             });
         });
 
-        const fileName = viewMode === 'simple' ? 'Simple_Capacity_Report.xlsx' : 'Detailed_Capacity_Report.xlsx';
+        const fileName = viewMode === 'simple' ? `Simple_Capacity_Report_${metricLabel.replace(' ', '_')}.xlsx` : 'Detailed_Capacity_Report.xlsx';
         XLSX.writeFile(workbook, fileName);
     }
 </script>
@@ -264,6 +266,26 @@
             </p>
         </div>
         <div class="d-flex gap-2">
+            {#if viewMode === 'simple'}
+                <div class="dropdown me-2">
+                    <button class="btn btn-outline-dark dropdown-toggle shadow-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class={metrics.find(m => m.id === selectedMetric)?.icon}></i> 
+                        {metrics.find(m => m.id === selectedMetric)?.label}
+                    </button>
+                    <ul class="dropdown-menu shadow">
+                        {#each metrics as metric}
+                            <li>
+                                <button 
+                                    class="dropdown-item d-flex align-items-center gap-2 {selectedMetric === metric.id ? 'active' : ''}" 
+                                    on:click={() => selectedMetric = metric.id as any}
+                                >
+                                    <i class={metric.icon}></i> {metric.label}
+                                </button>
+                            </li>
+                        {/each}
+                    </ul>
+                </div>
+            {/if}
             <div class="btn-group shadow-sm">
                 <button 
                     class="btn {viewMode === 'detailed' ? 'btn-primary' : 'btn-outline-primary'}" 
@@ -405,7 +427,7 @@
             <div class="card shadow-sm border-0 bg-white">
                 <div class="card-body p-4">
                     <div class="text-center mb-4">
-                        <h4 class="fw-bold mb-1">CAPACITY REPORT (SIMPLE VIEW)</h4>
+                        <h4 class="fw-bold mb-1">CAPACITY REPORT - {metrics.find(m => m.id === selectedMetric)?.label.toUpperCase()}</h4>
                         <p class="text-muted small mb-0">{new Date().toLocaleDateString('en-GB')}</p>
                     </div>
                     
@@ -434,11 +456,11 @@
                                                 <td class="text-start px-3">{branch.name}</td>
                                                 <td>{branch.capacity}</td>
                                                 {#each data.globalUniqueFormTypes || [] as fType}
-                                                    <td class={(branch.paidFormTypes?.[fType] || 0) > 0 ? 'fw-bold' : 'text-muted'}>
-                                                        {branch.paidFormTypes?.[fType] || 0}
+                                                    <td class={(branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0) > 0 ? 'fw-bold' : 'text-muted'}>
+                                                        {branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0}
                                                     </td>
                                                 {/each}
-                                                <td class="fw-bold">{branch.paidApps}</td>
+                                                <td class="fw-bold">{branch.metrics?.[selectedMetric]?.total || 0}</td>
                                             </tr>
                                         {/each}
                                         <!-- Course Subtotal -->
@@ -446,9 +468,9 @@
                                             <td class="text-end px-3 py-2">Total :-</td>
                                             <td>{branchTotal(course.branches, 'capacity')}</td>
                                             {#each data.globalUniqueFormTypes || [] as fType}
-                                                <td>{coursePaidTotal(course.branches, fType)}</td>
+                                                <td>{courseMetricTotal(course.branches, fType)}</td>
                                             {/each}
-                                            <td>{branchTotal(course.branches, 'paidApps')}</td>
+                                            <td>{branchTotal(course.branches, 'metric_total')}</td>
                                         </tr>
                                     {/each}
                                 {/each}
@@ -458,9 +480,9 @@
                                     <td class="text-end px-3 py-3 fs-5">GRAND Total :-</td>
                                     <td class="fs-5">{grandTotal('capacity')}</td>
                                     {#each data.globalUniqueFormTypes || [] as fType}
-                                        <td class="fs-5">{grandPaidTotal(fType)}</td>
+                                        <td class="fs-5">{grandMetricTotal(fType)}</td>
                                     {/each}
-                                    <td class="fs-4 bg-dark text-white">{grandTotal('paidApps')}</td>
+                                    <td class="fs-4 bg-dark text-white">{grandTotal('metric_total')}</td>
                                 </tr>
                             </tfoot>
                         </table>

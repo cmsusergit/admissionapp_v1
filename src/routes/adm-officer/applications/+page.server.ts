@@ -17,14 +17,18 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
 
     // Fetch Form Types for provisional logic and filtering
     const { data: formTypesData } = await supabaseAdmin.from('form_types').select('name, is_prov').order('name');
-    const formTypesMap = Object.fromEntries((formTypesData || []).map(ft => [ft.name, ft.is_prov]));
+    const formTypesMap = Object.fromEntries((formTypesData || []).map(ft => [(ft.name || '').toLowerCase(), ft.is_prov]));
     const defaultFormType = formTypesData?.find(ft => ft.is_prov)?.name || '';
 
     // --- Params ---
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '50');
     const search = url.searchParams.get('search') || '';
-    const status = url.searchParams.get('status') || 'submitted'; // Default to pending verification
+    const statusParam = url.searchParams.get('status') || 'submitted';
+    const status = statusParam.toLowerCase();
+
+    // Standard params to exclude from custom filters
+    const standardParams = ['page', 'limit', 'search', 'status', 'form_type', 'sort', 'order'];
 
     // Default form type filter only if on 'Pending Verification' and not explicitly provided
     let formTypeFilter = url.searchParams.get('form_type');
@@ -41,7 +45,11 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         .from('applications')
         .select(`
             id, status, form_type, submitted_at,
-            student_user:users!student_id!inner (full_name, email),
+            student_user:users!student_id!inner (
+                full_name, 
+                email,
+                student_profiles(enrollment_number)
+            ),
             courses (name, code),
             branches (name),
             payments (id, amount, status, payment_type, receipt_number)
@@ -50,23 +58,36 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     // Apply Security Filter
     query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
 
-    // Filter by status tab
+    // Filter by status tab (Case-Insensitive)
     if (status === 'submitted') {
-        query = query.in('status', ['submitted', 'needs_correction']);
+        query = query.in('status', ['submitted', 'needs_correction', 'SUBMITTED', 'NEEDS_CORRECTION']);
     } else if (status === 'processed') {
-        query = query.in('status', ['verified', 'approved', 'rejected', 'cancelled']);
+        query = query.in('status', ['verified', 'approved', 'rejected', 'cancelled', 'VERIFIED', 'APPROVED', 'REJECTED', 'CANCELLED']);
     } else {
-        query = query.eq('status', status);
+        query = query.ilike('status', status);
     }
 
-    // Apply Form Type Filter
-    if (formTypeFilter && formTypeFilter !== 'all') {
-        query = query.eq('form_type', formTypeFilter);
+    // Apply Form Type Filter (Case-Insensitive)
+    if (formTypeFilter && formTypeFilter.toLowerCase() !== 'all') {
+        const canonicalType = formTypesData?.find(ft => ft.name.toLowerCase() === formTypeFilter!.toLowerCase())?.name;
+        if (canonicalType) {
+            formTypeFilter = canonicalType;
+            query = query.eq('form_type', formTypeFilter);
+        } else {
+            query = query.ilike('form_type', formTypeFilter);
+        }
     }
 
-    // Search
+    // Apply Custom Filters (Case-Insensitive)
+    url.searchParams.forEach((value, key) => {
+        if (!standardParams.includes(key) && value) {
+            query = query.ilike(key, value);
+        }
+    });
+
+    // Search (Improved to match placeholder: Name, College ID, Receipt)
     if (search) {
-        query = query.or(`full_name.ilike.%${search}%`, { foreignTable: 'student_user' });
+        query = query.or(`full_name.ilike.%${search}%, email.ilike.%${search}%`, { foreignTable: 'student_user' });
     }
 
     // Sort & Paginate
@@ -86,8 +107,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
 
     // Helper to extract sorting receipt
     const getSortReceipt = (app: any) => {
-        const isProvType = formTypesMap[app.form_type] === true;
-        const payment = (app.payments || []).find((p: any) => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) 
+        const isProvType = formTypesMap[(app.form_type || '').toLowerCase()] === true;
+        const payment = (app.payments || []).find((p: any) => (p.payment_type || '').toLowerCase() === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) 
                      || (app.payments || []).find((p: any) => p.receipt_number);
         if (!payment?.receipt_number) return { num: '', seq: 0 };
         const seqMatch = payment.receipt_number.match(/(\d+)$/);
@@ -121,7 +142,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         limit,
         search,
         status,
-        formTypeFilter,
+        formTypeFilter: formTypeFilter || 'all',
         availableFormTypes: formTypesData || [],
         formTypesMap,
         sort: sortField,

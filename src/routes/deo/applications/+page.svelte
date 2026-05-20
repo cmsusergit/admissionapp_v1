@@ -426,10 +426,13 @@
 <!-- Payment Modal -->
 {#if showPaymentModal}
 <div class="modal d-block" style="background: rgba(0,0,0,0.5);">
-    <div class="modal-dialog">
-        <div class="modal-content">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-success text-white">
-                <h5 class="modal-title">Collect Provisional Fee</h5>
+                <h5 class="modal-title d-flex align-items-center">
+                    <i class="bi bi-cash-coin me-2"></i>
+                    Collect Provisional Fee
+                </h5>
                 <button type="button" class="btn-close btn-close-white" on:click={closePaymentModal}></button>
             </div>
             <form method="POST" action="?/collectProvFee" use:enhance={() => {
@@ -445,45 +448,95 @@
                     await update();
                 };
             }}>
-                <div class="modal-body">
+                <div class="modal-body p-0">
                     <input type="hidden" name="application_id" value={currentApp?.id} />
-                    
-                    <div class="text-center mb-4">
-                        <h2 class="text-success fw-bold">₹ {paymentDetails.amount}</h2>
-                        <p class="text-muted">Provisional Seat Reservation Fee</p>
-                        {#if paymentDetails.qrCodeUrl}
-                            <div class="bg-light border rounded p-3 d-inline-block">
-                                <img height="400" src={paymentDetails.qrCodeUrl} alt="QR Code" style="max-width: 450px; max-height: 450px;" on:error={(e) => { paymentDetails.qrCodeUrl = ''; }} />
-                                <div class="small mt-2 text-muted">Scan to Pay</div>
-                            </div>
-                        {:else}
-                            <div class="bg-light border rounded p-3 d-inline-block">
-                                <i class="bi bi-qr-code-scan display-1 text-secondary"></i>
-                                <div class="small mt-2 text-muted">No QR Code configured</div>
-                            </div>
-                        {/if}
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Payment Mode</label>
-                        <select class="form-select" name="payment_mode" bind:value={paymentDetails.mode}>
-                            <option value="cash">Cash</option>
-                            <option value="qr">UPI / QR Code</option>
-                            <option value="cheque">Cheque / DD</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Reference No / Transaction ID</label>
-                        <input type="text" class="form-control" name="reference_no" bind:value={paymentDetails.reference} placeholder="e.g. UPI Ref, Receipt No..." required />
-                    </div>
-                    
                     <input type="hidden" name="amount" value={paymentDetails.amount} />
+                    
+                    <div class="row g-0">
+                        <!-- Left: QR and Controls -->
+                        <div class="col-md-7 p-4 border-end">
+                            <div class="text-center mb-4">
+                                <div class="badge bg-success-soft text-success mb-2 px-3 py-2 rounded-pill">
+                                    <h4 class="mb-0 fw-bold">₹ {paymentDetails.amount}</h4>
+                                </div>
+                                <p class="text-muted small">Provisional Seat Reservation Fee</p>
+                                
+                                {#if paymentDetails.qrCodeUrl}
+                                    <div class="bg-white border rounded p-2 d-inline-block shadow-sm mb-3">
+                                        <img src={paymentDetails.qrCodeUrl} alt="QR Code" class="img-fluid" style="max-height: 300px; min-width: 250px;" on:error={(e) => { paymentDetails.qrCodeUrl = ''; }} />
+                                        <div class="small mt-2 text-dark fw-bold">
+                                            <i class="bi bi-upc-scan me-1"></i> Scan to Pay
+                                        </div>
+                                    </div>
+                                {:else}
+                                    <div class="bg-light border rounded p-5 d-inline-block mb-3">
+                                        <i class="bi bi-qr-code-scan display-4 text-secondary"></i>
+                                        <div class="small mt-2 text-muted">No QR Code configured</div>
+                                    </div>
+                                {/if}
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-sm-6">
+                                    <label class="form-label small fw-bold text-uppercase text-muted">Payment Mode</label>
+                                    <select class="form-select" name="payment_mode" bind:value={paymentDetails.mode}>
+                                        <option value="cash">Cash</option>
+                                        <option value="qr">UPI / QR Code</option>
+                                        <option value="cheque">Cheque / DD</option>
+                                    </select>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="form-label small fw-bold text-uppercase text-muted">Reference No</label>
+                                    <input type="text" class="form-control" name="reference_no" bind:value={paymentDetails.reference} placeholder="Ref No / Trans ID" required />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Instructions -->
+                        <div class="col-md-5 bg-light p-4">
+                            <h6 class="fw-bold mb-3 d-flex align-items-center">
+                                <i class="bi bi-info-circle text-primary me-2"></i>
+                                Payment Instructions
+                            </h6>
+                            
+                            <div class="instruction-steps small text-muted">
+                                <div class="d-flex mb-3">
+                                    <div class="me-3"><span class="badge bg-primary rounded-circle">1</span></div>
+                                    <div>Open any UPI app (PhonePe, GPay, Paytm etc.) on your mobile.</div>
+                                </div>
+                                <div class="d-flex mb-3">
+                                    <div class="me-3"><span class="badge bg-primary rounded-circle">2</span></div>
+                                    <div>Scan the QR code shown on the left to initiate payment.</div>
+                                </div>
+                                <div class="d-flex mb-3">
+                                    <div class="me-3"><span class="badge bg-primary rounded-circle">3</span></div>
+                                    <div>Ensure the amount is exactly <strong>₹ {paymentDetails.amount}</strong>.</div>
+                                </div>
+                                <div class="d-flex mb-3">
+                                    <div class="me-3"><span class="badge bg-primary rounded-circle">4</span></div>
+                                    <div>After successful payment, find the <strong>Transaction ID / Reference Number</strong> in your app.</div>
+                                </div>
+                                <div class="d-flex mb-3">
+                                    <div class="me-3"><span class="badge bg-primary rounded-circle">5</span></div>
+                                    <div>Enter that number in the 'Reference No' field and click 'Confirm Payment'.</div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-warning border-0 shadow-sm mt-4 small py-2">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                <strong>Verification:</strong> Payments will be verified against the reference number provided.
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" on:click={closePaymentModal}>Cancel</button>
-                    <button type="submit" class="btn btn-success" disabled={isSubmittingPayment}>
-                        {isSubmittingPayment ? 'Processing...' : 'Confirm Payment'}
+                <div class="modal-footer bg-white border-top-0 p-3">
+                    <button type="button" class="btn btn-link text-muted text-decoration-none" on:click={closePaymentModal}>Cancel</button>
+                    <button type="submit" class="btn btn-success px-4 fw-bold" disabled={isSubmittingPayment}>
+                        {#if isSubmittingPayment}
+                            <span class="spinner-border spinner-border-sm me-2"></span> Processing...
+                        {:else}
+                            <i class="bi bi-check-circle me-1"></i> Confirm Payment
+                        {/if}
                     </button>
                 </div>
             </form>
@@ -491,3 +544,18 @@
     </div>
 </div>
 {/if}
+
+<style>
+    .bg-success-soft {
+        background-color: rgba(25, 135, 84, 0.1);
+    }
+    .instruction-steps .badge {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+    }
+</style>

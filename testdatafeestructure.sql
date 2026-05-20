@@ -5,6 +5,7 @@
 -- Form Type: ACPC
 -- Source Data: Extracted from feerecipt.pdf
 
+
 INSERT INTO fee_structures (
     course_id, 
     academic_year_id, 

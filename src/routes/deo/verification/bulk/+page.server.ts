@@ -42,7 +42,11 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         .from('applications')
         .select(`
             id, status, form_type, submitted_at,
-            student_user:users!student_id!inner (full_name, email),
+            student_user:users!student_id!inner (
+                full_name, 
+                email,
+                student_profiles(enrollment_number)
+            ),
             courses!inner (name, college_id),
             branches (name),
             documents (*)
@@ -177,6 +181,44 @@ export const actions: Actions = {
         }
 
         return { success: true, message: 'Student Verified Successfully' };
+    },
+
+    approveDocument: async ({ request, locals: { getSession, userProfile } }) => {
+        const session = await getSession();
+        if (!session || !['deo', 'college_auth', 'admin'].includes(userProfile?.role || '')) {
+            return fail(403, { message: 'Unauthorized' });
+        }
+
+        const formData = await request.formData();
+        const document_id = formData.get('document_id') as string;
+        const application_id = formData.get('application_id') as string;
+
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+        // Check application status
+        const { data: app, error: appFetchError } = await supabaseAdmin
+            .from('applications')
+            .select('status')
+            .eq('id', application_id)
+            .single();
+
+        if (appFetchError || !app) {
+            return fail(404, { message: 'Application not found.' });
+        }
+
+        if (['verified', 'approved'].includes(app.status)) {
+            return fail(403, { message: 'Error: Cannot approve document for an already verified or approved application.', error: true });
+        }
+
+        // 1. Approve Document
+        const { error: docError } = await supabaseAdmin
+            .from('documents')
+            .update({ status: 'approved', rejection_reason: null })
+            .eq('id', document_id);
+
+        if (docError) return fail(500, { message: 'Failed to approve document.' });
+
+        return { success: true, message: 'Document Approved.' };
     },
 
     rejectDocument: async ({ request, locals: { getSession, userProfile } }) => {

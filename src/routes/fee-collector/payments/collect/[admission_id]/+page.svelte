@@ -4,6 +4,7 @@
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
     import { toastStore } from '$lib/stores/toastStore';
     import { goto } from '$app/navigation';
+    import { generateReceiptPDF, downloadReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
 
     let { data, form } = $props();
 
@@ -79,6 +80,66 @@
             toastStore.error('Failed to update scheme.');
         }
         stopLoading();
+    }
+
+    async function printReceipt(payment: any) {
+        const receiptData = mapPaymentToReceipt(payment);
+        await generateReceiptPDF(receiptData);
+    }
+
+    async function downloadReceipt(payment: any) {
+        const receiptData = mapPaymentToReceipt(payment);
+        await downloadReceiptPDF(receiptData);
+    }
+
+    function mapPaymentToReceipt(payment: any): ReceiptData {
+        const isProv = payment.payment_type === 'provisional_fee';
+        const isTuition = payment.payment_type === 'tuition_fee';
+        const feePeriod = payment.fee_period || 'year';
+
+        // Map fee_components_breakdown to ReceiptData.feeBreakdown
+        // If it's tuition_fee, we want the detailed component breakdown
+        const feeBreakdown = (payment.fee_components_breakdown || []).map((section: any) => ({
+            name: section.name || section.section,
+            items: (section.items || []).map((item: any) => {
+                const val = Number(item.amount) || 0;
+                // If semester payment, apply 50% to partial items to match displayed total
+                const displayAmt = (feePeriod === 'semester' && item.allow_partial) ? (val / 2) : val;
+                return {
+                    name: item.name,
+                    amount: displayAmt
+                };
+            })
+        }));
+        
+        return {
+            receiptNumber: payment.receipt_number || 'N/A',
+            date: payment.payment_date,
+            studentName: student?.full_name || student?.email || 'N/A',
+            email: student?.email || '',
+            enrollmentNumber: student?.student_profiles?.[0]?.enrollment_number,
+            admissionNumber: admission.admission_number,
+            courseName: app.courses.name || 'N/A',
+            branchName: app.branches?.name,
+            academicYear: app.admission_cycles?.academic_years?.name,
+            paymentType: payment.payment_type,
+            isProvisional: isProv,
+            transactionId: payment.transaction_id,
+            amount: Number(payment.amount),
+            totalStructureFee: Number(payment.amount), // Fallback
+            feeBreakdown: feeBreakdown.length > 0 ? feeBreakdown : undefined,
+            paymentModes: (payment.payment_breakdown || []).map((m: any) => ({
+                mode: m.type || m.mode,
+                amount: Number(m.amount),
+                ref: m.ref || m.reference,
+                date: payment.payment_date
+            })),
+            university: {
+                name: 'SVIT, Vasad',
+                address: 'Vasad, Gujarat',
+                contactEmail: 'admission@svitvasad.ac.in'
+            }
+        };
     }
 </script>
 
@@ -163,7 +224,7 @@
                         <div class="fee-breakdown-container bg-light rounded p-3" style="max-height: 400px; overflow-y: auto;">
                             {#each data.feeStructure.fee_components || [] as section}
                                 <div class="mb-3">
-                                    <h6 class="text-primary fw-bold border-bottom pb-1 mb-2 small text-uppercase">{section.section}</h6>
+                                    <h6 class="text-primary fw-bold border-bottom pb-1 mb-2 small text-uppercase">{section.name || section.section}</h6>
                                     {#each section.items || [] as item}
                                         {@const val = Number(item.amount) || 0}
                                         {@const displayAmt = (feePeriod === 'semester' && item.allow_partial) ? (val / 2) : val}
@@ -304,9 +365,14 @@
                                         </td>
                                         <td class="fw-bold">₹{payment.amount.toLocaleString()}</td>
                                         <td class="pe-3 text-end">
-                                            <button class="btn btn-sm btn-outline-secondary">
-                                                <i class="bi bi-printer"></i>
-                                            </button>
+                                            <div class="btn-group">
+                                                <button class="btn btn-sm btn-outline-secondary" title="Print" on:click={() => printReceipt(payment)}>
+                                                    <i class="bi bi-printer"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-secondary" title="Download" on:click={() => downloadReceipt(payment)}>
+                                                    <i class="bi bi-download"></i>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 {:else}

@@ -1,4 +1,4 @@
-# Plan: Flexible & Role-Specific Access Control
+# Plan: Flexible & Role-Specific Access Control 
 
 ## Objective
 1.  **DEO & Fee Collector**: Support **Flexible Access**.

@@ -188,6 +188,65 @@
     function recordStudentPayment(adm: any) {
         goto(`/fee-collector/payments/collect/${adm.id}`);
     }
+
+    async function printReceipt(payment: any) {
+        const receiptData = mapPaymentToReceipt(payment);
+        await generateReceiptPDF(receiptData);
+    }
+
+    async function downloadReceipt(payment: any) {
+        const receiptData = mapPaymentToReceipt(payment);
+        await downloadReceiptPDF(receiptData);
+    }
+
+    function mapPaymentToReceipt(payment: any): ReceiptData {
+        const isProv = payment.payment_type === 'provisional_fee';
+        const isTuition = payment.payment_type === 'tuition_fee';
+        const feePeriod = payment.fee_period || 'year';
+
+        // Map fee_components_breakdown to ReceiptData.feeBreakdown
+        const feeBreakdown = (payment.fee_components_breakdown || []).map((section: any) => ({
+            name: section.name || section.section,
+            items: (section.items || []).map((item: any) => {
+                const val = Number(item.amount) || 0;
+                // If semester payment, apply 50% to partial items to match displayed total
+                const displayAmt = (feePeriod === 'semester' && item.allow_partial) ? (val / 2) : val;
+                return {
+                    name: item.name,
+                    amount: displayAmt
+                };
+            })
+        }));
+        
+        return {
+            receiptNumber: payment.receipt_number || 'N/A',
+            date: payment.payment_date,
+            studentName: payment.applications?.student_user?.full_name || payment.applications?.student_user?.email || 'N/A',
+            email: payment.applications?.student_user?.email || '',
+            enrollmentNumber: payment.applications?.student_user?.student_profiles?.enrollment_number,
+            admissionNumber: payment.applications?.account_admissions?.[0]?.admission_number,
+            courseName: payment.applications?.courses?.name || 'N/A',
+            branchName: payment.applications?.branches?.name,
+            academicYear: payment.applications?.admission_cycles?.academic_years?.name,
+            paymentType: payment.payment_type,
+            isProvisional: isProv,
+            transactionId: payment.transaction_id,
+            amount: Number(payment.amount),
+            totalStructureFee: Number(payment.amount), // Fallback
+            feeBreakdown: feeBreakdown.length > 0 ? feeBreakdown : undefined,
+            paymentModes: (payment.payment_breakdown || []).map((m: any) => ({
+                mode: m.type || m.mode,
+                amount: Number(m.amount),
+                ref: m.ref || m.reference,
+                date: payment.payment_date
+            })),
+            university: {
+                name: 'SVIT, Vasad',
+                address: 'Vasad, Gujarat',
+                contactEmail: 'admission@svitvasad.ac.in'
+            }
+        };
+    }
 </script>
 
 <svelte:window on:click={handleWindowClick} />
