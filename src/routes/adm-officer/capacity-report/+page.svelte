@@ -18,6 +18,10 @@
         return (branches || []).reduce((sum, branch) => sum + (branch.admissionsFormTypes?.[fType] || 0), 0);
     }
 
+    function coursePaidTotal(branches: any[], fType: string): number {
+        return (branches || []).reduce((sum, branch) => sum + (branch.paidFormTypes?.[fType] || 0), 0);
+    }
+
     function grandTotal(field: string): number {
         let total = 0;
         data.capacityData.forEach(college => {
@@ -36,6 +40,146 @@
             });
         });
         return total;
+    }
+
+    function grandPaidTotal(fType: string): number {
+        let total = 0;
+        data.capacityData.forEach(college => {
+            college.courses.forEach((course: any) => {
+                total += coursePaidTotal(course.branches, fType);
+            });
+        });
+        return total;
+    }
+
+    async function downloadPDF() {
+        if (!data.capacityData || data.capacityData.length === 0) {
+            alert('No capacity data available to export.');
+            return;
+        }
+
+        try {
+            // Dynamic import to avoid SSR issues and only load when needed
+            const pdfMakeModule = await import('pdfmake/build/pdfmake.js');
+            const pdfFontsModule = await import('pdfmake/build/vfs_fonts.js');
+            const pdfMake: any = pdfMakeModule.default || pdfMakeModule;
+            const pdfFonts: any = pdfFontsModule.default || pdfFontsModule;
+            
+            pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts.vfs;
+
+            const tableBody = [];
+            
+            // Header
+            const headerRow = ['COURSE / BRANCH', 'INTAKE'];
+            data.globalUniqueFormTypes.forEach(f => headerRow.push(f.toUpperCase()));
+            headerRow.push('TOTAL');
+            tableBody.push(headerRow.map(text => ({ text, style: 'tableHeader' })));
+
+            // Data Rows
+            data.capacityData.forEach(college => {
+                college.courses.forEach((course: any) => {
+                    // Course Header Row
+                    tableBody.push([
+                        { text: course.courseName.toUpperCase(), colSpan: headerRow.length, style: 'courseHeader' },
+                        ...Array(headerRow.length - 1).fill('')
+                    ]);
+
+                    // Branches
+                    course.branches.forEach((branch: any) => {
+                        const row = [branch.name, branch.capacity.toString()];
+                        data.globalUniqueFormTypes.forEach((fType: string) => {
+                            row.push((branch.paidFormTypes?.[fType] || 0).toString());
+                        });
+                        row.push(branch.paidApps.toString());
+                        tableBody.push(row.map((text, idx) => ({ 
+                            text, 
+                            alignment: idx === 0 ? 'left' : 'center',
+                            bold: idx === row.length - 1 || (idx > 1 && parseInt(text) > 0)
+                        })));
+                    });
+
+                    // Subtotal
+                    const subtotalRow = [{ text: 'Total :-', alignment: 'right', bold: true }, branchTotal(course.branches, 'capacity').toString()];
+                    data.globalUniqueFormTypes.forEach((fType: string) => {
+                        subtotalRow.push(coursePaidTotal(course.branches, fType).toString());
+                    });
+                    subtotalRow.push(branchTotal(course.branches, 'paidApps').toString());
+                    
+                    tableBody.push(subtotalRow.map((cell: any, idx) => {
+                        const cellObj = typeof cell === 'string' ? { text: cell } : cell;
+                        return { ...cellObj, bold: true, fillColor: '#f8f9fa', alignment: idx === 0 ? 'right' : 'center' };
+                    }));
+                });
+            });
+
+            // Grand Total
+            const grandTotalRow = [{ text: 'GRAND Total :-', alignment: 'right', bold: true, fontSize: 12 }, grandTotal('capacity').toString()];
+            data.globalUniqueFormTypes.forEach((fType: string) => {
+                grandTotalRow.push(grandPaidTotal(fType).toString());
+            });
+            grandTotalRow.push(grandTotal('paidApps').toString());
+            
+            tableBody.push(grandTotalRow.map((cell: any, idx) => {
+                const cellObj = typeof cell === 'string' ? { text: cell } : cell;
+                return { 
+                    ...cellObj, 
+                    bold: true, 
+                    fontSize: 12, 
+                    fillColor: idx === grandTotalRow.length - 1 ? '#343a40' : '#e9ecef',
+                    color: idx === grandTotalRow.length - 1 ? 'white' : 'black',
+                    alignment: idx === 0 ? 'right' : 'center'
+                };
+            }));
+
+            const docDefinition = {
+                pageSize: 'A4',
+                pageOrientation: data.globalUniqueFormTypes.length > 5 ? 'landscape' : 'portrait',
+                pageMargins: [20, 20, 20, 20],
+                content: [
+                    { text: 'CAPACITY REPORT (SIMPLE VIEW)', style: 'header' },
+                    { text: `Report Date: ${new Date().toLocaleDateString('en-GB')}`, style: 'subheader' },
+                    {
+                        table: {
+                            headerRows: 1,
+                            widths: ['*', 'auto', ...data.globalUniqueFormTypes.map(() => 'auto'), 'auto'],
+                            body: tableBody
+                        },
+                        layout: {
+                            hLineWidth: function (i: number, node: any) {
+                                return (i === 0 || i === node.table.body.length) ? 1.5 : 0.5;
+                            },
+                            vLineWidth: function (i: number, node: any) {
+                                return (i === 0 || i === node.table.widths.length) ? 1.5 : 0.5;
+                            },
+                            hLineColor: function (i: number) {
+                                return (i === 0 || i === 1) ? 'black' : '#dddddd';
+                            },
+                            vLineColor: function (i: number) {
+                                return '#dddddd';
+                            },
+                            paddingLeft: function(i: number) { return 4; },
+                            paddingRight: function(i: number) { return 4; },
+                            paddingTop: function(i: number) { return 2; },
+                            paddingBottom: function(i: number) { return 2; }
+                        }
+                    }
+                ],
+                styles: {
+                    header: { fontSize: 13, bold: true, alignment: 'center', margin: [0, 0, 0, 2] },
+                    subheader: { fontSize: 8, alignment: 'center', margin: [0, 0, 0, 10], color: '#666666' },
+                    tableHeader: { bold: true, fontSize: 8.5, color: 'black', fillColor: '#f1f1f1', alignment: 'center', margin: [0, 2, 0, 2] },
+                    courseHeader: { bold: true, fontSize: 9, fillColor: '#f8f9fa', margin: [2, 2, 2, 2] }
+                },
+                defaultStyle: {
+                    fontSize: 8
+                }
+            };
+
+            pdfMake.createPdf(docDefinition).download(`Simple_Capacity_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (error) {
+            console.error('PDF Generation Error:', error);
+            alert('Failed to generate PDF. Please try again.');
+        }
     }
 
     async function downloadCapacityReport() {
@@ -90,9 +234,9 @@
                             'INTAKE': branchTotal(course.branches, 'capacity'),
                         };
                         data.globalUniqueFormTypes.forEach((ft: string) => {
-                            subtotal[ft] = courseAdmTotal(course.branches, ft);
+                            subtotal[ft] = coursePaidTotal(course.branches, ft);
                         });
-                        subtotal['TOTAL ADMITTED'] = branchTotal(course.branches, 'admissions');
+                        subtotal['TOTAL PAID'] = branchTotal(course.branches, 'paidApps');
                         sheetData.push(subtotal);
                     }
 
@@ -134,9 +278,16 @@
                     Simple View
                 </button>
             </div>
-            <button class="btn btn-success shadow-sm" on:click={downloadCapacityReport}>
-                <i class="bi bi-file-earmark-excel"></i> Export
-            </button>
+            <div class="btn-group shadow-sm">
+                <button class="btn btn-success" on:click={downloadCapacityReport}>
+                    <i class="bi bi-file-earmark-excel"></i> Export Excel
+                </button>
+                {#if viewMode === 'simple'}
+                    <button class="btn btn-danger" on:click={downloadPDF}>
+                        <i class="bi bi-file-earmark-pdf"></i> Export PDF
+                    </button>
+                {/if}
+            </div>
         </div>
     </div>
 
@@ -283,11 +434,11 @@
                                                 <td class="text-start px-3">{branch.name}</td>
                                                 <td>{branch.capacity}</td>
                                                 {#each data.globalUniqueFormTypes || [] as fType}
-                                                    <td class={(branch.admissionsFormTypes?.[fType] || 0) > 0 ? 'fw-bold' : 'text-muted'}>
-                                                        {branch.admissionsFormTypes?.[fType] || 0}
+                                                    <td class={(branch.paidFormTypes?.[fType] || 0) > 0 ? 'fw-bold' : 'text-muted'}>
+                                                        {branch.paidFormTypes?.[fType] || 0}
                                                     </td>
                                                 {/each}
-                                                <td class="fw-bold">{branch.admissions}</td>
+                                                <td class="fw-bold">{branch.paidApps}</td>
                                             </tr>
                                         {/each}
                                         <!-- Course Subtotal -->
@@ -295,9 +446,9 @@
                                             <td class="text-end px-3 py-2">Total :-</td>
                                             <td>{branchTotal(course.branches, 'capacity')}</td>
                                             {#each data.globalUniqueFormTypes || [] as fType}
-                                                <td>{courseAdmTotal(course.branches, fType)}</td>
+                                                <td>{coursePaidTotal(course.branches, fType)}</td>
                                             {/each}
-                                            <td>{branchTotal(course.branches, 'admissions')}</td>
+                                            <td>{branchTotal(course.branches, 'paidApps')}</td>
                                         </tr>
                                     {/each}
                                 {/each}
@@ -307,9 +458,9 @@
                                     <td class="text-end px-3 py-3 fs-5">GRAND Total :-</td>
                                     <td class="fs-5">{grandTotal('capacity')}</td>
                                     {#each data.globalUniqueFormTypes || [] as fType}
-                                        <td class="fs-5">{grandAdmTotal(fType)}</td>
+                                        <td class="fs-5">{grandPaidTotal(fType)}</td>
                                     {/each}
-                                    <td class="fs-4 bg-dark text-white">{grandTotal('admissions')}</td>
+                                    <td class="fs-4 bg-dark text-white">{grandTotal('paidApps')}</td>
                                 </tr>
                             </tfoot>
                         </table>

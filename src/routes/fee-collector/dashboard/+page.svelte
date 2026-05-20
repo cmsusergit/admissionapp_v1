@@ -98,7 +98,7 @@
                                     <td><span class="badge bg-secondary">{admAny.account_status}</span></td>
                                     <td>
                                         <button class="btn btn-sm btn-primary me-1" on:click={() => openStatusUpdateModal(admAny)}>Update Status</button>
-                                        <a href="/fee-collector/payments?admissionId={admAny.id}" class="btn btn-sm btn-success">Collect Fee</a>
+                                        <a href="/fee-collector/payments/collect/{admAny.id}" class="btn btn-sm btn-success">Collect Fee</a>
                                     </td>
                                 </tr>
                             {/each}
