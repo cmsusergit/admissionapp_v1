@@ -19,7 +19,17 @@
 
     const academicYear = app?.admission_cycles?.academic_years?.name || '-';
     
-    let feeBreakdown = payment.fee_components_breakdown; 
+    const feePeriod = payment.fee_period || 'year';
+    let feeBreakdown = (payment.fee_components_breakdown || []).map((s: any) => ({
+        ...s,
+        name: s.section || s.name || '',
+        items: (s.items || []).map((i: any) => {
+            const val = parseAmount(i.amount);
+            const displayAmt = (feePeriod === 'semester' && i.allow_partial) ? (val / 2) : val;
+            return { ...i, amount: displayAmt };
+        })
+    }));
+
     let paymentModes = payment.payment_breakdown || [];
 
     // Fallback: If JSON breakdown is empty but flat columns have data
@@ -70,15 +80,15 @@
             courseName: course?.name || 'N/A',
             branchName: branch?.name,
             academicYear: academicYear,
-            semester: 'FIRST SEMESTER',
+            semester: feePeriod === 'semester' ? 'FIRST SEMESTER' : 'FULL YEAR',
             paymentType: payment.payment_type || 'fee',
             isProvisional,
             transactionId: payment.transaction_id,
             amount: grandTotal,
             totalStructureFee: grandTotal, 
-            feeBreakdown: (feeBreakdown || []).map((s: any) => ({
+            feeBreakdown: feeBreakdown.map((s: any) => ({
                 name: s.name,
-                items: (s.items || []).map((i: any) => ({ name: i.name, amount: parseAmount(i.amount) }))
+                items: (s.items || []).map((i: any) => ({ name: i.name, amount: i.amount }))
             })),
             paymentModes: paymentModes.map((m: any) => ({ 
                 mode: m.mode || m.type, 
@@ -108,15 +118,15 @@
             courseName: course?.name || 'N/A',
             branchName: branch?.name,
             academicYear: academicYear,
-            semester: 'FIRST SEMESTER',
+            semester: feePeriod === 'semester' ? 'FIRST SEMESTER' : 'FULL YEAR',
             paymentType: payment.payment_type || 'fee',
             isProvisional,
             transactionId: payment.transaction_id,
             amount: grandTotal,
             totalStructureFee: grandTotal,
-            feeBreakdown: (feeBreakdown || []).map((s: any) => ({
+            feeBreakdown: feeBreakdown.map((s: any) => ({
                 name: s.name,
-                items: (s.items || []).map((i: any) => ({ name: i.name, amount: parseAmount(i.amount) }))
+                items: (s.items || []).map((i: any) => ({ name: i.name, amount: i.amount }))
             })),
             paymentModes: paymentModes.map((m: any) => ({ 
                 mode: m.mode || m.type, 
@@ -187,7 +197,8 @@
                 <tbody>
                     {#if feeBreakdown && Array.isArray(feeBreakdown)}
                         {#each feeBreakdown as section}
-                            {#if section.name}<tr class="section-header"><td></td><td class="fw-bold">{section.name}</td><td></td></tr>{/if}
+                            {@const sectionName = section.section || section.name}
+                            {#if sectionName}<tr class="section-header"><td></td><td class="fw-bold">{sectionName}</td><td></td></tr>{/if}
                             {#each section.items || [] as item, i}
                                 <tr><td class="text-center">{i + 1}</td><td>{item.name}</td><td class="text-end">{parseAmount(item.amount).toLocaleString('en-IN')}</td></tr>
                             {/each}

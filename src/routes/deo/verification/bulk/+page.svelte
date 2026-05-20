@@ -163,6 +163,9 @@
                             </td>
                             <td>
                                 <div class="fw-bold">{app.student_user?.full_name}</div>
+                                {#if app.student_user?.student_profiles?.enrollment_number}
+                                    <div class="small fw-bold text-primary">ID: {app.student_user.student_profiles.enrollment_number}</div>
+                                {/if}
                                 <small class="text-muted">{app.student_user?.email}</small>
                             </td>
                             <td>
@@ -196,24 +199,24 @@
                                         <div class="row">
                                             <div class="col-md-9">
                                                 <h6 class="mb-3">Document Verification</h6>
-                                                <div class="d-flex gap-3 overflow-auto pb-2">
+                                                <div class="d-flex flex-wrap gap-3">
                                                     {#each app.documents || [] as doc}
-                                                        <div class="doc-item" style="width: 120px;">
+                                                        <div class="doc-item d-flex flex-column" style="width: 130px;">
                                                             <!-- svelte-ignore a11y-click-events-have-key-events -->
                                                             <!-- svelte-ignore a11y-no-static-element-interactions -->
                                                             <div 
-                                                                class="card h-100 border-2 {doc.status === 'rejected' ? 'border-danger' : doc.status === 'approved' ? 'border-success' : 'border-light'} shadow-sm"
-                                                                style="cursor: pointer;"
+                                                                class="card border-2 {doc.status === 'rejected' ? 'border-danger' : doc.status === 'approved' ? 'border-success' : 'border-light'} shadow-sm mb-2"
+                                                                style="cursor: pointer; height: 140px;"
                                                                 on:click={() => openPreview(doc)}
                                                             >
-                                                                <div class="card-body p-1 d-flex align-items-center justify-content-center position-relative" style="height: 100px;">
+                                                                <div class="card-body p-1 d-flex align-items-center justify-content-center position-relative overflow-hidden" style="height: 100px;">
                                                                     {#if isSigning.get(doc.id)}
                                                                         <div class="spinner-border spinner-border-sm text-primary"></div>
                                                                     {:else if signingUrls.has(doc.id)}
                                                                         {#if doc.file_name.toLowerCase().endsWith('.pdf')}
                                                                             <i class="bi bi-file-earmark-pdf fs-1 text-danger"></i>
                                                                         {:else}
-                                                                            <img src={signingUrls.get(doc.id)} alt="Preview" class="img-fluid rounded" style="height: 100%; object-fit: cover;">
+                                                                            <img src={signingUrls.get(doc.id)} alt="Preview" class="img-fluid rounded" style="max-height: 100%; width: 100%; object-fit: cover;">
                                                                         {/if}
                                                                     {:else}
                                                                         <i class="bi bi-file-earmark fs-1 text-secondary"></i>
@@ -221,26 +224,40 @@
 
                                                                     {#if doc.status === 'rejected'}
                                                                         <div class="position-absolute top-0 start-0 w-100 h-100 bg-danger bg-opacity-10 d-flex align-items-center justify-content-center">
-                                                                            <i class="bi bi-x-circle-fill text-danger"></i>
+                                                                            <i class="bi bi-x-circle-fill text-danger fs-3 shadow-sm"></i>
+                                                                        </div>
+                                                                    {:else if doc.status === 'approved'}
+                                                                        <div class="position-absolute top-0 start-0 w-100 h-100 bg-success bg-opacity-10 d-flex align-items-center justify-content-center">
+                                                                            <i class="bi bi-check-circle-fill text-success fs-3 shadow-sm"></i>
                                                                         </div>
                                                                     {/if}
                                                                 </div>
-                                                                <div class="card-footer p-1 bg-white border-0">
-                                                                    <div class="text-truncate small text-center" title={doc.document_type}>{doc.document_type}</div>
+                                                                <div class="card-footer p-1 bg-white border-0 mt-auto">
+                                                                    <div class="text-truncate small text-center fw-bold" style="font-size: 0.7rem;" title={doc.document_type}>{doc.document_type}</div>
                                                                 </div>
                                                             </div>
-                                                            <div class="mt-2 d-flex justify-content-center gap-1">
+                                                            
+                                                            <div class="d-flex justify-content-center gap-1 mt-auto">
                                                                 {#if doc.status === 'rejected'}
-                                                                    <form method="POST" action="?/undoRejectDocument" use:enhance>
+                                                                    <form method="POST" action="?/undoRejectDocument" use:enhance class="w-100">
                                                                         <input type="hidden" name="document_id" value={doc.id}>
                                                                         <input type="hidden" name="application_id" value={app.id}>
-                                                                        <button class="btn btn-xs btn-warning px-2 py-0" title="Undo Rejection">
-                                                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                                                        <button class="btn btn-xs btn-warning w-100 d-flex align-items-center justify-content-center py-1" title="Undo Rejection">
+                                                                            <i class="bi bi-arrow-counterclockwise me-1"></i> Undo
                                                                         </button>
                                                                     </form>
                                                                 {:else}
-                                                                    <button class="btn btn-xs btn-outline-danger px-2 py-0" on:click|stopPropagation={() => openReject(doc)} title="Reject">
-                                                                        <i class="bi bi-x"></i>
+                                                                    {#if doc.status !== 'approved'}
+                                                                        <form method="POST" action="?/approveDocument" use:enhance class="flex-grow-1">
+                                                                            <input type="hidden" name="document_id" value={doc.id}>
+                                                                            <input type="hidden" name="application_id" value={app.id}>
+                                                                            <button class="btn btn-xs btn-outline-success w-100 d-flex align-items-center justify-content-center py-1" title="Approve">
+                                                                                <i class="bi bi-check-lg"></i>
+                                                                            </button>
+                                                                        </form>
+                                                                    {/if}
+                                                                    <button class="btn btn-xs btn-outline-danger {doc.status === 'approved' ? 'w-100' : 'flex-grow-1'} d-flex align-items-center justify-content-center py-1" on:click|stopPropagation={() => openReject(doc)} title="Reject">
+                                                                        <i class="bi bi-x-lg"></i>
                                                                     </button>
                                                                 {/if}
                                                             </div>
