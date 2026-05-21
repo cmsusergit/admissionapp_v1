@@ -433,7 +433,13 @@
             saveFormPayload.append('application_id', currentApplicationId);
 
             // Silent save
-            await fetch('?/saveApplication', { method: 'POST', body: saveFormPayload });
+            const saveResponse = await fetch('?/saveApplication', { method: 'POST', body: saveFormPayload });
+            const saveResult = deserialize(await saveResponse.text());
+            
+            if (saveResult.type === 'success' && saveResult.data?.applicationId) {
+                currentApplicationId = saveResult.data.applicationId;
+                console.log('Synchronized applicationId after silent save:', currentApplicationId);
+            }
 
             const formPayload = new FormData();
             formPayload.append('application_id', currentApplicationId);

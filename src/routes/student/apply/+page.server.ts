@@ -453,26 +453,56 @@ export const actions: Actions = {
       return { success: true, message: "Application updated successfully!" };
     } else {
       // Check for existing application
-      let query = supabase
+      const { data: existingApp } = await supabase
         .from("applications")
-        .select("id")
+        .select("id, status, application_fee_status")
         .eq("student_id", userProfile.id)
         .eq("course_id", validatedCourseId)
         .eq("cycle_id", validatedCycleId)
-        .eq("form_type", validatedFormType);
-
-      if (validatedBranchId) {
-        query = query.eq("branch_id", validatedBranchId);
-      } else {
-        query = query.is("branch_id", null);
-      }
-
-      const { data: existingApp } = await query.maybeSingle();
+        .eq("form_type", validatedFormType)
+        .maybeSingle();
 
       if (existingApp) {
+        // If it exists, update it instead of returning "already exists" message
+        // This handles cases where user starts fresh but a draft exists
+        
+        if (["verified", "approved"].includes(existingApp.status)) {
+            return {
+              success: true,
+              message: "A submitted application already exists and is locked.",
+              applicationId: existingApp.id,
+            };
+        }
+
+        let newFeeStatus = existingApp.application_fee_status;
+        if (formFee > 0) {
+          if (newFeeStatus === "not_applicable") newFeeStatus = "pending";
+        } else {
+          if (newFeeStatus === "pending") newFeeStatus = "not_applicable";
+        }
+
+        const { error } = await supabase
+          .from("applications")
+          .update({
+            form_data: validatedFormData,
+            branch_id: validatedBranchId || null,
+            form_type: validatedFormType,
+            updated_at: new Date().toISOString(),
+            updated_by: userProfile.id,
+            application_fee_status: newFeeStatus,
+          })
+          .eq("id", existingApp.id);
+
+        if (error) {
+          return fail(500, { message: "Failed to update existing draft.", error: true });
+        }
+
+        await syncDocuments(supabase, userProfile.id, existingApp.id, validatedFormData, validatedCourseId, validatedCycleId, validatedFormType);
+        await syncProfileFields(supabase, userProfile.id, validatedFormData, validatedCourseId, validatedCycleId, validatedFormType);
+
         return {
           success: true,
-          message: "A draft for this combination already exists.",
+          message: "Updated existing draft.",
           applicationId: existingApp.id,
         };
       }

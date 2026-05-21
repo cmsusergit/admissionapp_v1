@@ -65,6 +65,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             admission_number,
             application_id,
             applications!inner(
+                id,
                 student_user:users!applications_student_id_fkey(full_name, email),
                 course_id,
                 cycle_id,
@@ -140,11 +141,22 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
         if (!courseId || !academicYearId) return null;
 
-        const feeStructure = allFeeStructures?.find(fs => 
+        const feeStructure = allFeeStructures?.find(fs => {
+            const matchBase = fs.course_id === courseId && 
+                             fs.academic_year_id === academicYearId && 
+                             fs.form_type === formType;
+            if (!matchBase) return false;
+            
+            if (feeSchemeId) {
+                return fs.fee_scheme_id === feeSchemeId;
+            } else {
+                // If no scheme assigned, prefer 'General'
+                return fs.fee_schemes?.name?.toLowerCase() === 'general';
+            }
+        }) || allFeeStructures?.find(fs => 
             fs.course_id === courseId && 
             fs.academic_year_id === academicYearId && 
-            fs.form_type === formType &&
-            (!feeSchemeId || fs.fee_scheme_id === feeSchemeId)
+            fs.form_type === formType
         );
         
         if (!feeStructure) return null;
@@ -215,10 +227,41 @@ export const actions: Actions = {
             return fail(500, { message: 'Failed to fetch application details.', error: true });
         }
 
-        const feeSchemeId = appData.assigned_fee_scheme_id;
+        let feeSchemeId = appData.assigned_fee_scheme_id;
+
+        // --- AUTO-RESOLVE FEE SCHEME ---
         if (!feeSchemeId) {
-            return fail(400, { message: 'Student has no assigned Fee Scheme. Please assign one before recording payment.', error: true });
+            console.log(`[Server] No fee scheme assigned for application ${application_id}. Attempting to resolve default...`);
+            
+            const { data: structures } = await supabase
+                .from('fee_structures')
+                .select('fee_scheme_id, fee_schemes(name)')
+                .eq('course_id', appData.course_id)
+                .eq('academic_year_id', appData.admission_cycles?.academic_year_id)
+                .eq('form_type', appData.form_type || 'Provisional');
+
+            if (structures && structures.length > 0) {
+                // Try to find 'General'
+                const general = structures.find(s => (s.fee_schemes as any)?.name?.toLowerCase() === 'general');
+                feeSchemeId = general?.fee_scheme_id || structures[0].fee_scheme_id;
+                
+                console.log(`[Server] Auto-resolved to scheme: ${feeSchemeId}`);
+                
+                // Save it for future consistency
+                const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+                    auth: { persistSession: false }
+                });
+                await supabaseAdmin
+                    .from('applications')
+                    .update({ assigned_fee_scheme_id: feeSchemeId })
+                    .eq('id', application_id);
+            }
         }
+
+        if (!feeSchemeId) {
+            return fail(400, { message: 'Student has no assigned Fee Scheme and no default structure could be found. Please assign one manually.', error: true });
+        }
+        // --- END AUTO-RESOLVE ---
 
         // --- Validation: Ensure collected amount is valid against net outstanding ---
         // 2. Fetch Fee Structure for the application AND scheme
@@ -290,9 +333,14 @@ export const actions: Actions = {
 
         const gateway_tx_id = `HYBRID-${Date.now()}`;
 
+        // Use Admin Client to bypass RLS for administrative record keeping
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+            auth: { persistSession: false }
+        });
+
         // 1. Create Transaction Record first to get UUID for linking
-        const { data: txData, error: txError } = await supabase.from('transactions').insert({
-            student_id: authenticatedUser?.id || userProfile.id,
+        const { data: txData, error: txError } = await supabaseAdmin.from('transactions').insert({
+            student_id: studentId,
             application_id,
             amount,
             currency: 'INR',
@@ -308,7 +356,7 @@ export const actions: Actions = {
 
         if (txError || !txData) {
             console.error('Error recording transaction:', txError?.message);
-            return fail(500, { message: 'Failed to record transaction.', error: true });
+            return fail(500, { message: 'Failed to record transaction: ' + txError?.message, error: true });
         }
 
         const transaction_uuid = txData.id;
@@ -319,7 +367,7 @@ export const actions: Actions = {
             // Ensure we use the components from the specific scheme we just validated
             const components = currentFeeStructure?.fee_components || [];
             
-            receipt = await createFeeReceipt(supabase, {
+            receipt = await createFeeReceipt(supabaseAdmin, {
                 transactionId: transaction_uuid,
                 studentId: studentId,
                 applicationId: application_id,
@@ -342,7 +390,7 @@ export const actions: Actions = {
         const receipt_number = receipt.receipt_no;
 
         // Update transaction with receipt number
-        await supabase.from('transactions').update({
+        await supabaseAdmin.from('transactions').update({
             gateway_response: { 
                 ...(txData.gateway_response as any),
                 receipt_number
@@ -351,7 +399,7 @@ export const actions: Actions = {
 
         // Record in `payments` table as well since it's the source of truth for categorized fees
         const mainBreakdown = payment_breakdown[0];
-        const { error: payError } = await supabase.from('payments').insert({
+        const { error: payError } = await supabaseAdmin.from('payments').insert({
             application_id,
             amount,
             payment_type, // 'tuition_fee'
@@ -387,12 +435,20 @@ export const actions: Actions = {
 
         const formData = await request.formData();
         const application_id = formData.get('application_id') as string;
-        const fee_scheme_id = formData.get('fee_scheme_id') as string;
+        let fee_scheme_id: string | null = formData.get('fee_scheme_id') as string;
 
         console.log('[Server] updateAssignedScheme:', { application_id, fee_scheme_id });
 
-        if (!application_id || !fee_scheme_id) {
-            return fail(400, { message: 'Application ID and Fee Scheme are required.', error: true });
+        if (fee_scheme_id === 'null' || !fee_scheme_id) {
+            fee_scheme_id = null;
+        }
+
+        if (!application_id) {
+            return fail(400, { message: 'Application ID is required.', error: true });
+        }
+        
+        if (fee_scheme_id === null) {
+            return fail(400, { message: 'Fee Scheme is required.', error: true });
         }
 
         // Use Admin client because fee_collector doesn't have update rights on 'applications' table

@@ -706,11 +706,11 @@
     async function handleSaveDraft() {
         if (!selectedStudentId) {
             toastStore.error('Please select or create a student first.');
-            return;
+            return false;
         }
         if (branchesForSelectedCourse.length > 0 && !selectedBranchId && !isBranchSelectionDisabled) {
             toastStore.error('Please select a Branch for this course.');
-            return;
+            return false;
         }
         
         const formPayload = new FormData();
@@ -731,12 +731,16 @@
                     await goto(`/deo/apply?studentId=${selectedStudentId}&applicationId=${result.data.applicationId}`, { replaceState: true });
                     currentApplicationId = result.data.applicationId;
                 }
+                return true;
             } else if (result.type === 'failure') {
                 toastStore.error(result.data?.message || 'Failed to save draft.');
+                return false;
             }
+            return false;
         } catch (e) {
             console.error(e);
             toastStore.error('An error occurred while saving.');
+            return false;
         }
     }
 
@@ -752,7 +756,9 @@
 
         startLoading();
         try {
-            await handleSaveDraft();
+            const saved = await handleSaveDraft();
+            if (!saved) return; // Halt if save failed
+
             const formPayload = new FormData();
             formPayload.append('student_id', selectedStudentId);
             formPayload.append('application_id', currentApplicationId);

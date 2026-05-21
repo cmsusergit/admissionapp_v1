@@ -16,7 +16,7 @@
     let feePeriod = $state('year'); 
     let paymentDate = $state(new Date().toISOString().split('T')[0]);
     let admissionCategoryCode = $state('');
-    let selectedFeeSchemeId = $state(app.assigned_fee_scheme_id || '');
+    let selectedFeeSchemeId = $state(app.assigned_fee_scheme_id || data.feeStructure?.fee_scheme_id || '');
     let showSchemeEdit = $state(false);
 
     let paymentModes = $state([
@@ -201,6 +201,7 @@
                             <label class="form-label small fw-bold">Change Fee Scheme</label>
                             <div class="input-group input-group-sm">
                                 <select class="form-select" bind:value={selectedFeeSchemeId}>
+                                    <option value="" disabled>Select Scheme</option>
                                     {#each data.feeSchemes as scheme}
                                         <option value={scheme.id}>{scheme.name}</option>
                                     {/each}

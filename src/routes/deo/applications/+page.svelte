@@ -536,7 +536,8 @@
                                 </div>
                                 <div class="d-flex mb-3">
                                     <div class="me-3"><span class="badge bg-primary rounded-circle">4</span></div>
-                                    <div>After successful payment, find the <strong>Transaction ID / Reference Number</strong> in your app.</div>
+                                    <div>After successful payment, find the <strong>Transaction ID / Reference Number</strong> in your app and whatsapp screenshot of succesful Transaction to following whatsapp number.
+                                        <br/>9510782982/84</div>
                                 </div>
                                 <div class="d-flex mb-3">
                                     <div class="me-3"><span class="badge bg-primary rounded-circle">5</span></div>

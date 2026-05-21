@@ -164,11 +164,8 @@ const applicationSchema = z.object({
     student_id: z.string().uuid(),
     course_id: z.string().uuid(),
     cycle_id: z.string().uuid(),
-    branch_id: z.string().uuid().optional().nullable(),
-    form_type: z
-        .enum(["ACPC", "Provisional", "MQ/NRI", "Vacant"])
-        .optional()
-        .default("Provisional"),
+    branch_id: z.string().uuid().optional().nullable().or(z.literal("")),
+    form_type: z.string().min(1).default("Provisional"),
     form_data: z.record(z.string(), z.any()).optional(),
     application_id: z.string().uuid().optional(),
 });
@@ -713,32 +710,27 @@ export const actions: Actions = {
       return { success: true, message: "Application updated successfully!" };
     } else {
       // Check for existing application
-      let query = supabase
+      const { data: existingApp, error: existingAppError } = await supabase
         .from("applications")
-        .select("id")
+        .select("id, status, application_fee_status")
         .eq("student_id", validatedStudentId)
         .eq("course_id", validatedCourseId)
         .eq("cycle_id", validatedCycleId)
-        .eq("form_type", validatedFormType);
-
-      if (validatedBranchId) {
-        query = query.eq("branch_id", validatedBranchId);
-      } else {
-        query = query.is("branch_id", null);
-      }
-
-      const { data: existingApp, error: existingAppError } =
-        await query.maybeSingle();
+        .eq("form_type", validatedFormType)
+        .maybeSingle();
 
       if (existingApp) {
         // If it exists, update it instead of creating duplicate
-        // Determine new fee status logic
-        let newFeeStatus = "pending"; // Default assumption for re-save? Or check existing?
-        // Actually if it exists, we should probably fetch it to check status.
-        // But simplified: If fee > 0, ensure it's pending if not paid.
-        // For simplicity in this block (updating draft), let's just update form_data.
-        // Fee status update is safer in the explicit update block above.
-        // But we are here because 'existingApp' was found via query, not ID passed in payload.
+        if (["verified", "approved"].includes(existingApp.status)) {
+            return fail(403, { message: "Application is locked and cannot be edited.", error: true });
+        }
+
+        let newFeeStatus = existingApp.application_fee_status;
+        if (formFee > 0) {
+          if (newFeeStatus === "not_applicable") newFeeStatus = "pending";
+        } else {
+          if (newFeeStatus === "pending") newFeeStatus = "not_applicable";
+        }
 
         const { error } = await supabase
           .from("applications")
@@ -746,9 +738,8 @@ export const actions: Actions = {
             form_data: validatedFormData,
             branch_id: validatedBranchId,
             form_type: validatedFormType,
+            application_fee_status: newFeeStatus,
             updated_by: authenticatedUser.id,
-            // Not updating fee status here to avoid resetting 'paid'.
-            // Ideally we'd fetch it first.
           })
           .eq("id", existingApp.id);
 
