@@ -122,7 +122,7 @@ export const load: PageServerLoad = async ({
 
   // Helper to extract sorting receipt
   const getSortReceipt = (app: any) => {
-    const isProvType = formTypesMap.get(app.form_type) === true;
+    const isProvType = formTypesMap.get(app.form_type)?.is_prov;
     const payment = (app.payments || []).find((p: any) => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) 
                  || (app.payments || []).find((p: any) => p.receipt_number);
     if (!payment?.receipt_number) return { num: '', seq: 0 };
@@ -229,7 +229,7 @@ export const actions: Actions = {
     const { data: appData } = await supabaseAdmin
       .from("applications")
       .select(
-        "cycle_id, course_id, admission_cycles(academic_year_id, academic_years(name, short_code)), courses(college_id)",
+        "cycle_id, course_id, form_type, admission_cycles(academic_year_id, academic_years(name, short_code)), courses(college_id)",
       )
       .eq("id", application_id)
       .single();
@@ -239,16 +239,18 @@ export const actions: Actions = {
     const academicYearShortCode = appData?.admission_cycles?.academic_years?.short_code;
     const collegeId = appData?.courses?.college_id;
     const courseId = appData?.course_id;
+    const formType = appData?.form_type;
 
     // Generate Sequential Receipt Number
     const receipt_number = await generateReceiptNumber(
       supabaseAdmin,
       "provisional_fee",
       academicYearId,
-      academicYearName,
       collegeId,
       courseId,
+      academicYearName,
       academicYearShortCode,
+      formType
     );
 
     // 1. Record Payment

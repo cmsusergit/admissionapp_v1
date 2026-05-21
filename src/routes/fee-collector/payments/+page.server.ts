@@ -326,6 +326,7 @@ export const actions: Actions = {
                 amount,
                 generatedBy: authenticatedUser?.id || userProfile.id,
                 paymentType: payment_type,
+                formType: formType,
                 academicYearId: academicYearId,
                 yearName: academicYearName,
                 collegeId: collegeId,

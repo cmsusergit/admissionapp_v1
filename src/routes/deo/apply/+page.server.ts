@@ -1006,9 +1006,11 @@ export const actions: Actions = {
           supabase,
           paymentType,
           academicYearId,
-          yearName,
           collegeId,
           courseId,
+          yearName,
+          undefined, // shortCode
+          application.form_type
         );
 
         console.log("Generated receipt number:", receipt_number);

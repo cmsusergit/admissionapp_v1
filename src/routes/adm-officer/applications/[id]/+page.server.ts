@@ -1197,6 +1197,7 @@ export const actions: Actions = {
         details: { manual_override_by: userProfile.id },
         generatedBy: userProfile.id,
         paymentType: 'application_fee',
+        formType: app.form_type, // Added formType
         academicYearId: academicYearId,
         yearName: yearName,
         collegeId: (app.courses as any)?.college_id,

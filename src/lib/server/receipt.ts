@@ -8,17 +8,25 @@ export async function generateReceiptNumber(
     supabase: SupabaseClient, 
     paymentType: string, 
     academicYearId: string,
-    yearName?: string, // e.g. "2025-2026" for formatting
     collegeId: string,
     courseId: string,
-    shortCode?: string // New optional parameter
+    yearName?: string, // e.g. "2025-2026" for formatting
+    shortCode?: string, // New optional parameter
+    formType?: string // Added formType for conditional prefixing
 ): Promise<string> {
     
     // Determine Prefix
     let prefix = 'REC-';
     switch (paymentType) {
         case 'provisional_fee': prefix = 'PROV-'; break;
-        case 'application_fee': prefix = 'APP-'; break;
+        case 'application_fee': 
+            // SPECIAL CASE: MQ/NRI form types use MQ- prefix for application fees
+            if (formType === 'MQ/NRI') {
+                prefix = 'MQ-';
+            } else {
+                prefix = 'APP-';
+            }
+            break;
         case 'tuition_fee': prefix = 'TUIT-'; break;
         default: prefix = 'GEN-';
     }
@@ -118,6 +126,7 @@ export interface ReceiptCreationParams {
     feeComponentsBreakdown?: any[]; // JSONB fee sections/items
     generatedBy?: string; // User ID
     paymentType?: string; // e.g. 'tuition_fee', 'application_fee'
+    formType?: string; // Added formType
     academicYearId?: string;
     yearName?: string;
     collegeId?: string;
@@ -135,10 +144,12 @@ export async function createFeeReceipt(
     const receiptNo = await generateReceiptNumber(
         supabase,
         params.paymentType || 'tuition_fee',
-        params.academicYearId,
+        params.academicYearId!,
+        params.collegeId!,
+        params.courseId!,
         params.yearName,
-        params.collegeId,
-        params.courseId
+        undefined, // shortCode
+        params.formType
     );
 
     // Prepare composite details object for the receipt record

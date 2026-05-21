@@ -102,6 +102,12 @@
     let filteredPrintTemplates: any[] = [];
     let printTargetAppId = '';
 
+    // --- Payment Modal Logic ---
+    let showPaymentModal = false;
+    let currentApp: any = null;
+    let paymentDetails = { amount: 0, mode: 'qr', reference: '', qrCodeUrl: '' };
+    let isSubmittingPayment = false;
+
     function handlePrintClick(app: any) {
         printTargetAppId = app.id;
         const appFormTypeId = data.formTypesMap[app.form_type]?.id;
@@ -340,7 +346,7 @@
                         <tbody>
                             {#each data.applications as app, i}
                                 {@const appAny = app as any}
-                                {@const isProvType = data.formTypesMap?.[appAny.form_type] === true}
+                                {@const isProvType = data.formTypesMap?.[appAny.form_type]?.is_prov === true}
                                 {@const appReceiptPayment = (appAny.payments || []).find(p => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) || (appAny.payments || []).find(p => p.receipt_number)}
                                 <tr>
                                     <td>{(currentPage - 1) * currentLimit + i + 1}</td>
@@ -469,8 +475,12 @@
                     if (result.type === 'success') {
                         toastStore.success('Payment Recorded Successfully');
                         closePaymentModal();
+                    } else if (result.type === 'failure') {
+                        toastStore.error((result.data as any)?.message || 'Payment Failed');
+                    } else if (result.type === 'error') {
+                        toastStore.error(result.error.message || 'An unexpected error occurred.');
                     } else {
-                        toastStore.error(result.data?.message || 'Payment Failed');
+                        toastStore.error('Payment Failed');
                     }
                     await update();
                 };
@@ -480,42 +490,27 @@
                     <input type="hidden" name="amount" value={paymentDetails.amount} />
                     
                     <div class="row g-0">
-                        <!-- Left: QR and Controls -->
+                        <!-- Left: QR Code Section -->
                         <div class="col-md-7 p-4 border-end">
-                            <div class="text-center mb-4">
+                            <div class="text-center">
                                 <div class="badge bg-success-soft text-success mb-2 px-3 py-2 rounded-pill">
                                     <h4 class="mb-0 fw-bold">₹ {paymentDetails.amount}</h4>
                                 </div>
                                 <p class="text-muted small">Provisional Seat Reservation Fee</p>
                                 
                                 {#if paymentDetails.qrCodeUrl}
-                                    <div class="bg-white border rounded p-2 d-inline-block shadow-sm mb-3">
-                                        <img src={paymentDetails.qrCodeUrl} alt="QR Code" class="img-fluid" style="max-height: 300px; min-width: 250px;" on:error={(e) => { paymentDetails.qrCodeUrl = ''; }} />
+                                    <div class="bg-white border rounded p-3 d-inline-block shadow-sm mb-0">
+                                        <img src={paymentDetails.qrCodeUrl} alt="QR Code" class="img-fluid" style="max-height: 400px; min-width: 350px; object-fit: contain;" on:error={(e) => { paymentDetails.qrCodeUrl = ''; }} />
                                         <div class="small mt-2 text-dark fw-bold">
                                             <i class="bi bi-upc-scan me-1"></i> Scan to Pay
                                         </div>
                                     </div>
                                 {:else}
-                                    <div class="bg-light border rounded p-5 d-inline-block mb-3">
+                                    <div class="bg-light border rounded p-5 d-inline-block mb-0">
                                         <i class="bi bi-qr-code-scan display-4 text-secondary"></i>
                                         <div class="small mt-2 text-muted">No QR Code configured</div>
                                     </div>
                                 {/if}
-                            </div>
-
-                            <div class="row g-3">
-                                <div class="col-sm-6">
-                                    <label class="form-label small fw-bold text-uppercase text-muted">Payment Mode</label>
-                                    <select class="form-select" name="payment_mode" bind:value={paymentDetails.mode}>
-                                        <option value="cash">Cash</option>
-                                        <option value="qr">UPI / QR Code</option>
-                                        <option value="cheque">Cheque / DD</option>
-                                    </select>
-                                </div>
-                                <div class="col-sm-6">
-                                    <label class="form-label small fw-bold text-uppercase text-muted">Reference No</label>
-                                    <input type="text" class="form-control" name="reference_no" bind:value={paymentDetails.reference} placeholder="Ref No / Trans ID" required />
-                                </div>
                             </div>
                         </div>
 
@@ -545,13 +540,31 @@
                                 </div>
                                 <div class="d-flex mb-3">
                                     <div class="me-3"><span class="badge bg-primary rounded-circle">5</span></div>
-                                    <div>Enter that number in the 'Reference No' field and click 'Confirm Payment'.</div>
+                                    <div>Enter that number below and click 'Confirm Payment'.</div>
                                 </div>
                             </div>
 
                             <div class="alert alert-warning border-0 shadow-sm mt-4 small py-2">
                                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                                <strong>Verification:</strong> Payments will be verified against the reference number provided.
+                                <strong>Verification:</strong> Payments will be verified against the reference number.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Panel: Full Width Input Fields -->
+                    <div class="p-4 border-top bg-white">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-uppercase text-muted">Payment Mode</label>
+                                <select class="form-select form-select-lg" name="payment_mode" bind:value={paymentDetails.mode}>
+                                    <option value="cash">Cash</option>
+                                    <option value="qr">UPI / QR Code</option>
+                                    <option value="cheque">Cheque / DD</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-uppercase text-muted">Reference No / Transaction ID</label>
+                                <input type="text" class="form-control form-control-lg" name="reference_no" bind:value={paymentDetails.reference} placeholder="Enter Transaction ID / Reference Number" required />
                             </div>
                         </div>
                     </div>

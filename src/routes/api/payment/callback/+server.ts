@@ -78,7 +78,7 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
         if (verification.success) {
             const { data: transaction } = await supabaseAdmin
                 .from('transactions')
-                .select('*, applications(course_id, cycle_id, courses(college_id), admission_cycles(academic_year_id))')
+                .select('*, applications(course_id, cycle_id, form_type, courses(college_id), admission_cycles(academic_year_id))')
                 .eq('id', lookupTransactionId)
                 .single();
 
@@ -92,6 +92,7 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
 
                 let yearName = undefined;
                 const academicYearId = (transaction.applications as any)?.admission_cycles?.academic_year_id;
+                const formType = (transaction.applications as any)?.form_type;
 
                 if (academicYearId) {
                     const { data: ay } = await supabaseAdmin
@@ -110,6 +111,7 @@ async function handleCallback(params: URLSearchParams, supabase: any) {
                     details: gatewayResponse,
                     generatedBy: transaction.student_id, 
                     paymentType: paymentType,
+                    formType: formType, // Added formType
                     academicYearId: academicYearId,
                     yearName: yearName,
                     collegeId: (transaction.applications as any)?.courses?.college_id,
