@@ -1,19 +1,23 @@
 
+import { DateTime } from 'luxon';
+
 interface ReportColumn {
     path: string;
     label: string;
 }
 
 export function generateCSV(data: any[], columns: ReportColumn[]): string {
-    // 1. Header Row
-    const header = columns.map(c => escapeCsv(c.label)).join(',');
+    // 1. Header Row (Prepend Sr. No)
+    const header = ['Sr. No', ...columns.map(c => c.label)].map(h => escapeCsv(h)).join(',');
 
     // 2. Data Rows
-    const rows = (data || []).map(row => {
-        return columns.map(col => {
+    const rows = (data || []).map((row, index) => {
+        const srNo = index + 1;
+        const dataCols = columns.map(col => {
             const val = getValueByPath(row, col.path);
             return escapeCsv(formatValue(val));
-        }).join(',');
+        });
+        return [srNo, ...dataCols].join(',');
     });
 
     return [header, ...rows].join('\n');
@@ -57,7 +61,26 @@ export function getValueByPath(obj: any, path: string): any {
 
 export function formatValue(val: any): string {
     if (val === null || val === undefined) return '';
-    if (val instanceof Date) return val.toLocaleDateString();
+    
+    // Check if it's already a Date object
+    if (val instanceof Date) {
+        return DateTime.fromJSDate(val).toFormat('dd/MM/yyyy');
+    }
+
+    // Check if it's a string that looks like an ISO date/time or date
+    if (typeof val === 'string') {
+        // ISO DateTime: 2026-05-20T10:00:00...
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val)) {
+            const dt = DateTime.fromISO(val);
+            if (dt.isValid) return dt.toFormat('dd/MM/yyyy');
+        }
+        // ISO Date: 2026-05-20
+        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            const dt = DateTime.fromISO(val);
+            if (dt.isValid) return dt.toFormat('dd/MM/yyyy');
+        }
+    }
+
     if (typeof val === 'object') return JSON.stringify(val);
     return String(val);
 }

@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Fetch Form Types for provisional logic and filtering
-    const { data: formTypesData } = await supabaseAdmin.from('form_types').select('name, is_prov').order('name');
+    const { data: formTypesData } = await supabaseAdmin.from('form_types').select('id, name, is_prov').order('name');
     const formTypesMap = Object.fromEntries((formTypesData || []).map(ft => [(ft.name || '').toLowerCase(), ft.is_prov]));
     const defaultFormType = formTypesData?.find(ft => ft.is_prov)?.name || '';
 
@@ -135,6 +135,16 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         ? processedApplications.slice(offset, offset + limit) 
         : processedApplications;
 
+    // --- NEW: Fetch Print Profile Templates ---
+    const { data: printTemplates } = await supabaseAdmin
+        .from('report_templates')
+        .select('id, name, target_form_type_id')
+        .eq('report_type', 'html_profile')
+        .contains('allowed_roles', [userProfile?.role]);
+
+    // Add ID to formTypesMap for frontend filtering
+    const formTypeIdentityMap = Object.fromEntries((formTypesData || []).map(ft => [(ft.name || '').toLowerCase(), (ft as any).id]));
+
     return {
         applications: finalApplications,
         count: totalCount || 0,
@@ -145,7 +155,9 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         formTypeFilter: formTypeFilter || 'all',
         availableFormTypes: formTypesData || [],
         formTypesMap,
+        formTypeIdentityMap,
         sort: sortField,
-        order: sortOrder
+        order: sortOrder,
+        printTemplates: printTemplates || []
     };
 };

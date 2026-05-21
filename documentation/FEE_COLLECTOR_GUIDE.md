@@ -1,4 +1,4 @@
-# Fee Collector User Guide
+# Fee Collector User Guide 
 
 This guide is for staff responsible for collecting admission fees and issuing receipts.
 

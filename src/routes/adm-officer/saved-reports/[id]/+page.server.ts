@@ -71,9 +71,9 @@ export const actions: Actions = {
                 { limit: 10, userFilters }
             );
             
-             // Flatten for preview
-            const previewData = (rawData as any[]).map((row: any) => {
-                const flatRow: Record<string, string> = {};
+            // Flatten for preview
+            const previewData = (rawData as any[]).map((row: any, index: number) => {
+                const flatRow: Record<string, string> = { 'Sr. No': String(index + 1) };
                 // Handle potential null/undefined columns array safely
                 if (template.configuration && template.configuration.columns) {
                     template.configuration.columns.forEach((col: any) => {
@@ -83,10 +83,14 @@ export const actions: Actions = {
                 return flatRow;
             });
             
+            const previewColumns = template.configuration.columns 
+                ? ['Sr. No', ...template.configuration.columns.map((c: any) => c.label)] 
+                : ['Sr. No'];
+
             return { 
                 success: true, 
                 previewData, 
-                previewColumns: template.configuration.columns ? template.configuration.columns.map((c: any) => c.label) : [], 
+                previewColumns, 
                 queryString,
                 userFilters 
             };

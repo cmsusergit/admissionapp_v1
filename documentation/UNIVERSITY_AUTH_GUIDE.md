@@ -1,4 +1,4 @@
-# University Authority User Guide
+# University Authority User Guide 
 
 This guide is for University-level administrators responsible for the entire admission process across multiple colleges.
 

@@ -1,5 +1,8 @@
 import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 import { getSchema } from '$lib/server/dbInspector';
 import { executeReportQuery, buildSelectString } from '$lib/server/reportQueryBuilder';
 import { getValueByPath, formatValue } from '$lib/server/reportExporter';
@@ -19,8 +22,47 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     // Fetch form types for the dropdown
     const { data: formTypes } = await supabase.from('form_types').select('id, name').order('name');
 
+    // Fetch all admission form schemas to extract dynamic fields
+    // Use service role to bypass RLS for metadata fetching
+    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    const { data: admissionForms } = await supabaseAdmin.from('admission_forms').select('schema_json');
+    const dynamicFormFields: { key: string; label: string }[] = [];
+    const seenFields = new Set<string>();
+
+    if (admissionForms) {
+        admissionForms.forEach(form => {
+            const schema = form.schema_json as any;
+            if (schema && Array.isArray(schema.fields)) {
+                schema.fields.forEach((f: any) => {
+                    const fieldKey = f.key || f.name;
+                    // FILTER: Skip file/document fields
+                    if (f.type === 'file' || f.type === 'image' || f.type === 'document') return;
+                    
+                    if (fieldKey && !seenFields.has(fieldKey)) {
+                        dynamicFormFields.push({ key: fieldKey, label: f.label || fieldKey });
+                        seenFields.add(fieldKey);
+                    }
+                });
+            }
+            // Scan for Merit/Grid fields in sections
+            if (schema && Array.isArray(schema.sections)) {
+                schema.sections.forEach((s: any) => {
+                    if (Array.isArray(s.tableColumns)) {
+                        s.tableColumns.forEach((tc: any) => {
+                            if (tc.key && !seenFields.has(tc.key)) {
+                                dynamicFormFields.push({ key: tc.key, label: `${s.title}: ${tc.label || tc.key}` });
+                                seenFields.add(tc.key);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }
+
     // Fetch profile schema keys so nested profile_data fields can be exposed in the report builder.
-    const { data: profileFields } = await supabase
+    const { data: profileFields } = await supabaseAdmin
         .from('student_profile_fields')
         .select('key, label')
         .order('created_at', { ascending: true });
@@ -28,7 +70,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     return {
         templates: templates || [],
         formTypes: formTypes || [],
-        schema: getSchema(profileFields || [])
+        schema: getSchema(profileFields || [], dynamicFormFields)
     };
 };
 
@@ -106,15 +148,20 @@ export const actions: Actions = {
             const { data: rawData, queryString } = await executeReportQuery(supabase, userProfile, base_table, configuration, { limit: 5 });
             
             // Flatten for preview
-            const previewData = (rawData as any[]).map((row: any) => {
-                const flatRow: Record<string, string> = {};
+            const previewData = (rawData as any[]).map((row: any, index: number) => {
+                const flatRow: Record<string, string> = { 'Sr. No': String(index + 1) };
                 configuration.columns.forEach((col: any) => {
                     flatRow[col.label] = formatValue(getValueByPath(row, col.path));
                 });
                 return flatRow;
             });
 
-            return { success: true, previewData, previewColumns: configuration.columns.map((c: any) => c.label), queryString };
+            return { 
+                success: true, 
+                previewData, 
+                previewColumns: ['Sr. No', ...configuration.columns.map((c: any) => c.label)], 
+                queryString 
+            };
         } catch (e: any) {
             console.error('Preview Error:', e);
             return fail(500, { message: 'Preview failed: ' + e.message });

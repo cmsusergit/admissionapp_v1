@@ -30,9 +30,11 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
       { name: "submitted_at", label: "Submitted Date", type: "datetime" },
       { name: "updated_at", label: "Last Updated", type: "datetime" },
       { name: "merit_score", label: "Merit Score", type: "number" },
+      { name: "merit_rank", label: "Merit Rank", type: "number" },
       { name: "application_fee_status", label: "Fee Status", type: "text" },
       { name: "approval_comment", label: "Approval Comment", type: "text" },
       { name: "rejection_reason", label: "Rejection Reason", type: "text" },
+      { name: "form_data", label: "Form Data", type: "json", jsonKeys: [] },
     ],
     relationships: [
       {
@@ -57,6 +59,37 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
         targetTable: "branches",
         label: "Branch",
         foreignKey: "branch_id",
+        type: "many-to-one",
+      },
+      {
+        targetTable: "payments",
+        label: "Payments",
+        foreignKey: "application_id",
+        type: "one-to-many",
+      },
+      {
+        targetTable: "account_admissions",
+        label: "Admission Info",
+        foreignKey: "application_id",
+        type: "one-to-one",
+      },
+    ],
+  },
+  account_admissions: {
+    name: "account_admissions",
+    label: "Account Admissions",
+    columns: [
+      { name: "admission_number", label: "Admission No", type: "text" },
+      { name: "admission_date", label: "Admission Date", type: "datetime" },
+      { name: "admission_type", label: "Admission Type", type: "text" },
+      { name: "account_status", label: "Account Status", type: "text" },
+      { name: "remarks", label: "Remarks", type: "text" },
+    ],
+    relationships: [
+      {
+        targetTable: "applications",
+        label: "Application",
+        foreignKey: "application_id",
         type: "many-to-one",
       },
     ],
@@ -195,14 +228,30 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
   },
 };
 
-export function getSchema(profileFields: { key: string; label: string }[] = []) {
+export function getSchema(
+  profileFields: { key: string; label: string }[] = [],
+  formFields: { key: string; label: string }[] = []
+) {
   const schemaCopy = JSON.parse(JSON.stringify(DB_SCHEMA)) as Record<string, TableDefinition>;
 
+  // 1. Inject Profile Fields
   const profileTable = schemaCopy.student_profiles;
   if (profileTable) {
     const profileDataColumn = profileTable.columns.find((c) => c.name === 'profile_data');
     if (profileDataColumn) {
       profileDataColumn.jsonKeys = profileFields.map((field) => ({
+        key: field.key,
+        label: field.label,
+      }));
+    }
+  }
+
+  // 2. Inject Application Form Fields
+  const appTable = schemaCopy.applications;
+  if (appTable) {
+    const formDataColumn = appTable.columns.find((c) => c.name === 'form_data');
+    if (formDataColumn) {
+      formDataColumn.jsonKeys = formFields.map((field) => ({
         key: field.key,
         label: field.label,
       }));

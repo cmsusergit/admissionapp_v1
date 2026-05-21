@@ -43,13 +43,27 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
         }
 
         // Structure the data for easy templating
-        const profileData = appData.student_user?.student_profiles?.profile_data || {};
+        // Handle student_profiles being an array (common in Supabase joins)
+        const profileObj = Array.isArray(appData.student_user?.student_profiles) 
+            ? appData.student_user.student_profiles[0] 
+            : appData.student_user?.student_profiles;
+            
+        const profileData = profileObj?.profile_data || {};
         const marksData = appData.marks || [];
 
-        // Convert marks array to object mapped by subject
+        // Convert marks array to object mapped by subject with fuzzy matching
         const formattedMarks: Record<string, any> = {};
         marksData.forEach((m: any) => {
-             formattedMarks[m.subject.toLowerCase()] = m;
+             const subject = (m.subject || '').toLowerCase();
+             formattedMarks[subject] = m;
+             
+             // Create aliases for common subjects to make templates easier
+             if (subject.includes('math')) formattedMarks['math'] = m;
+             if (subject.includes('physics')) formattedMarks['physics'] = m;
+             if (subject.includes('chemistry')) formattedMarks['chemistry'] = m;
+             if (subject.includes('computer')) formattedMarks['computer'] = m;
+             if (subject.includes('english') || subject.includes('gujarat')) formattedMarks['english'] = m;
+             if (subject.includes('biology')) formattedMarks['biology'] = m;
         });
 
         // Try to fetch photo url
@@ -71,7 +85,7 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                 id: appData.student_user?.id,
                 full_name: appData.student_user?.full_name,
                 email: appData.student_user?.email,
-                enrollment_number: appData.student_user?.student_profiles?.enrollment_number,
+                enrollment_number: profileObj?.enrollment_number,
                 photo_url: photoUrl,
                 ...profileData // Spread profile attributes directly (dob, gender, etc.)
             },
@@ -80,7 +94,9 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                 status: appData.status,
                 form_type: appData.form_type,
                 academic_year: appData.admission_cycles?.academic_years?.name,
-                form_data: appData.form_data || {} // acpc_number, board, school, etc.
+                submitted_at: appData.submitted_at,
+                admission_number: appData.account_admissions?.admission_number,
+                ...appData.form_data // Spread form_data directly for easy access (acpc_number, board, etc.)
             },
             course: {
                 name: appData.courses?.name,
@@ -89,11 +105,11 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             college: {
                 name: appData.courses?.colleges?.name,
                 logo_url: appData.courses?.colleges?.logo_url,
-                trust_name: 'The New English School Trust', // Hardcoded or fetch from DB if exists
+                trust_name: 'The New English School Trust', 
                 university_name: appData.courses?.colleges?.universities?.name
             },
-            marks: formattedMarks, // {{marks.math.obtained}}
-            entrance_marks: appData.form_data?.entrance_marks || {} // Assuming stored in form_data for MQNRI
+            marks: formattedMarks,
+            entrance_marks: appData.form_data?.entrance_marks || {}
         };
 
         return json({ success: true, data: flatData });

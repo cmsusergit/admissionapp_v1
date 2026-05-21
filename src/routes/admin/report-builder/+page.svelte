@@ -10,6 +10,105 @@
     export let form: ActionData;
 
     let showHelpModal = false;
+    let sideBySide = false;
+    let textareaRef: HTMLTextAreaElement;
+
+    function mapPathToVariable(path: string): string {
+        // Translate technical join paths to Handlebars paths based on profile-data API structure
+        
+        // 1. Student Mapping
+        if (path.includes('users!student_id')) {
+            // Handle student_profiles nested under users
+            if (path.includes('student_profiles!student_profiles_user_id_fkey')) {
+                const parts = path.split('.');
+                const lastPart = parts[parts.length - 1];
+                return `student.${lastPart}`;
+            }
+            const parts = path.split('.');
+            const lastPart = parts[parts.length - 1];
+            return `student.${lastPart}`;
+        }
+
+        // 2. Course Mapping
+        if (path.includes('courses!course_id')) {
+            const parts = path.split('.');
+            const lastPart = parts[parts.length - 1];
+            return `course.${lastPart}`;
+        }
+
+        // 3. College Mapping (nested under courses)
+        if (path.includes('colleges!college_id')) {
+             // Handle universities nested under colleges
+            if (path.includes('universities!university_id')) {
+                const parts = path.split('.');
+                const lastPart = parts[parts.length - 1];
+                return `college.${lastPart}`;
+            }
+            const parts = path.split('.');
+            const lastPart = parts[parts.length - 1];
+            return `college.${lastPart}`;
+        }
+
+        // 4. Application/Admission Mapping
+        if (path.includes('account_admissions!application_id')) {
+            const parts = path.split('.');
+            const lastPart = parts[parts.length - 1];
+            return `application.${lastPart}`;
+        }
+
+        // 7. Form Data Mapping (New)
+        if (path.includes('form_data')) {
+            const parts = path.split('.');
+            const lastPart = parts[parts.length - 1];
+            return `application.${lastPart}`;
+        }
+
+        // 5. Academic Year Mapping (nested under cycles)
+        if (path.includes('academic_years!academic_year_id')) {
+             return `application.academic_year`;
+        }
+
+        // 6. Marks Mapping
+        if (path.includes('marks!application_id')) {
+            const parts = path.split('.');
+            const lastPart = parts[parts.length - 1];
+            return `marks.[subject].${lastPart}`;
+        }
+
+        // Default: use the last part of the path if it's the base table (applications)
+        const parts = path.split('.');
+        const lastPart = parts[parts.length - 1];
+        
+        // If it's a root application field
+        if (path === lastPart) {
+            return `application.${lastPart}`;
+        }
+
+        return path; // Fallback
+    }
+
+    function handleInsertVariable(event: CustomEvent) {
+        let { variable, path } = event.detail;
+        
+        // If it comes from SchemaTree, it will have 'path'. Map it.
+        if (path) {
+            variable = `{{${mapPathToVariable(path)}}}`;
+        }
+
+        if (!textareaRef) return;
+
+        const start = textareaRef.selectionStart;
+        const end = textareaRef.selectionEnd;
+        const text = htmlContent;
+        
+        htmlContent = text.substring(0, start) + variable + text.substring(end);
+        
+        // Wait for Svelte to update the DOM then set cursor
+        setTimeout(() => {
+            textareaRef.focus();
+            textareaRef.setSelectionRange(start + variable.length, start + variable.length);
+        }, 0);
+    }
 
     // Load bootstrap JS dynamically for interactive components like the Accordion in the Help Modal
     onMount(async () => {
@@ -203,134 +302,155 @@
     </div>
     
     <div class="row">
-        <div class="col-md-4">
-            {#if reportType === 'tabular'}
-            <div class="card mb-3">
-                <div class="card-header">1. Configuration</div>
+        <!-- Sidebar: Configuration & Guide (col-md-3) -->
+        <div class="col-md-3">
+            <div class="card mb-3 shadow-sm border-0">
+                <div class="card-header bg-dark text-white fw-bold">
+                    <i class="bi bi-gear-fill me-2"></i> 1. Setup & Guide
+                </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label class="form-label">Base Table</label>
-                        <select class="form-select" bind:value={selectedTable} disabled={!!editingId}>
+                        <label class="form-label fw-bold small">Base Table</label>
+                        <select class="form-select form-select-sm" bind:value={selectedTable} disabled={!!editingId && reportType === 'tabular'}>
                             <option value="">Select Table</option>
                             {#each data.schema as table}
                                 <option value={table.name}>{table.label}</option>
                             {/each}
                         </select>
-                        {#if editingId}
-                            <div class="form-text text-muted">Base table cannot be changed while editing.</div>
+                        {#if editingId && reportType === 'tabular'}
+                            <div class="form-text x-small text-muted">Base table is locked for tabular reports.</div>
                         {/if}
                     </div>
-                    
-                    {#if selectedTable}
-                        <hr>
-                        <h6>Schema Explorer</h6>
-                        <div class="border rounded p-2 bg-light mb-3" style="max-height: 300px; overflow-y: auto;">
-                            <SchemaTree 
-                                tableName={selectedTable} 
-                                schema={data.schema} 
-                                {selectedColumns}
-                                on:toggle={(e) => toggleColumn(e.detail.path, e.detail.label)}
-                            />
-                        </div>
 
-                        <hr>
-                        <h6>User Parameters</h6>
-                        {#if form?.message && !form.previewData && !form.success}
-                             <div class="alert alert-danger alert-sm p-1 small mb-2">{form.message}</div>
-                        {/if}
-                        <div class="bg-light p-2 rounded mb-3">
-                            <div class="mb-2">
-                                <label class="small form-label">Column</label>
-                                <select class="form-select form-select-sm" bind:value={newParam.column}>
-                                    <option value="">Select Column...</option>
-                                    {#each availableColumns as col}
-                                        <option value={col.path}>{col.label}</option>
-                                    {/each}
-                                </select>
+                    {#if reportType === 'tabular'}
+                        {#if selectedTable}
+                            <hr>
+                            <h6 class="small fw-bold mb-2">Schema Explorer</h6>
+                            <div class="border rounded p-2 bg-light mb-3" style="max-height: 400px; overflow-y: auto;">
+                                <SchemaTree 
+                                    tableName={selectedTable} 
+                                    schema={data.schema} 
+                                    {selectedColumns}
+                                    on:toggle={(e) => toggleColumn(e.detail.path, e.detail.label)}
+                                />
                             </div>
-                            <div class="row g-2 mb-2">
-                                <div class="col-6">
-                                    <label class="small form-label">Label</label>
-                                    <input type="text" class="form-control form-control-sm" bind:value={newParam.label} placeholder="e.g. Status">
-                                </div>
-                                <div class="col-6">
-                                    <label class="small form-label">Type</label>
-                                    <select class="form-select form-select-sm" bind:value={newParam.type}>
-                                        <option value="text">Text</option>
-                                        <option value="number">Number</option>
-                                        <option value="date">Date</option>
-                                        <option value="select">Dropdown</option>
+
+                            <hr>
+                            <h6 class="small fw-bold mb-2">User Parameters</h6>
+                            <div class="bg-light p-2 rounded mb-3 border">
+                                <div class="mb-2">
+                                    <label class="x-small form-label fw-bold">Column</label>
+                                    <select class="form-select form-select-sm" bind:value={newParam.column}>
+                                        <option value="">Select Column...</option>
+                                        {#each availableColumns as col}
+                                            <option value={col.path}>{col.label}</option>
+                                        {/each}
                                     </select>
                                 </div>
-                            </div>
-                            <div class="row g-2 mb-2">
-                                <div class="col-6">
-                                    <label class="small form-label">Operator</label>
-                                    <select class="form-select form-select-sm" bind:value={newParam.operator}>
-                                        <option value="eq">Equals (=)</option>
-                                        <option value="ilike">Contains</option>
-                                        <option value="gt">Greater (&gt;)</option>
-                                        <option value="lt">Less (&lt;)</option>
-                                        <option value="gte">GTE (&ge;)</option>
-                                        <option value="lte">LTE (&le;)</option>
-                                        <option value="in">In List</option>
-                                    </select>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-6">
+                                        <label class="x-small form-label fw-bold">Label</label>
+                                        <input type="text" class="form-control form-control-sm" bind:value={newParam.label} placeholder="Label">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="x-small form-label fw-bold">Type</label>
+                                        <select class="form-select form-select-sm" bind:value={newParam.type}>
+                                            <option value="text">Text</option>
+                                            <option value="number">Number</option>
+                                            <option value="date">Date</option>
+                                            <option value="select">Dropdown</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div class="col-6">
+                                <div class="row g-2 mb-2">
+                                    <div class="col-12">
+                                        <label class="x-small form-label fw-bold">Operator</label>
+                                        <select class="form-select form-select-sm" bind:value={newParam.operator}>
+                                            <option value="eq">Equals (=)</option>
+                                            <option value="ilike">Contains</option>
+                                            <option value="match">Regex (match)</option>
+                                            <option value="gt">Greater (&gt;)</option>
+                                            <option value="lt">Less (&lt;)</option>
+                                            <option value="gte">GTE (&ge;)</option>
+                                            <option value="lte">LTE (&le;)</option>
+                                            <option value="in">In List</option>
+                                        </select>
+                                    </div>
                                     {#if newParam.type === 'select'}
-                                        <label class="small form-label">Options (csv)</label>
-                                        <div class="input-group input-group-sm">
-                                            <input type="text" class="form-control" bind:value={newParam.options} placeholder="A,B,C">
-                                            <form method="POST" action="?/suggest_options" use:enhance={() => {
-                                                suggesting = true;
-                                                return async ({ update }) => {
-                                                    await update();
-                                                    suggesting = false;
-                                                };
-                                            }}>
-                                                <input type="hidden" name="table" value={selectedTable}>
-                                                <input type="hidden" name="column" value={newParam.column}>
-                                                <button class="btn btn-outline-secondary" title="Auto-detect from DB" disabled={!newParam.column || suggesting}>
-                                                    {#if suggesting}
-                                                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                                    {:else}
-                                                        <i class="bi bi-magic"></i>
-                                                    {/if}
-                                                </button>
-                                            </form>
+                                        <div class="col-12">
+                                            <label class="x-small form-label fw-bold">Options (csv)</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" class="form-control" bind:value={newParam.options} placeholder="A,B,C">
+                                                <form method="POST" action="?/suggest_options" use:enhance={() => {
+                                                    suggesting = true;
+                                                    return async ({ update }) => {
+                                                        await update();
+                                                        suggesting = false;
+                                                    };
+                                                }}>
+                                                    <input type="hidden" name="table" value={selectedTable}>
+                                                    <input type="hidden" name="column" value={newParam.column}>
+                                                    <button class="btn btn-outline-secondary" title="Auto-detect from DB" disabled={!newParam.column || suggesting}>
+                                                        {#if suggesting}
+                                                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                                        {:else}
+                                                            <i class="bi bi-magic"></i>
+                                                        {/if}
+                                                    </button>
+                                                </form>
+                                            </div>
                                         </div>
                                     {/if}
                                 </div>
+                                <button class="btn btn-sm btn-primary w-100" on:click={addParameter} disabled={!newParam.column || !newParam.label}>Add Parameter</button>
                             </div>
-                            <button class="btn btn-sm btn-primary w-100" on:click={addParameter} disabled={!newParam.column || !newParam.label}>Add Parameter</button>
-                        </div>
 
-                        {#if selectedParameters.length > 0}
-                            <ul class="list-group list-group-flush small">
-                                {#each selectedParameters as p, idx}
-                                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                                        <div>
-                                            <strong>{p.label}</strong> <span class="text-muted">({p.column})</span>
-                                            <br>
-                                            <span class="badge bg-secondary">{p.operator}</span>
-                                        </div>
-                                        <button class="btn btn-xs btn-outline-danger border-0" on:click={() => removeParameter(idx)}>&times;</button>
-                                    </li>
-                                {/each}
-                            </ul>
+                            {#if selectedParameters.length > 0}
+                                <ul class="list-group list-group-flush border rounded overflow-hidden">
+                                    {#each selectedParameters as p, idx}
+                                        <li class="list-group-item d-flex justify-content-between align-items-center p-2 x-small">
+                                            <div>
+                                                <strong>{p.label}</strong> <span class="text-muted">({p.column})</span>
+                                                <br>
+                                                <span class="badge bg-secondary">{p.operator}</span>
+                                            </div>
+                                            <button class="btn btn-xs btn-outline-danger border-0" on:click={() => removeParameter(idx)}>&times;</button>
+                                        </li>
+                                    {/each}
+                                </ul>
+                            {/if}
                         {/if}
+                    {:else}
+                        <!-- HTML Profile Dynamic Schema Picker in Sidebar -->
+                        <div class="mt-2">
+                            <h6 class="small fw-bold mb-2">Variable Picker</h6>
+                            <p class="x-small text-muted mb-3">Explore tables and click <span class="badge bg-primary">+</span> to insert into editor.</p>
+                            
+                            {#if selectedTable}
+                                <div class="border rounded p-2 bg-light mb-3" style="max-height: 600px; overflow-y: auto;">
+                                    <SchemaTree 
+                                        tableName={selectedTable} 
+                                        schema={data.schema} 
+                                        insertMode={true}
+                                        on:insert={handleInsertVariable}
+                                    />
+                                </div>
+                            {:else}
+                                <div class="alert alert-warning x-small">Please select a <strong>Base Table</strong> (usually Applications) to start picking variables.</div>
+                            {/if}
+                        </div>
                     {/if}
                 </div>
             </div>
-            {/if}
         </div>
 
-        <div class="col-md-8">
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>2. {editingId ? 'Edit Template' : 'Save Template'}</span>
+        <!-- Main Content: Template Form (col-md-9) -->
+        <div class="col-md-9">
+            <div class="card mb-4 shadow-sm border-0">
+                <div class="card-header d-flex justify-content-between align-items-center bg-white border-bottom-0 pt-3">
+                    <h5 class="mb-0 fw-bold">{editingId ? 'Edit Template' : '2. Define Template'}</h5>
                     {#if editingId}
-                        <button class="btn btn-sm btn-secondary" on:click={cancelEdit}>Cancel Edit</button>
+                        <button class="btn btn-sm btn-outline-secondary" on:click={cancelEdit}>Cancel Edit</button>
                     {/if}
                 </div>
                 <div class="card-body">
@@ -356,77 +476,102 @@
                         <input type="hidden" name="allowed_roles" value={JSON.stringify(allowedRoles)}>
                         
                         <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Name</label>
-                                <input type="text" name="name" class="form-control" required bind:value={templateName}>
+                            <div class="col-md-5 mb-3">
+                                <label class="form-label fw-bold small">Template Name</label>
+                                <input type="text" name="name" class="form-control" required bind:value={templateName} placeholder="e.g. ACPC Admission Form">
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Roles</label>
-                                <select multiple class="form-select" bind:value={allowedRoles}>
-                                    <option value="adm_officer">Adm Officer</option>
-                                    <option value="deo">DEO</option>
-                                    <option value="fee_collector">Fee Collector</option>
-                                </select>
+                            <div class="col-md-7 mb-3">
+                                <label class="form-label fw-bold small">Allowed Roles</label>
+                                <div class="d-flex flex-wrap gap-2">
+                                    {#each [
+                                        {v: 'adm_officer', l: 'Adm Officer'},
+                                        {v: 'deo', l: 'DEO'},
+                                        {v: 'fee_collector', l: 'Fee Collector'},
+                                        {v: 'university_auth', l: 'Univ Auth'},
+                                        {v: 'college_auth', l: 'College Auth'}
+                                    ] as role}
+                                        <div class="form-check form-check-inline m-0">
+                                            <input class="form-check-input" type="checkbox" id="role_{role.v}" value={role.v} bind:group={allowedRoles}>
+                                            <label class="form-check-label small" for="role_{role.v}">{role.l}</label>
+                                        </div>
+                                    {/each}
+                                </div>
                             </div>
                         </div>
 
                         <div class="row border-top pt-3 mt-2">
-                            <!-- Hidden input to ensure report_type is submitted with form -->
                             <input type="hidden" name="report_type" value={reportType}>
                             
                             {#if reportType === 'html_profile'}
-                                <div class="col-md-8 mb-3">
-                                    <label class="form-label">Target Form Type (Optional)</label>
-                                    <select class="form-select" name="target_form_type_id" bind:value={targetFormTypeId}>
-                                        <option value="">-- All Form Types --</option>
-                                        <!-- Assuming data.formTypes is available from the load function -->
-                                        {#if data.formTypes}
-                                            {#each data.formTypes as ft}
-                                                <option value={ft.id}>{ft.name}</option>
-                                            {/each}
-                                        {/if}
-                                    </select>
-                                    <small class="text-muted">Link this template to a specific form type.</small>
+                                <div class="col-md-12 mb-3">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold small">Target Form Type (Linkage)</label>
+                                            <select class="form-select form-select-sm" name="target_form_type_id" bind:value={targetFormTypeId}>
+                                                <option value="">-- Apply to All Form Types --</option>
+                                                {#if data.formTypes}
+                                                    {#each data.formTypes as ft}
+                                                        <option value={ft.id}>{ft.name}</option>
+                                                    {/each}
+                                                {/if}
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6 text-end">
+                                            <button type="button" class="btn btn-sm btn-info text-white" on:click={() => showHelpModal = true}>
+                                                <i class="bi bi-fullscreen me-1"></i> Full Guide Modal
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-12 mb-3">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <label class="form-label mb-0">HTML Template</label>
-                                        <button type="button" class="btn btn-sm btn-outline-info" on:click={() => showHelpModal = true}>
-                                            <i class="bi bi-info-circle"></i> View Variables Guide
-                                        </button>
-                                    </div>
-                                    <textarea class="form-control font-monospace" name="html_content" rows="15" bind:value={htmlContent} placeholder="HTML layout..." style="font-size: 0.85rem;"></textarea>
-                                    <small class="text-muted">Use Handlebars style variables e.g., <code>&lbrace;&lbrace;student.full_name&rbrace;&rbrace;</code>, <code>&lbrace;&lbrace;application.form_data.acpc_number&rbrace;&rbrace;</code>.</small>
+                                    <label class="form-label fw-bold small">HTML Content</label>
+                                    <textarea 
+                                        bind:this={textareaRef}
+                                        class="form-control font-monospace" 
+                                        name="html_content" 
+                                        rows="25" 
+                                        bind:value={htmlContent} 
+                                        placeholder="&lt;div&gt;Hello &lbrace;&lbrace;student.full_name&rbrace;&rbrace;&lt;/div&gt;" 
+                                        style="font-size: 0.85rem; background-color: #fcfcfc;"></textarea>
+                                    <div class="form-text x-small">Click variables in the sidebar to insert. Use standard HTML/CSS.</div>
                                 </div>
                             {/if}
                         </div>
 
-                        <div class="mt-3">
-                            <button class="btn btn-success" disabled={(reportType === 'tabular' && (!selectedTable || selectedColumns.length === 0)) || (reportType === 'html_profile' && !htmlContent) || allowedRoles.length === 0 || loading}>
-                                {#if loading}
-                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                    Saving...
-                                {:else}
-                                    {editingId ? 'Update Template' : 'Save Template'}
+                        <div class="d-flex justify-content-between align-items-center border-top pt-3">
+                            <div class="text-muted small">
+                                {#if reportType === 'tabular'}
+                                    {selectedColumns.length} columns selected
                                 {/if}
-                            </button>
-                            {#if reportType === 'tabular'}
-                                <button class="btn btn-info ms-2 text-white" formaction="?/preview" formnovalidate disabled={!selectedTable || selectedColumns.length === 0 || loading}>
+                            </div>
+                            <div>
+                                <button class="btn btn-success" disabled={(reportType === 'tabular' && (!selectedTable || selectedColumns.length === 0)) || (reportType === 'html_profile' && !htmlContent) || allowedRoles.length === 0 || loading}>
                                     {#if loading}
                                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                        Loading...
+                                        Saving...
                                     {:else}
-                                        Preview
+                                        {editingId ? 'Update Template' : 'Save Template'}
                                     {/if}
                                 </button>
-                            {/if}
+                                {#if reportType === 'tabular'}
+                                    <button class="btn btn-info ms-2 text-white" formaction="?/preview" formnovalidate disabled={!selectedTable || selectedColumns.length === 0 || loading}>
+                                        {#if loading}
+                                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                            Loading...
+                                        {:else}
+                                            Preview
+                                        {/if}
+                                    </button>
+                                {/if}
+                            </div>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <!-- Profile Template Help Modal -->
+            <!-- Full Help Modal -->
             <ProfileTemplateHelp bind:showModal={showHelpModal} />
+...
 
             {#if previewData.length > 0}
                 <div class="card mb-4 border-info">

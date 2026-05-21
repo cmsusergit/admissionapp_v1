@@ -139,15 +139,15 @@ export const GET: RequestHandler = async ({
     if (selectedKeys.length === 0) selectedKeys = Object.keys(fieldMap);
   }
 
-  const headers = selectedKeys.map((k) => {
+  const headers = ['Sr. No', ...selectedKeys.map((k) => {
     if (fieldMap[k]) return fieldMap[k].label;
     if (k.startsWith("dynamic:")) return k.replace("dynamic:", "");
     return k;
-  });
+  })];
   const csvRows = [headers.join(",")];
 
-  applications?.forEach((app: any) => {
-    const row = selectedKeys.map((k) => {
+  applications?.forEach((app: any, index: number) => {
+    const row = [index + 1, ...selectedKeys.map((k) => {
       if (fieldMap[k]) return fieldMap[k].getValue(app);
       if (k.startsWith("dynamic:")) {
         const dynamicKey = k.replace("dynamic:", "");
@@ -159,7 +159,7 @@ export const GET: RequestHandler = async ({
         return `"${strVal.replace(/"/g, '""')}"`;
       }
       return "";
-    });
+    })];
     csvRows.push(row.join(","));
   });
 

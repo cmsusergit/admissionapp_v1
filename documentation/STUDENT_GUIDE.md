@@ -1,4 +1,4 @@
-# Student User Guide
+# Student User Guide 
 
 This guide provides step-by-step instructions for students using the University Admission System.
 

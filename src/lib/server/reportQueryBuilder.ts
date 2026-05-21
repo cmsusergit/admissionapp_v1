@@ -10,7 +10,7 @@ export interface ReportParameter {
     label: string;
     column: string; // db column path
     type: 'text' | 'number' | 'date' | 'select';
-    operator: 'eq' | 'ilike' | 'gt' | 'lt' | 'gte' | 'lte' | 'in';
+    operator: 'eq' | 'ilike' | 'gt' | 'lt' | 'gte' | 'lte' | 'in' | 'match';
     options?: string[]; // For select type
 }
 
@@ -65,10 +65,22 @@ export async function executeReportQuery(
             if (col.startsWith(baseTable + '.')) {
                 col = col.slice(baseTable.length + 1);
             }
-            const rootWithHint = col.split('.')[0];
-            const root = rootWithHint.split('!')[0].split(':')[0];
-            if (key.includes('.') && !JSON_COLUMNS.has(root)) {
-                filteredRelations.add(root);
+            // Track full path for inner joins
+            filteredRelations.add(col.replace(/![a-zA-Z0-9_]+/g, ''));
+        });
+    }
+
+    // Add all parameter columns to filteredRelations to ensure !inner joins
+    if (options.userFilters && config.parameters) {
+        Object.entries(options.userFilters).forEach(([paramName, value]) => {
+            if (value === undefined || value === null || value === '') return;
+            const param = config.parameters?.find(p => p.name === paramName);
+            if (param) {
+                let col = param.column;
+                if (col.startsWith(baseTable + '.')) {
+                    col = col.slice(baseTable.length + 1);
+                }
+                filteredRelations.add(col.replace(/![a-zA-Z0-9_]+/g, ''));
             }
         });
     }
@@ -109,8 +121,15 @@ export async function executeReportQuery(
                 col = convertJsonPathToFilter(col);
 
                 switch (param.operator) {
-                    case 'eq': query = query.eq(col, value); break;
+                    case 'eq': 
+                        if (param.type === 'text' || param.type === 'select') {
+                            query = query.ilike(col, value); 
+                        } else {
+                            query = query.eq(col, value); 
+                        }
+                        break;
                     case 'ilike': query = query.ilike(col, `%${value}%`); break;
+                    case 'match': query = query.filter(col, 'match', value); break; // POSIX Regex
                     case 'gt': query = query.gt(col, value); break;
                     case 'gte': query = query.gte(col, value); break;
                     case 'lt': query = query.lt(col, value); break;
@@ -175,14 +194,16 @@ const FK_MAP: Record<string, Record<string, string>> = {
         'users': 'applications_student_id_fkey',
         'courses': 'applications_course_id_fkey',
         'branches': 'applications_branch_id_fkey',
-        'admission_cycles': 'applications_cycle_id_fkey'
+        'admission_cycles': 'applications_cycle_id_fkey',
+        'payments': 'payments_application_id_fkey',
+        'account_admissions': 'account_admissions_application_id_fkey'
     },
     'payments': {
         'applications': 'payments_application_id_fkey'
     }
 };
 
-export function buildSelectString(columns: ReportColumn[], currentTable: string, filteredRelations?: Set<string>): string {
+export function buildSelectString(columns: ReportColumn[], currentTable: string, filteredRelations?: Set<string>, prefix: string = ''): string {
     const rootFields: string[] = [];
     const nestedFields: Record<string, string[]> = {};
 
@@ -241,15 +262,20 @@ export function buildSelectString(columns: ReportColumn[], currentTable: string,
             joinExpr = relation;
         }
 
-        const subSelect = buildSelectString(subColumns, targetTable, filteredRelations);
-        
         // Always alias to the clean relationship name for consistent data structure
         const alias = relation.split('!')[0].split(':')[0];
+        
+        // Construct full path for inner join check
+        const fullRelPath = prefix ? `${prefix}.${alias}` : alias;
 
-        // NEW: If this relation is being filtered, use !inner join to filter parent rows
-        if (filteredRelations?.has(alias)) {
+        // NEW: If this relation or any of its children are being filtered, use !inner join
+        const shouldBeInner = Array.from(filteredRelations || []).some(path => path === fullRelPath || path.startsWith(fullRelPath + '.'));
+        
+        if (shouldBeInner) {
             joinExpr += '!inner';
         }
+
+        const subSelect = buildSelectString(subColumns, targetTable, filteredRelations, fullRelPath);
 
         return `${alias}:${joinExpr}(${subSelect})`;
     });

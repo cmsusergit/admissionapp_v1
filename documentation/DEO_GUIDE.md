@@ -1,4 +1,4 @@
-# Data Entry Operator (DEO) User Guide
+# Data Entry Operator (DEO) User Guide 
 
 This guide details the process for Data Entry Operators (DEOs) applying on behalf of students.
 

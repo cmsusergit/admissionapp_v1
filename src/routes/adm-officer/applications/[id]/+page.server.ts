@@ -145,12 +145,27 @@ export const load: PageServerLoad = async ({
     .eq("is_active", true)
     .order("name");
 
+  // --- NEW: Fetch Print Profile Templates ---
+  const formTypeData = application.form_types
+    ? Array.isArray(application.form_types)
+      ? application.form_types[0]
+      : application.form_types
+    : null;
+
+  const { data: printTemplates } = await supabaseAdmin
+    .from('report_templates')
+    .select('id, name, target_form_type_id')
+    .eq('report_type', 'html_profile')
+    .contains('allowed_roles', [userProfile?.role])
+    .or(`target_form_type_id.is.null,target_form_type_id.eq.${formTypeData?.id}`);
+
   return {
     application,
     formSchema: formSchema?.schema_json || null,
     allCourses: allCourses || [],
     allCycles: allCycles || [],
     allFormTypes: allFormTypes || [],
+    printTemplates: printTemplates || []
   };
 };
 

@@ -1,4 +1,4 @@
-# Changelog: Application Fee Flow & Callback Fixes
+# Changelog: Application Fee Flow & Callback Fixes 
 **Date:** 2026-05-12 (v4)
 
 ## Summary of Changes

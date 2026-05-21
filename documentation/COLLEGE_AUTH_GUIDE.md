@@ -1,4 +1,4 @@
-# College Authority User Guide
+# College Authority User Guide 
 
 This guide details the processes for college staff responsible for verifying student applications and managing admissions.
 

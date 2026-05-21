@@ -2,16 +2,46 @@
     import { onMount } from 'svelte';
     import type { PageData } from './$types';
     import { toastStore } from '$lib/stores/toastStore';
+    import { convertHtmlToPdfMake } from '$lib/utils/htmlToPdf';
+    import * as pdfMakeLib from "pdfmake/build/pdfmake";
+    import * as pdfFontsLib from "pdfmake/build/vfs_fonts";
+
+    const pdfMake: any = (pdfMakeLib as any).default || pdfMakeLib;
+    const pdfFonts: any = (pdfFontsLib as any).default || pdfFontsLib;
+    if (pdfMake) {
+        pdfMake.vfs = pdfFonts?.pdfMake?.vfs || pdfFonts?.vfs || pdfFonts;
+    }
 
     export let data: PageData;
 
     let compiledHtml = '';
     let loading = true;
     let fetchError = '';
+    let isPdfReady = false;
+    let pdfDocGenerator: any = null;
 
-    // Simple dot-notation getter
+    // Dot-notation getter with case-insensitivity support and bracket stripping
     function getNestedValue(obj: any, path: string): any {
-        return path.split('.').reduce((acc, part) => acc && acc[part] !== undefined ? acc[part] : null, obj);
+        return path.split('.').reduce((acc, part) => {
+            if (!acc) return null;
+            // Strip brackets for array-like or subject-mapped access (e.g., [math] -> math)
+            const cleanPart = part.replace(/^\[|\]$/g, '');
+            const key = Object.keys(acc).find(k => k.toLowerCase() === cleanPart.toLowerCase());
+            return key && acc[key] !== undefined ? acc[key] : null;
+        }, obj);
+    }
+
+    async function generatePdf(action: 'print' | 'download' = 'print') {
+        if (!pdfDocGenerator) {
+            toastStore.error('PDF not ready yet.');
+            return;
+        }
+
+        if (action === 'download') {
+            pdfDocGenerator.download(`${data.templateName.replace(/\s+/g, '_')}_${data.applicationId}.pdf`);
+        } else {
+            pdfDocGenerator.print();
+        }
     }
 
     onMount(async () => {
@@ -31,13 +61,10 @@
             const { data: profileData } = await response.json();
 
             // 2. Interpolate HTML string
-            // Replaces Handlebars style tags: {{student.name}}, {{marks.math.obtained}}, {{#if photo_url}}...{{else}}...{{/if}}
-            
             let rawHtml = data.rawHtml;
 
-            // Very basic #if / else handler specifically for photo (or boolean checks)
-            // Note: This regex is fragile for complex nested logic but works for simple existence checks like {{#if student.photo_url}}...{{else}}...{{/if}}
-            rawHtml = rawHtml.replace(/\{\{#if\s+([a-zA-Z0-9_.]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g, (match, conditionPath, trueBlock, falseBlock) => {
+            // Handle #if / else logic
+            rawHtml = rawHtml.replace(/\{\{#if\s+([a-zA-Z0-9_.\[\]]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g, (match: string, conditionPath: string, trueBlock: string, falseBlock?: string) => {
                 const condition = getNestedValue(profileData, conditionPath);
                 if (condition && condition !== 'null' && condition !== 'N/A' && condition !== '') {
                     return trueBlock;
@@ -46,18 +73,26 @@
                 }
             });
 
-            // Replace standard variables {{some.path}}
-            compiledHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, path) => {
+            // Replace standard variables
+            compiledHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_.\[\]]+)\s*\}\}/g, (match: string, path: string) => {
                 const value = getNestedValue(profileData, path);
                 return value !== null && value !== undefined ? String(value) : '';
             });
 
-            loading = false;
+            // 3. Prepare PDF
+            const content = await convertHtmlToPdfMake(compiledHtml);
+            const docDefinition = {
+                pageSize: 'A4',
+                pageMargins: [40, 40, 40, 40],
+                content: content,
+                defaultStyle: {
+                    fontSize: 10
+                }
+            };
 
-            // 3. Trigger Print
-            setTimeout(() => {
-                window.print();
-            }, 800); // Give images a moment to load
+            pdfDocGenerator = pdfMake.createPdf(docDefinition);
+            isPdfReady = true;
+            loading = false;
 
         } catch (err: any) {
             console.error('Render error:', err);
@@ -69,43 +104,86 @@
 </script>
 
 <svelte:head>
-    <title>{data.templateName} - Print</title>
+    <title>{data.templateName} - Print Preview</title>
 </svelte:head>
 
-{#if loading}
-    <div style="display:flex; justify-content:center; align-items:center; height: 100vh;">
-        <p>Loading Profile Data for Printing...</p>
-    </div>
-{:else if fetchError}
-    <div style="padding: 20px; color: red;">
-        <h3>Error generating report</h3>
-        <p>{fetchError}</p>
-    </div>
-{:else}
-    <!-- Inject compiled HTML. The styling is embedded within the HTML payload by the Admin. -->
-    <div class="print-wrapper">
-        {@html compiledHtml}
-    </div>
-{/if}
+<div class="print-container">
+    {#if loading}
+        <div class="loading-overlay">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2">Preparing Profile Data...</p>
+        </div>
+    {:else if fetchError}
+        <div class="alert alert-danger m-5">
+            <h4>Error generating report</h4>
+            <p>{fetchError}</p>
+            <button class="btn btn-outline-secondary mt-3" on:click={() => window.close()}>Close Window</button>
+        </div>
+    {:else}
+        <div class="controls no-print d-flex justify-content-between align-items-center p-3 bg-light border-bottom sticky-top shadow-sm">
+            <div>
+                <h5 class="mb-0">{data.templateName}</h5>
+                <small class="text-muted">ID: {data.applicationId}</small>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary" on:click={() => window.close()}>
+                    <i class="bi bi-x-lg me-1"></i> Close
+                </button>
+                <button class="btn btn-primary" on:click={() => generatePdf('print')} disabled={!isPdfReady}>
+                    <i class="bi bi-printer me-1"></i> Print / Save as PDF
+                </button>
+                <button class="btn btn-success" on:click={() => generatePdf('download')} disabled={!isPdfReady}>
+                    <i class="bi bi-download me-1"></i> Download PDF
+                </button>
+            </div>
+        </div>
+
+        <div class="preview-wrapper p-4 p-md-5">
+            <div class="preview-paper shadow">
+                {@html compiledHtml}
+            </div>
+        </div>
+    {/if}
+</div>
 
 <style>
-    /* Ensure the print wrapper resets styles so the injected HTML controls layout */
-    .print-wrapper {
-        width: 100%;
-        background: white;
+    :global(body) {
+        background-color: #f0f2f5;
+        margin: 0;
+        padding: 0;
     }
-    
+
+    .preview-wrapper {
+        display: flex;
+        justify-content: center;
+        min-height: calc(100vh - 75px);
+    }
+
+    .preview-paper {
+        background: white;
+        width: 100%;
+        max-width: 210mm;
+        min-height: 297mm;
+        padding: 15mm;
+        box-sizing: border-box;
+    }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: white; z-index: 2000;
+    }
+
     @media print {
-        @page {
-            size: A4;
-            margin: 10mm; /* Admin can override margins with their own CSS if needed, but a base is good */
-        }
-        :global(body) {
-            margin: 0;
-            padding: 0;
-            background: white !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+        .no-print { display: none !important; }
+        .preview-wrapper { padding: 0 !important; }
+        .preview-paper {
+            box-shadow: none !important;
+            width: 100% !important;
+            max-width: none !important;
+            min-height: auto !important;
+            padding: 0 !important;
         }
     }
 </style>

@@ -1,4 +1,4 @@
-# Payment Gateway Setup & Developer Guide
+# Payment Gateway Setup & Developer Guide 
 
 This guide provides instructions for developers on setting up and integrating payment gateways (specifically **Razorpay** and **PayU**) into the University Admission System.
 

@@ -1,4 +1,4 @@
-# Changelog: Public Circulars & Visibility System
+# Changelog: Public Circulars & Visibility System 
 **Date:** 2026-05-12 (v3)
 
 ## Summary of Changes

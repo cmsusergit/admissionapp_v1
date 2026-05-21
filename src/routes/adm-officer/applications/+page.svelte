@@ -51,6 +51,44 @@
     }
 
     $: totalPages = Math.ceil((data.count || 0) / data.limit);
+
+    // --- Print Profile Logic ---
+    let showPrintModal = false;
+    let selectedPrintTemplate = '';
+    let filteredPrintTemplates: any[] = [];
+    let printTargetAppId = '';
+
+    function handlePrintClick(event: MouseEvent, app: any) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        printTargetAppId = app.id;
+        const appFormTypeId = data.formTypeIdentityMap[(app.form_type || '').toLowerCase()];
+        
+        filteredPrintTemplates = (data.printTemplates || []).filter((t: any) => 
+            !t.target_form_type_id || t.target_form_type_id === appFormTypeId
+        );
+
+        if (filteredPrintTemplates.length === 0) {
+            alert('No print templates available for this application.');
+            return;
+        }
+
+        if (filteredPrintTemplates.length === 1) {
+            window.open(`/print-profile/${app.id}?templateId=${filteredPrintTemplates[0].id}`, '_blank');
+        } else {
+            showPrintModal = true;
+        }
+    }
+
+    function confirmPrintProfile() {
+        if (!selectedPrintTemplate) {
+            alert('Please select a template.');
+            return;
+        }
+        window.open(`/print-profile/${printTargetAppId}?templateId=${selectedPrintTemplate}`, '_blank');
+        showPrintModal = false;
+    }
 </script>
 
 <div class="container-fluid mt-4">
@@ -149,9 +187,14 @@
                 {@const isProvType = data.formTypesMap?.[app.form_type] === true}
                 {@const appReceiptPayment = (app.payments || []).find(p => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) || (app.payments || []).find(p => p.receipt_number)}
                 <a href="/adm-officer/applications/{app.id}" class="list-group-item list-group-item-action">
-                    <div class="d-flex w-100 justify-content-between">
+                    <div class="d-flex w-100 justify-content-between align-items-center">
                         <h5 class="mb-1">{app.student_user?.full_name || 'Unknown User'}</h5>
-                        <small class="text-muted">{new Date(app.submitted_at).toLocaleDateString()}</small>
+                        <div class="d-flex align-items-center gap-2">
+                            <button class="btn btn-sm btn-outline-info" on:click={(e) => handlePrintClick(e, app)} title="Print Profile">
+                                <i class="bi bi-printer"></i>
+                            </button>
+                            <small class="text-muted">{new Date(app.submitted_at).toLocaleDateString()}</small>
+                        </div>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -190,3 +233,34 @@
         {/if}
     </div>
 </div>
+
+<!-- Print Selection Modal -->
+{#if showPrintModal}
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5); z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Print Template</h5>
+                    <button type="button" class="btn-close" on:click={() => showPrintModal = false}></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Template</label>
+                        <select class="form-select" bind:value={selectedPrintTemplate}>
+                            <option value="">Select a template...</option>
+                            {#each filteredPrintTemplates as t}
+                                <option value={t.id}>{t.name}</option>
+                            {/each}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showPrintModal = false}>Cancel</button>
+                    <button type="button" class="btn btn-primary" on:click={confirmPrintProfile} disabled={!selectedPrintTemplate}>
+                        <i class="bi bi-printer me-1"></i> Print Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}

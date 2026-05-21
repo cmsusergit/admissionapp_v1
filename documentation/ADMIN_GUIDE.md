@@ -1,4 +1,4 @@
-# Admin User Guide
+# Admin User Guide 
 
 This guide is for System Administrators responsible for the overall configuration, user management, and maintenance of the University Admission System.
 

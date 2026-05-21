@@ -96,20 +96,44 @@
         }
     }
 
-    // --- Provisional Fee Logic ---
-    let showPaymentModal = false;
-    let currentApp: any = null;
-    let paymentDetails = {
-        amount: 0,
-        mode: 'qr',
-        reference: '',
-        qrCodeUrl: ''
-    };
-    let isSubmittingPayment = false;
+    // --- Print Profile Logic ---
+    let showPrintModal = false;
+    let selectedPrintTemplate = '';
+    let filteredPrintTemplates: any[] = [];
+    let printTargetAppId = '';
+
+    function handlePrintClick(app: any) {
+        printTargetAppId = app.id;
+        const appFormTypeId = data.formTypesMap[app.form_type]?.id;
+        
+        filteredPrintTemplates = (data.printTemplates || []).filter((t: any) => 
+            !t.target_form_type_id || t.target_form_type_id === appFormTypeId
+        );
+
+        if (filteredPrintTemplates.length === 0) {
+            toastStore.error('No print templates available for this application.');
+            return;
+        }
+
+        if (filteredPrintTemplates.length === 1) {
+            window.open(`/print-profile/${app.id}?templateId=${filteredPrintTemplates[0].id}`, '_blank');
+        } else {
+            showPrintModal = true;
+        }
+    }
+
+    function confirmPrintProfile() {
+        if (!selectedPrintTemplate) {
+            toastStore.error('Please select a template.');
+            return;
+        }
+        window.open(`/print-profile/${printTargetAppId}?templateId=${selectedPrintTemplate}`, '_blank');
+        showPrintModal = false;
+    }
 
     function isProvisional(app: any) {
         // data.formTypesMap is passed from server
-        return !!data.formTypesMap[app.form_type];
+        return !!data.formTypesMap[app.form_type]?.is_prov;
     }
 
     function isPaid(app: any) {
@@ -361,6 +385,9 @@
                                             <a href="/deo/apply?applicationId={appAny.id}" class="btn btn-sm btn-outline-primary">
                                                 {appAny.status === 'draft' || appAny.status === 'needs_correction' ? 'Edit' : 'View'}
                                             </a>
+                                            <button class="btn btn-sm btn-outline-secondary" on:click={() => handlePrintClick(appAny)}>
+                                                <i class="bi bi-printer"></i>
+                                            </button>
                                             {#if appAny.application_fee_status === 'pending' && appAny.form_fee > 0}
                                                 <PaymentButton 
                                                     applicationId={appAny.id} 
@@ -543,6 +570,40 @@
         </div>
     </div>
 </div>
+{/if}
+
+<!-- Print Selection Modal -->
+{#if showPrintModal}
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5); z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Print Template</h5>
+                    <button type="button" class="btn-close" on:click={() => showPrintModal = false}></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">Multiple print templates found for this application. Please select one to proceed.</p>
+                    <div class="list-group">
+                        {#each filteredPrintTemplates as t}
+                            <button 
+                                class="list-group-item list-group-item-action {selectedPrintTemplate === t.id ? 'active' : ''}" 
+                                on:click={() => selectedPrintTemplate = t.id}
+                            >
+                                <i class="bi bi-file-earmark-pdf me-2"></i>
+                                {t.name}
+                            </button>
+                        {/each}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showPrintModal = false}>Cancel</button>
+                    <button type="button" class="btn btn-primary" on:click={confirmPrintProfile} disabled={!selectedPrintTemplate}>
+                        <i class="bi bi-printer me-1"></i> Print Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 {/if}
 
 <style>

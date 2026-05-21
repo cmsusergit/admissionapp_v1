@@ -56,10 +56,10 @@ export const load: PageServerLoad = async ({
   // Fetch Form Types to identify provisional ones
   const { data: formTypesData } = await supabase
     .from("form_types")
-    .select("name, is_prov");
+    .select("id, name, is_prov");
   const formTypesMap = new Map();
   formTypesData?.forEach((ft) => {
-    formTypesMap.set(ft.name, ft.is_prov);
+    formTypesMap.set(ft.name, { id: ft.id, is_prov: ft.is_prov });
   });
 
   // Build query for applications
@@ -167,6 +167,13 @@ export const load: PageServerLoad = async ({
       ? processedApplications.slice(offset, offset + limit) 
       : processedApplications;
 
+    // --- NEW: Fetch Print Profile Templates for DEO ---
+    const { data: printTemplates } = await supabase
+        .from('report_templates')
+        .select('id, name, target_form_type_id')
+        .eq('report_type', 'html_profile')
+        .contains('allowed_roles', ['deo']);
+
     // Fetch admission forms for enrichment
     const { data: admissionForms } = await supabase.from("admission_forms").select("course_id, cycle_id, form_type, form_fee");
     const enrich = (list: any[]) => (list || []).map((app: any) => {
@@ -185,6 +192,7 @@ export const load: PageServerLoad = async ({
       limit,
       totalCount: finalCount,
       formTypesMap: Object.fromEntries(formTypesMap),
+      printTemplates: printTemplates || []
     };
   }
 };

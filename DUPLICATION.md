@@ -1,4 +1,4 @@
-# Code Duplication Reduction Plan
+# Code Duplication Reduction Plan 
 
 ## Objective
 The primary goal of this plan is to eliminate code duplication in the sidebar navigation components across different user roles. Currently, separate Svelte components (`AdminNav.svelte`, `AdmOfficerNav.svelte`, `DeoNav.svelte`, `StudentNav.svelte`, etc.) are maintained for each role, despite sharing nearly identical HTML structures and logic.

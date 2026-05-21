@@ -158,6 +158,41 @@
             alert('Error marking fee as paid.');
         }
     }
+
+    // --- Print Profile Logic ---
+    let showPrintModal = false;
+    let selectedPrintTemplate = '';
+    let filteredPrintTemplates: any[] = [];
+    let printTargetAppId = '';
+
+    function handlePrintClick(app: any) {
+        printTargetAppId = app.id;
+        const appFormTypeId = data.formTypesMap[app.form_type];
+        
+        filteredPrintTemplates = (data.printTemplates || []).filter((t: any) => 
+            !t.target_form_type_id || t.target_form_type_id === appFormTypeId
+        );
+
+        if (filteredPrintTemplates.length === 0) {
+            alert('No print templates available for this application.');
+            return;
+        }
+
+        if (filteredPrintTemplates.length === 1) {
+            window.open(`/print-profile/${app.id}?templateId=${filteredPrintTemplates[0].id}`, '_blank');
+        } else {
+            showPrintModal = true;
+        }
+    }
+
+    function confirmPrintProfile() {
+        if (!selectedPrintTemplate) {
+            alert('Please select a template.');
+            return;
+        }
+        window.open(`/print-profile/${printTargetAppId}?templateId=${selectedPrintTemplate}`, '_blank');
+        showPrintModal = false;
+    }
 </script>
 
 <div class="container-fluid">
@@ -297,6 +332,9 @@
                             <div class="mb-3">
                                 <input type="text" class="form-control" bind:value={approvalComment} placeholder="Add a comment (optional)" />
                             </div>
+                            <button class="btn btn-outline-info me-2" on:click={() => handlePrintClick(selectedApplication)}>
+                                <i class="bi bi-printer me-1"></i> Print Profile
+                            </button>
                             <button class="btn btn-success me-2" on:click={() => verifyApplication(selectedApplication.id)} disabled={selectedApplication.status === 'verified'}>
                                 {selectedApplication.status === 'verified' ? 'Verified' : 'Verify & Forward'}
                             </button>
@@ -343,6 +381,37 @@
         </div>
     </div>
 </div>
+
+<!-- Print Selection Modal -->
+{#if showPrintModal}
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5); z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Print Template</h5>
+                    <button type="button" class="btn-close" on:click={() => showPrintModal = false}></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Template</label>
+                        <select class="form-select" bind:value={selectedPrintTemplate}>
+                            <option value="">Select a template...</option>
+                            {#each filteredPrintTemplates as t}
+                                <option value={t.id}>{t.name}</option>
+                            {/each}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" on:click={() => showPrintModal = false}>Cancel</button>
+                    <button type="button" class="btn btn-primary" on:click={confirmPrintProfile} disabled={!selectedPrintTemplate}>
+                        <i class="bi bi-printer me-1"></i> Print Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <style>
     .modal {

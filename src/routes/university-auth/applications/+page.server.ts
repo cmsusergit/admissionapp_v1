@@ -122,6 +122,17 @@ export const load: PageServerLoad = async ({
     }
   }
 
+  // Fetch Form Type IDs for frontend filtering
+  const { data: formTypesData } = await supabaseAdmin.from("form_types").select("id, name");
+  const formTypesMap = Object.fromEntries(formTypesData?.map(ft => [ft.name, ft.id]) || []);
+
+  // Fetch Print Profile Templates
+  const { data: printTemplates } = await supabaseAdmin
+    .from('report_templates')
+    .select('id, name, target_form_type_id')
+    .eq('report_type', 'html_profile')
+    .contains('allowed_roles', [userProfile?.role]);
+
   return {
     applications: applications || [],
     count: count || 0,
@@ -130,6 +141,8 @@ export const load: PageServerLoad = async ({
     search,
     activeTab,
     message: null,
+    printTemplates: printTemplates || [],
+    formTypesMap
   };
 };
 

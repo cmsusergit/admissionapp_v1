@@ -76,12 +76,12 @@
     })();
 
     function applyFilters() {
-        const params = new URLSearchParams();
-        if (filters.course) params.set('course', filters.course);
-        if (filters.branch) params.set('branch', filters.branch);
-        if (filters.form_type) params.set('form_type', filters.form_type);
-        if (filters.start_date) params.set('start_date', filters.start_date);
-        if (filters.end_date) params.set('end_date', filters.end_date);
+        const params = new URLSearchParams($page.url.searchParams);
+        if (filters.course) params.set('course', filters.course); else params.delete('course');
+        if (filters.branch) params.set('branch', filters.branch); else params.delete('branch');
+        if (filters.form_type) params.set('form_type', filters.form_type); else params.delete('form_type');
+        if (filters.start_date) params.set('start_date', filters.start_date); else params.delete('start_date');
+        if (filters.end_date) params.set('end_date', filters.end_date); else params.delete('end_date');
         
         goto(`?${params.toString()}`);
     }

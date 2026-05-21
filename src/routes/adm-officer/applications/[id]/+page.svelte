@@ -51,16 +51,27 @@
 
     let showPrintModal = false;
     let selectedPrintTemplate = '';
-    let availablePrintTemplates: Array<{ id: string; name: string }> = [];
+    $: availablePrintTemplates = data.printTemplates || [];
 
     function confirmPrintProfile() {
         if (!selectedPrintTemplate) {
             alert('Please select a template before printing.');
             return;
         }
-        // TODO: Implement print profile logic using selectedPrintTemplate
-        console.log('Printing profile using template', selectedPrintTemplate);
+        window.open(`/print-profile/${application.id}?templateId=${selectedPrintTemplate}`, '_blank');
         showPrintModal = false;
+    }
+
+    function handlePrintClick() {
+        if (availablePrintTemplates.length === 0) {
+            alert('No print templates available for this application.');
+            return;
+        }
+        if (availablePrintTemplates.length === 1) {
+            window.open(`/print-profile/${application.id}?templateId=${availablePrintTemplates[0].id}`, '_blank');
+        } else {
+            showPrintModal = true;
+        }
     }
 
     function openPaymentEditor(payment: any) {
@@ -359,6 +370,10 @@
 
                 <!-- Reject Form -->
                 <div class="d-flex flex-column gap-2">
+                    <button class="btn btn-outline-info" on:click={handlePrintClick}>
+                        <i class="bi bi-printer me-1"></i> Print Profile Form
+                    </button>
+                    
                     {#if application.status === 'rejected'}
                         <form method="POST" action="?/revertRejection" use:enhance>
                             <input type="hidden" name="application_id" value={application.id} />
