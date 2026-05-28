@@ -137,11 +137,16 @@ export const load: PageServerLoad = async ({
     throw error(403, "Unauthorized to view this receipt");
   }
 
-  return {
-    payment,
-    university: payment.applications?.courses?.colleges?.universities,
-    college: payment.applications?.courses?.colleges,
-    debugLookup: lookupParams,
-    debugTrace, // Pass trace to frontend
-  };
-};
+          return {
+
+              payment,
+
+              university: payment.applications?.courses?.colleges?.universities,
+
+              college: payment.applications?.courses?.colleges,
+
+              debugLookup: lookupParams,
+
+              debugTrace, // Pass trace to frontend
+
+          };};

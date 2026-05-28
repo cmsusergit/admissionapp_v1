@@ -117,7 +117,8 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
         admission,
         studentPayments: studentPayments || [],
         feeStructure,
-        feeSchemes: feeSchemes || []
+        feeSchemes: feeSchemes || [],
+        userProfile // Pass userProfile
     };
 };
 

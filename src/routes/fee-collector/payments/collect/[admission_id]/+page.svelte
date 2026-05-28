@@ -112,6 +112,20 @@
             })
         }));
         
+        let universityData = {
+            name: 'SVIT, Vasad',
+            address: 'Vasad, Gujarat',
+            contactEmail: 'admission@svitvasad.ac.in',
+            logoUrl: undefined
+        };
+
+        let periodDisplay: 'SEMESTER' | 'ACADEMIC YEAR';
+        if (data.userProfile?.role === 'fee_collector' && isTuition) {
+            periodDisplay = (feePeriod === 'year') ? 'ACADEMIC YEAR' : 'SEMESTER';
+        } else {
+            periodDisplay = 'ACADEMIC YEAR'; // Default for others
+        }
+        
         return {
             receiptNumber: payment.receipt_number || 'N/A',
             date: payment.payment_date,
@@ -122,6 +136,7 @@
             courseName: app.courses.name || 'N/A',
             branchName: app.branches?.name,
             academicYear: app.admission_cycles?.academic_years?.name,
+            semester: periodDisplay, // Add this property
             paymentType: payment.payment_type,
             isProvisional: isProv,
             transactionId: payment.transaction_id,
@@ -134,11 +149,7 @@
                 ref: m.ref || m.reference,
                 date: payment.payment_date
             })),
-            university: {
-                name: 'SVIT, Vasad',
-                address: 'Vasad, Gujarat',
-                contactEmail: 'admission@svitvasad.ac.in'
-            }
+            university: universityData
         };
     }
 </script>

@@ -2,6 +2,7 @@
     import type { PageData, ActionData } from './$types';
     import { enhance } from '$app/forms';
     import { writable } from 'svelte/store';
+    import { getBranchDisplayCode } from '$lib/utils/display_helpers';
 
     export let data: PageData;
     export let form: ActionData;
@@ -81,7 +82,7 @@
                         {#each filteredBranches as branch}
                             <tr>
                                 <td>{branch.name}</td>
-                                <td>{branch.code || 'N/A'}</td>
+                                <td>{getBranchDisplayCode(branch.name, branch.code)}</td>
                                 <td>{branch.courses?.name}</td>
                                 <td>{branch.courses?.colleges?.name}</td>
                                 <td>{branch.intake_capacity || 0}</td>

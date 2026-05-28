@@ -8,6 +8,7 @@
     import PaymentButton from '$lib/components/PaymentButton.svelte';
     import { supabase } from '$lib/supabase'; 
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; 
+    import { getBranchDisplayCode } from '$lib/utils/display_helpers'; // Import the helper
 
     export let data: PageData;
     export let form: ActionData; 
@@ -524,7 +525,7 @@
                             <option value="">Select a Branch</option>
                             {#each filteredBranches as branch}
                                 {@const branchAny = branch as any}
-                                <option value={branch.id}>{branch.name} {branchAny.code ? `(${branchAny.code})` : ''}</option>
+                                <option value={branch.id}>{branch.name} ({getBranchDisplayCode(branch.name, branchAny.code)})</option>
                             {/each}
                         </select>
                     </div>

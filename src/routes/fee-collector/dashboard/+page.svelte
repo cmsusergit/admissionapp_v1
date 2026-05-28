@@ -3,9 +3,17 @@
     import { enhance } from '$app/forms';
     import { writable } from 'svelte/store';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
+    import { goto } from '$app/navigation'; // Import goto
 
     export let data: PageData;
     export let form: ActionData;
+    let selectedStatus = data.selectedStatus; // Initialize with status from page.server.ts
+
+    function handleStatusChange(event: Event) {
+        const target = event.target as HTMLSelectElement;
+        const newStatus = target.value;
+        goto(`?status=${newStatus}`);
+    }
 
     let showStatusUpdateModal = false;
     let currentAccountAdmission = writable({
@@ -63,8 +71,16 @@
     {/if}
 
     <div class="card mb-4">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <h4>Admissions for Payment Tracking</h4>
+            <div class="d-flex align-items-center">
+                <label for="statusFilter" class="form-label mb-0 me-2">Filter by Status:</label>
+                <select id="statusFilter" class="form-select form-select-sm" bind:value={selectedStatus} on:change={handleStatusChange}>
+                    <option value="pending">Pending</option>
+                    <option value="partial">Partial</option>
+                    <option value="cleared">Cleared</option>
+                </select>
+            </div>
         </div>
         <div class="card-body">
             {#if data.accountAdmissions.length > 0}

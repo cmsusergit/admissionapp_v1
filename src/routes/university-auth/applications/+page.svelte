@@ -6,6 +6,7 @@
     import { toastStore } from '$lib/stores/toastStore';
     import { goto } from '$app/navigation';
     import { page as sveltePage } from '$app/stores';
+    import { getBranchDisplayCode } from '$lib/utils/display_helpers';
 
     export let data: PageData;
     export let form: ActionData;
@@ -455,7 +456,7 @@
                     <select class="form-select mb-3" bind:value={selectedBranchId}>
                         <option value="">-- Select Branch --</option>
                         {#each selectedApplication.courses.branches as branch}
-                            <option value={branch.id}>{branch.name} ({branch.code})</option>
+                            <option value={branch.id}>{branch.name} ({getBranchDisplayCode(branch.name, branch.code)})</option>
                         {/each}
                     </select>
                 {/if}

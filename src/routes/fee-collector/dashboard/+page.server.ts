@@ -2,7 +2,7 @@ import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { applyRoleBasedCollegeFilter } from '$lib/server/security';
 
-export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
+export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile }, url }) => {
     const authenticatedUser = await getAuthenticatedUser();
 
     if (!authenticatedUser) {
@@ -12,6 +12,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     if (userProfile?.role !== 'fee_collector') {
         throw redirect(303, '/login'); // Redirect non-fee_collector users
     }
+
+    const statusFilter = url.searchParams.get('status') || 'pending'; // Default to 'pending'
 
     // Fetch account_admissions records
     let aaQuery = supabase
@@ -29,6 +31,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 payments(*)
             )
         `)
+        .eq('account_status', statusFilter) // Apply status filter
         .neq('enrollment_status', 'provisional'); // Exclude provisional admissions from this view
 
     aaQuery = applyRoleBasedCollegeFilter(aaQuery, userProfile, 'admissions');
@@ -37,7 +40,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     if (aaError) {
         console.error('Error fetching account admissions:', aaError.message);
-        return { accountAdmissions: [], feeStructures: [] };
+        return { accountAdmissions: [], feeStructures: [], selectedStatus: statusFilter };
     }
 
     // Process to get fee structures for each admission
@@ -65,7 +68,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     return {
         accountAdmissions: accountAdmissions || [],
-        feeStructures: feeStructures
+        feeStructures: feeStructures,
+        selectedStatus: statusFilter // Return selected status
     };
 };
 

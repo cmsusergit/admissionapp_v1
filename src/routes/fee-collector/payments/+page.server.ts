@@ -167,14 +167,9 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     const feeStructures = (await Promise.all(feeStructuresPromises)).filter((item): item is NonNullable<typeof item> => item !== null);
 
     return {
-        payments: tuitionPayments, 
-        tuitionPayments,
-        applicationFeePayments,
-        provisionalFeePayments,
-        admissions: admissionsWithProvFees || [], 
-        feeStructures: feeStructures || [],
-        allFeeStructures: allFeeStructures || [],
-        feeSchemes: feeSchemes || []
+        payments: payments || [],
+        feeStructures: feeStructures,
+        userProfile // Pass userProfile
     };
 };
 

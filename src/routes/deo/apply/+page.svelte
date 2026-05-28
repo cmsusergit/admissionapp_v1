@@ -8,6 +8,7 @@
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; // Import loading controls
     import PaymentButton from '$lib/components/PaymentButton.svelte';
     import { toastStore } from '$lib/stores/toastStore';
+    import { getBranchDisplayCode } from '$lib/utils/display_helpers'; // Import the helper
 
     let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
@@ -1122,7 +1123,7 @@
                             <select class="form-select" id="branch-select" bind:value={selectedBranchId}>
                                 <option value="">Select a Branch</option>
                                 {#each branchesForSelectedCourse as branch}
-                                    <option value={branch.id}>{branch.name} {branch.code ? `(${branch.code})` : ''}</option>
+                                    <option value={branch.id}>{branch.name} ({getBranchDisplayCode(branch.name, branch.code)})</option>
                                 {/each}
                             </select>
                         </div>

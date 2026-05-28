@@ -116,7 +116,7 @@ function createProvisionalReceiptContent(data: ReceiptData, copyLabel: string): 
     headerRow.push({
         width: "*",
         stack: [
-            { text: data.university.name.toUpperCase(), fontSize: 16, bold: true, alignment: "center" },
+                { text: data.university.name.toUpperCase(), fontSize: 10, bold: true, alignment: "center", margin: [0, 0, 0, 1] },
             { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" },
             { text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9, alignment: "center" },
         ],
@@ -186,11 +186,10 @@ function createSimpleReceiptContent(data: ReceiptData, copyLabel: string): any[]
     headerRow.push({
         width: "*",
         stack: [
-            { text: data.university.name.toUpperCase(), fontSize: 14, bold: true, alignment: "center" },
-            { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" }
-        ],
-        margin: [0, 5, 0, 0]
-    });
+                      { text: data.university.name.toUpperCase(), fontSize: 10, bold: true, alignment: "center" },
+                      { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" }
+                  ],
+                  margin: [0, 2, 0, 0]    });
 
     // Right column: Placeholder
     headerRow.push({ width: 80, text: "" });
@@ -254,11 +253,11 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
   headerRow.push({
       width: "*",
       stack: [
-          { text: data.university.name.toUpperCase(), fontSize: 14, bold: true, alignment: "center" },
+          { text: data.university.name.toUpperCase(), fontSize: 10, bold: true, alignment: "center" },
           { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" },
-          { text: `Academic Year: ${data.academicYear || "-"}`, fontSize: 11, bold: true, alignment: "center", margin: [0, 5, 0, 0] },
+          { text: `Academic Year: ${data.academicYear || "-"}`, fontSize: 10, bold: true, alignment: "center", margin: [0, 2, 0, 0] },
       ],
-      margin: [0, 5, 0, 0]
+      margin: [0, 2, 0, 0]
   });
 
   // Right column: Placeholder for balancing to keep middle text truly centered on page
@@ -266,30 +265,31 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
 
   content.push({
       columns: headerRow,
-      margin: [0, 0, 0, 15]
+      margin: [0, 0, 0, 5]
   });
   content.push({ columns: [ { text: `College ID: ${data.enrollmentNumber || data.admissionNumber || "-"}`, fontSize: 10 }, { text: `Receipt Number: ${data.receiptNumber || "-"}`, fontSize: 10, alignment: "right" } ] });
-  content.push({ columns: [ { text: `Branch Name: ${data.branchName || "-"}`, fontSize: 10 }, { text: `Date: ${formatDate(data.date)}`, fontSize: 10, alignment: "right" } ], margin: [0, 0, 0, 5] });
-  content.push({ text: "Received From,", fontSize: 10, margin: [0, 5, 0, 0] });
-  content.push({ text: data.studentName.toUpperCase(), fontSize: 11, bold: true, margin: [0, 2, 0, 5] });
-  content.push({ text: [ "The Following amount as Fees for the ", { text: data.courseName || "Course", bold: true }, " for a ", { text: data.semester || "FIRST SEMESTER", bold: true }, " ", { text: data.academicYear || "", bold: true } ], fontSize: 10, margin: [0, 0, 0, 10] });
-  const tableBody: any[][] = [ [ { text: "Sr.", fontSize: 10, bold: true, fillColor: "#eeeeee", alignment: "center" }, { text: "Particulars", fontSize: 10, bold: true, fillColor: "#eeeeee" }, { text: "Fees in Rs.", fontSize: 10, bold: true, fillColor: "#eeeeee", alignment: "right" } ] ];
+  content.push({ columns: [ { text: `Branch Name: ${data.branchName || "-"}`, fontSize: 10 }, { text: `Date: ${formatDate(data.date)}`, fontSize: 10, alignment: "right" } ], margin: [0, 0, 0, 2] });
+  content.push({ text: "Received From,", fontSize: 10, margin: [0, 2, 0, 0] });
+  content.push({ text: data.studentName.toUpperCase(), fontSize: 11, bold: true, margin: [0, 1, 0, 2] });
+  const article = data.semester && data.semester.includes('Academic') ? 'an' : 'a';
+  content.push({ text: [ "The Following amount as Fees for the ", { text: data.courseName || "Course", bold: true }, ` for ${article} `, { text: data.semester || "SEMESTER", bold: true }, " ", { text: data.academicYear || "", bold: true } ], fontSize: 10, margin: [0, 0, 0, 2] });
+  const tableBody: any[][] = [ [ { text: "Sr.", fontSize: 9, bold: true, fillColor: "#eeeeee", alignment: "center" }, { text: "Particulars", fontSize: 9, bold: true, fillColor: "#eeeeee" }, { text: "Fees in Rs.", fontSize: 9, bold: true, fillColor: "#eeeeee", alignment: "right" } ] ];
   if (data.feeBreakdown && data.feeBreakdown.length > 0) {
     data.feeBreakdown.forEach((section) => {
-      if (section.name) { tableBody.push([ { text: "" }, { text: section.name, fontSize: 10, bold: true }, { text: "" } ]); }
+      if (section.name) { tableBody.push([ { text: "" }, { text: section.name, fontSize: 9, bold: true }, { text: "" } ]); }
       let sectionSubtotal = 0;
       (section.items || []).forEach((item, idx) => {
         const itemAmount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount).replace(/[^0-9.-]+/g, '')) || 0;
         sectionSubtotal += itemAmount;
-        tableBody.push([ { text: idx + 1, alignment: "center" }, { text: item.name }, { text: formatCurrency(item.amount), alignment: "right" } ]);
+        tableBody.push([ { text: idx + 1, alignment: "center", fontSize: 9 }, { text: item.name, fontSize: 9 }, { text: formatCurrency(item.amount), alignment: "right", fontSize: 9 } ]);
       });
       tableBody.push([ { text: "" }, { text: "SubTotal", fontSize: 9, bold: true, alignment: "right" }, { text: formatCurrency(sectionSubtotal), fontSize: 9, bold: true, alignment: "right" } ]);
     });
-  } else { tableBody.push([ { text: "1", alignment: "center" }, { text: data.paymentType.replace('_', ' ').toUpperCase() }, { text: formatCurrency(data.amount), alignment: "right" } ]); }
-  tableBody.push([ { text: "" }, { text: "Grand Total in Rs.", fontSize: 11, bold: true, alignment: "right" }, { text: formatCurrency(data.amount), fontSize: 11, bold: true, alignment: "right" } ]);
-  content.push({ table: { widths: [30, "*", 100], body: tableBody }, margin: [0, 0, 0, 5] });
+  } else { tableBody.push([ { text: "1", alignment: "center", fontSize: 9 }, { text: data.paymentType.replace('_', ' ').toUpperCase(), fontSize: 9 }, { text: formatCurrency(data.amount), alignment: "right", fontSize: 9 } ]); }
+  tableBody.push([ { text: "" }, { text: "Grand Total in Rs.", fontSize: 10, bold: true, alignment: "right" }, { text: formatCurrency(data.amount), fontSize: 10, bold: true, alignment: "right" } ]);
+  content.push({ table: { widths: [30, "*", 100], body: tableBody }, margin: [0, 0, 0, 0] });
   const totalVal = typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount).replace(/[^0-9.-]+/g, '')) || 0;
-  content.push({ text: `In Words: ${numberToWords(totalVal)} Only`, fontSize: 10, bold: true, margin: [0, 5, 0, 15] });
+  content.push({ text: `In Words: ${numberToWords(totalVal)} Only`, fontSize: 10, bold: true, margin: [0, 2, 0, 2] });
   const modes = data.paymentModes || [];
   const cash = modes.find(m => m.mode.toLowerCase() === 'cash');
   const cheque = modes.find(m => m.mode.toLowerCase() === 'cheque' || m.mode.toLowerCase() === 'dd');
@@ -305,10 +305,35 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
         [ { text: "ACPC", fontSize: 9, bold: true, fillColor: "#f9f9f9" }, { text: `Amount: ${acpc ? formatCurrency(acpc.amount) : "0.00"}`, fontSize: 8 }, { text: `Rec.Number: ${acpc?.ref || "-"}`, fontSize: 8 }, { text: `Payment Date: ${acpc?.date ? formatDate(acpc.date) : "-"}`, fontSize: 8 } ],
       ]
     },
-    margin: [0, 0, 0, 20]
+    margin: [0, 0, 0, 2]
   });
-  content.push({ stack: [ { text: "Authorized Signature", fontSize: 10, bold: true }, { text: "SVIT,Vasad", fontSize: 10 } ], alignment: "right", margin: [0, 0, 0, 20] });
-  content.push({ text: [ { text: "Note:: ", bold: true }, "In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year 2025-26\n", { text: "Note:: ", bold: true }, "Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet" ], fontSize: 8, italics: true });
+  content.push({
+    margin: [0, 15, 0, 0],
+    stack: [
+      {
+        columns: [
+          { width: "*", text: "" },
+          {
+            width: 150,
+            stack: [
+              { canvas: [{ type: 'rect', x: 37, y: 0, w: 75, h: 95, lineColor: 'black', lineWidth: 1 }], margin: [0, 0, 0, 5] },
+              { text: "Authorized Signature", fontSize: 10, bold: true, alignment: "center" },
+              { text: "SVIT,Vasad", fontSize: 10, alignment: "center" }
+            ]
+          }
+        ],
+        margin: [0, 0, 0, 10]
+      },
+      { 
+          text: [ 
+              { text: "Note:: ", bold: true }, "In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year 2025-26\n", 
+              { text: "Note:: ", bold: true }, "Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet" 
+          ], 
+          fontSize: 8, 
+          italics: true
+      }
+    ]
+  });
   return content;
 }
 
@@ -365,7 +390,7 @@ async function buildReceiptDocument(data: ReceiptData, filename?: string): Promi
 
   const docDefinition: any = {
     pageSize: "A4",
-    pageMargins: [40, 40, 40, 40],
+    pageMargins: [30, 30, 30, 30],
     content: content,
   };
 

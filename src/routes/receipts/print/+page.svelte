@@ -80,7 +80,7 @@
             courseName: course?.name || 'N/A',
             branchName: branch?.name,
             academicYear: academicYear,
-            semester: feePeriod === 'semester' ? 'FIRST SEMESTER' : 'FULL YEAR',
+            semester: feePeriod === 'semester' ? 'SEMESTER' : 'ACADEMIC YEAR',
             paymentType: payment.payment_type || 'fee',
             isProvisional,
             transactionId: payment.transaction_id,
@@ -118,7 +118,7 @@
             courseName: course?.name || 'N/A',
             branchName: branch?.name,
             academicYear: academicYear,
-            semester: feePeriod === 'semester' ? 'FIRST SEMESTER' : 'FULL YEAR',
+            semester: feePeriod === 'semester' ? 'SEMESTER' : 'ACADEMIC YEAR',
             paymentType: payment.payment_type || 'fee',
             isProvisional,
             transactionId: payment.transaction_id,
@@ -190,7 +190,7 @@
             <div class="received-section mb-3">
                 <p class="mb-1">Recieved From,</p>
                 <h5 class="fw-bold mb-2 text-uppercase">{student?.full_name}</h5>
-                <p>The Following amount as Fees for the <strong>{course?.name}</strong> for a <strong>FIRST SEMESTER {academicYear}</strong></p>
+                <p>The Following amount as Fees for the <strong>{course?.name}</strong> for {feePeriod === 'semester' ? 'a' : 'an'} <strong>{feePeriod === 'semester' ? 'SEMESTER' : 'ACADEMIC YEAR'} {academicYear}</strong></p>
             </div>
             <table class="table table-bordered border-dark fee-table mb-2">
                 <thead><tr class="bg-light"><th style="width: 50px;" class="text-center">Sr.</th><th>Particulars</th><th style="width: 150px;" class="text-end">Fees in Rs.</th></tr></thead>
@@ -243,7 +243,7 @@
                             <div>
                                 <h3 class="fw-bold m-0" style="font-size: 1.3rem;">{college?.name || university?.name || 'SARDAR VALLABHBHAI PATEL INSTITUTE OF TECHNOLOGY'}</h3>
                                 <p class="small m-0 text-muted">{college?.address || 'Vasad'}</p>
-                                <p class="small m-0 text-muted">{university?.contact_email || 'admission@svitvasad.ac.in'}</p>
+                                <p class="small m-0 text-muted">{university?.contact_email || 'admission @svitvasad.ac.in'}</p>
                             </div>
                         </div>
                         <div class="text-end">
@@ -308,7 +308,12 @@
         {#if payment.payment_type !== 'tuition_fee' && !isProvisional}
             <!-- SIMPLE ORIGINAL LAYOUT (For Standard Application Fees) -->
             <div class="receipt-header text-center mb-4">
-                <h2 class="m-0 fw-bold">{college?.name || university?.name || 'College Name'}</h2>
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    {#if college?.logo_url || university?.logo_url}
+                        <img src={college?.logo_url || university?.logo_url} alt="Logo" class="me-3" style="height: 60px;">
+                    {/if}
+                    <h2 class="m-0 fw-bold">{college?.name || university?.name || 'College Name'}</h2>
+                </div>
                 <h4 class="mt-2">FEE RECEIPT</h4>
             </div>
             <div class="row mb-4">
