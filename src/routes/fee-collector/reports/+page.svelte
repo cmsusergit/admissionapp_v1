@@ -10,8 +10,8 @@
         course: $page.url.searchParams.get('course') || '',
         branch: $page.url.searchParams.get('branch') || '',
         status: $page.url.searchParams.get('status') || '',
-        start_date: $page.url.searchParams.get('start_date') || '',
-        end_date: $page.url.searchParams.get('end_date') || ''
+        start_date: $page.url.searchParams.get('start_date') || new Date().toISOString().split('T')[0],
+        end_date: $page.url.searchParams.get('end_date') || new Date().toISOString().split('T')[0]
     };
 
     const availableFields = [
@@ -41,8 +41,8 @@
         filters.course = $page.url.searchParams.get('course') || '';
         filters.branch = $page.url.searchParams.get('branch') || '';
         filters.status = $page.url.searchParams.get('status') || '';
-        filters.start_date = $page.url.searchParams.get('start_date') || '';
-        filters.end_date = $page.url.searchParams.get('end_date') || '';
+        filters.start_date = $page.url.searchParams.get('start_date') || new Date().toISOString().split('T')[0];
+        filters.end_date = $page.url.searchParams.get('end_date') || new Date().toISOString().split('T')[0];
     }
 
     $: filteredBranchOptions = filters.course 
@@ -58,6 +58,14 @@
             params.delete('fields');
         }
         return `/fee-collector/export?${params.toString()}`;
+    })();
+
+    $: paymentSummaryExcelUrl = (() => {
+        const params = new URLSearchParams();
+        if (filters.course) params.set('course', filters.course);
+        params.set('start_date', filters.start_date);
+        params.set('end_date', filters.end_date);
+        return `/api/export/payment-summary?${params.toString()}`;
     })();
 
     function applyFilters() {
@@ -226,9 +234,14 @@
                     <button class="btn btn-outline-primary me-2" on:click={openSaveModal}>
                         <i class="bi bi-save"></i> Save Template
                     </button>
-                    <a href={reportUrl} target="_blank" class="btn btn-success">
-                        <i class="bi bi-download me-2"></i> Download CSV
-                    </a>
+                    <div class="btn-group">
+                        <a href={reportUrl} target="_blank" class="btn btn-success">
+                            <i class="bi bi-download me-2"></i> CSV
+                        </a>
+                        <a href={paymentSummaryExcelUrl} target="_blank" class="btn btn-primary">
+                            <i class="bi bi-file-earmark-excel me-2"></i> Summary Excel
+                        </a>
+                    </div>
                 </div>
             </div>
             

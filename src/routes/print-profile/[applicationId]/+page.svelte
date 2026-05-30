@@ -64,7 +64,7 @@
             let rawHtml = data.rawHtml;
 
             // Handle #if / else logic
-            rawHtml = rawHtml.replace(/\{\{#if\s+([a-zA-Z0-9_.\[\]]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g, (match: string, conditionPath: string, trueBlock: string, falseBlock?: string) => {
+            rawHtml = rawHtml.replace(/\{\{#if\s+([a-zA-Z0-9_.!\[\]]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g, (match: string, conditionPath: string, trueBlock: string, falseBlock?: string) => {
                 const condition = getNestedValue(profileData, conditionPath);
                 if (condition && condition !== 'null' && condition !== 'N/A' && condition !== '') {
                     return trueBlock;
@@ -74,7 +74,7 @@
             });
 
             // Replace standard variables
-            compiledHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_.\[\]]+)\s*\}\}/g, (match: string, path: string) => {
+            compiledHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_.!\[\]]+)\s*\}\}/g, (match: string, path: string) => {
                 const value = getNestedValue(profileData, path);
                 return value !== null && value !== undefined ? String(value) : '';
             });

@@ -18,6 +18,8 @@ const fieldSchema = z.object({
     "email",
     "checkbox",
     "file",
+    "image",
+    "document",
   ]),
   is_required: z.coerce.boolean(),
   options: z.string().optional(), // Comma-separated options for select

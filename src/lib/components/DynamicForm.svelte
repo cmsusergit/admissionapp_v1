@@ -75,6 +75,7 @@
 
     let errors = $state<Record<string, string>>({});
     let uploadingFields = $state<Record<string, boolean>>({});
+    let showPreviews = $state<Record<string, boolean>>({});
     let loadingOptions = $state<Record<string, boolean>>({});
     let activeTabId = $state('');
     let dynamicOptions = $state<Record<string, { value: string; label: string }[]>>({});
@@ -504,7 +505,20 @@
         const file = target.files?.[0];
         if (!file) return;
 
-        if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+        // Find field definition in schema to check specific type
+        const field = normalizedSchema.fields.find(f => getKey(f) === fieldName);
+        
+        if (field?.type === 'image') {
+            if (!file.type.startsWith('image/')) {
+                errors[fieldName] = 'Invalid file type. Only Images are allowed for this field.';
+                return;
+            }
+        } else if (field?.type === 'document') {
+            if (file.type !== 'application/pdf') {
+                errors[fieldName] = 'Invalid file type. Only PDF documents are allowed for this field.';
+                return;
+            }
+        } else if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
              errors[fieldName] = 'Invalid file type. Only PDF and Images are allowed.';
              return;
         }
@@ -712,14 +726,14 @@
                 <label class="form-check-label" for={fieldId}>{field.label}</label>
             {/if}
         </div>
-    {:else if field.type === 'file'}
+    {:else if field.type === 'file' || field.type === 'image' || field.type === 'document'}
         <div class="input-group">
             <input
                 type="file"
                 class="form-control"
                 id={fieldId}
                 name={key}
-                accept="image/*,application/pdf"
+                accept={field.type === 'image' ? 'image/*' : field.type === 'document' ? 'application/pdf' : 'image/*,application/pdf'}
                 onchange={(e) => handleFileUpload(e, key)}
                 disabled={readonly || uploadingFields[key]}
             />
@@ -730,25 +744,63 @@
                 </span>
             {/if}
         </div>
-        <div class="form-text">Max size: 2MB. Allowed: PDF, Images.</div>
+        <div class="form-text">
+            Max size: 2MB. 
+            {#if field.type === 'image'}
+                Allowed: Images (JPG, PNG, etc).
+            {:else if field.type === 'document'}
+                Allowed: PDF only.
+            {:else}
+                Allowed: PDF, Images.
+            {/if}
+        </div>
         {#if formData[key]}
-            <div class="mt-1 d-flex align-items-center gap-2">
-                <small class="text-success">File uploaded</small>
-                <a 
-                    href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{formData[key]}" 
-                    target="_blank" 
-                    class="btn btn-sm btn-outline-info"
-                >
-                    View
-                </a>
-                {#if !readonly}
-                    <button 
-                        type="button" 
-                        class="btn btn-sm btn-outline-danger" 
-                        onclick={() => handleFileDelete(key)}
+            <div class="mt-2 d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <small class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> File uploaded</small>
+                    <a 
+                        href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{formData[key]}" 
+                        target="_blank" 
+                        class="btn btn-sm btn-outline-info"
                     >
-                        Delete
-                    </button>
+                        <i class="bi bi-eye"></i> View
+                    </a>
+                    
+                    {#if field.type === 'image' || field.type === 'file'}
+                        <button 
+                            type="button" 
+                            class="btn btn-sm btn-outline-secondary"
+                            onclick={() => showPreviews[key] = !showPreviews[key]}
+                        >
+                            <i class="bi {showPreviews[key] ? 'bi-eye-slash' : 'bi-image'}"></i> 
+                            {showPreviews[key] ? 'Hide' : 'Preview'}
+                        </button>
+                    {/if}
+
+                    {#if !readonly}
+                        <button 
+                            type="button" 
+                            class="btn btn-sm btn-outline-danger" 
+                            onclick={() => handleFileDelete(key)}
+                        >
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
+                    {/if}
+                </div>
+
+                {#if showPreviews[key]}
+                    <div class="mt-1 border rounded p-1 bg-light d-inline-block" style="max-width: fit-content;">
+                        <img 
+                            src="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{formData[key]}" 
+                            alt="Preview" 
+                            class="img-thumbnail" 
+                            style="max-height: 200px; max-width: 100%; object-fit: contain;"
+                            onerror={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=Preview+Not+Available';
+                                (e.target as HTMLImageElement).onerror = null;
+                            }}
+                        />
+                    </div>
                 {/if}
             </div>
         {:else if uploadingFields[key]}

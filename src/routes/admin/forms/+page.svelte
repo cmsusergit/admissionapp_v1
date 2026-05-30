@@ -3,6 +3,8 @@
     import { enhance } from '$app/forms';
     import { writable } from 'svelte/store';
     import { toastStore } from '$lib/stores/toastStore';
+    import { goto } from '$app/navigation';
+    import { page } from '$app/stores';
 
     export let data: PageData;
     export let form: ActionData;
@@ -53,12 +55,48 @@
         };
         showCopyModal = true;
     }
+
+    function handleFilterChange() {
+        const url = new URL($page.url);
+        url.searchParams.set('academic_year_id', data.selectedYearId || '');
+        url.searchParams.set('form_type', data.selectedFormType || 'all');
+        goto(url.toString());
+    }
 </script>
 
 <div class="container-fluid">
-    <h1 class="mb-4">Manage Admission Forms</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Manage Admission Forms</h1>
+        <a href="/admin/forms/new" class="btn btn-primary">Add New Admission Form</a>
+    </div>
 
-    <a href="/admin/forms/new" class="btn btn-primary mb-3">Add New Admission Form</a>
+    <!-- Filters -->
+    <div class="card mb-4 bg-light border">
+        <div class="card-body py-2">
+            <div class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label class="small fw-bold text-muted mb-0">Academic Year</label>
+                    <select class="form-select form-select-sm" bind:value={data.selectedYearId} on:change={handleFilterChange}>
+                        {#each data.academicYears as year}
+                            <option value={year.id}>{year.name} {year.is_active ? '(Active)' : ''}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="small fw-bold text-muted mb-0">Form Type</label>
+                    <select class="form-select form-select-sm" bind:value={data.selectedFormType} on:change={handleFilterChange}>
+                        <option value="all">All Types</option>
+                        {#each data.formTypes as ft}
+                            <option value={ft.name}>{ft.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="col text-end">
+                    <span class="badge bg-secondary">{data.admissionForms.length} Forms Found</span>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="card">
         <div class="card-body p-0">
@@ -75,7 +113,10 @@
                     <tbody>
                         {#each data.admissionForms as form}
                             <tr>
-                                <td>{form.courses?.name}</td>
+                                <td>
+                                    <span class="fw-bold">{form.courses?.name}</span><br>
+                                    <small class="text-muted">{form.courses?.code}</small>
+                                </td>
                                 <td>{form.admission_cycles?.name} ({form.admission_cycles?.academic_years?.name})</td>
                                 <td>
                                     <span class="badge bg-secondary">{form.form_type}</span>
@@ -87,6 +128,13 @@
                                     <a href="/admin/forms/{form.id}/edit" class="btn btn-sm btn-info me-2">Edit</a>
                                     <button class="btn btn-sm btn-secondary me-2" on:click={() => openCopyModal(form)}>Copy</button>
                                     <button class="btn btn-sm btn-danger" on:click={() => openDeleteModal(form)}>Delete</button>
+                                </td>
+                            </tr>
+                        {:else}
+                            <tr>
+                                <td colspan="4" class="text-center py-5 text-muted">
+                                    <i class="bi bi-info-circle mb-2 d-block fs-4"></i>
+                                    No admission forms found for the selected filters.
                                 </td>
                             </tr>
                         {/each}

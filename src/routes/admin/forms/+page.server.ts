@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 
-export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
+export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthenticatedUser, userProfile } }) => {
     const authenticatedUser = await getAuthenticatedUser();
 
     if (!authenticatedUser) {
@@ -12,14 +12,47 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         throw redirect(303, '/login'); // Redirect non-admin users
     }
 
-    const { data: forms, error: formsError } = await supabase
+    // Get filter values from URL
+    const academicYearId = url.searchParams.get('academic_year_id');
+    const selectedFormType = url.searchParams.get('form_type') || 'all';
+
+    // 1. Fetch academic years to power the filter
+    const { data: academicYears } = await supabase
+        .from('academic_years')
+        .select('id, name, is_active')
+        .order('name', { ascending: false });
+
+    const currentYear = academicYears?.find(y => y.is_active) || academicYears?.[0];
+    const filterYearId = academicYearId || currentYear?.id;
+
+    // 2. Fetch cycles for the selected academic year to filter forms
+    let cycleIds: string[] = [];
+    if (filterYearId) {
+        const { data: cycles } = await supabase
+            .from('admission_cycles')
+            .select('id')
+            .eq('academic_year_id', filterYearId);
+        cycleIds = cycles?.map(c => c.id) || [];
+    }
+
+    // 3. Build admission forms query
+    let query = supabase
         .from('admission_forms')
         .select(`
             id, course_id, cycle_id, form_type, is_enabled, created_at,
             courses(name, code, colleges(name)),
-            admission_cycles(name, academic_years(name))
-        `)
-        .order('created_at', { ascending: false });
+            admission_cycles!inner(name, academic_years(name, id))
+        `);
+
+    if (filterYearId) {
+        query = query.in('cycle_id', cycleIds);
+    }
+
+    if (selectedFormType !== 'all') {
+        query = query.eq('form_type', selectedFormType);
+    }
+
+    const { data: forms, error: formsError } = await query.order('created_at', { ascending: false });
 
     const { data: courses, error: coursesError } = await supabase.from('courses').select('id, name');
     const { data: admissionCycles, error: cyclesError } = await supabase.from('admission_cycles').select('id, name, academic_years(name)');
@@ -27,26 +60,16 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     if (formsError) {
         console.error('Error fetching admission forms:', formsError.message);
-        return { admissionForms: [], courses: [], admissionCycles: [], formTypes: [] };
-    }
-    if (coursesError) {
-        console.error('Error fetching courses for dropdown:', coursesError.message);
-        return { admissionForms: forms || [], courses: [], admissionCycles: [], formTypes: [] };
-    }
-    if (cyclesError) {
-        console.error('Error fetching admission cycles for dropdown:', cyclesError.message);
-        return { admissionForms: forms || [], courses: courses || [], admissionCycles: [], formTypes: [] };
-    }
-    if (formTypesError) {
-        console.error('Error fetching form types:', formTypesError.message);
-        return { admissionForms: forms || [], courses: courses || [], admissionCycles: admissionCycles || [], formTypes: [] };
     }
 
     return {
         admissionForms: forms || [],
         courses: courses || [],
         admissionCycles: admissionCycles || [],
-        formTypes: formTypes || []
+        formTypes: formTypes || [],
+        academicYears: academicYears || [],
+        selectedYearId: filterYearId,
+        selectedFormType
     };
 };
 

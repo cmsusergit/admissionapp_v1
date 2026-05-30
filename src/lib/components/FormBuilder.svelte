@@ -740,7 +740,9 @@
                             <option value="textarea">Textarea</option>
                             <option value="select">Select</option>
                             <option value="checkbox">Checkbox</option>
-                            <option value="file">File Upload</option>
+                            <option value="file">File Upload (Any)</option>
+                            <option value="image">Document (Photo)</option>
+                            <option value="document">Document (Document)</option>
                         </select>
                     </div>
                 {/if}

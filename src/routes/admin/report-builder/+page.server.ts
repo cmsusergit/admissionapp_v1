@@ -179,8 +179,8 @@ export const actions: Actions = {
             const selectString = buildSelectString([{ path: column, label: '' }], table);
 
             // Construct query
-            // We fetch 50 rows to sample unique values.
-            let query = supabase.from(table).select(selectString).limit(50);
+            // We fetch 1000 rows to sample unique values.
+            let query = supabase.from(table).select(selectString).limit(1000);
             
             // Apply security filter to ensure we don't leak data from other colleges if admin is restricted (though admin is global usually)
             // But if we reuse this for other roles, it matters.

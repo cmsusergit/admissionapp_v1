@@ -11,6 +11,18 @@
         goto(url.toString());
     }
 
+    function handleFilterChange(e: Event) {
+        const target = e.target as HTMLSelectElement;
+        const url = new URL($page.url);
+        if (target.value === 'all') {
+            url.searchParams.delete('form_type');
+        } else {
+            url.searchParams.set('form_type', target.value);
+        }
+        url.searchParams.set('page', '1'); // Reset to page 1 on filter change
+        goto(url.toString());
+    }
+
     $: totalPages = Math.ceil((data.incompleteCount || 0) / (data.limit || 10));
 </script>
 
@@ -47,8 +59,24 @@
         </div>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3>Recent Activity</h3>
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <h3 class="mb-0">Recent Activity</h3>
+            <div class="d-flex align-items-center gap-2">
+                <label for="formTypeFilter" class="form-label mb-0 small text-muted">Filter Type:</label>
+                <select 
+                    id="formTypeFilter" 
+                    class="form-select form-select-sm w-auto" 
+                    value={data.selectedFormType} 
+                    on:change={handleFilterChange}
+                >
+                    <option value="all">All Form Types</option>
+                    {#each data.formTypes as ft}
+                        <option value={ft.name}>{ft.name}</option>
+                    {/each}
+                </select>
+            </div>
+        </div>
         <a href="/deo/apply" class="btn btn-primary">Create New Application</a>
     </div>
 

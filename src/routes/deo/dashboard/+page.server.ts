@@ -50,10 +50,14 @@ export const load: PageServerLoad = async ({
   );
   const { count: verifiedCount } = await verifiedQuery;
 
-  // Pagination for Incomplete Forms
+  // Pagination and Filtering
   const page = parseInt(url.searchParams.get("page") || "1");
   const limit = parseInt(url.searchParams.get("limit") || "10");
+  const formType = url.searchParams.get("form_type") || "all";
   const offset = (page - 1) * limit;
+
+  // Fetch available form types for filter
+  const { data: formTypes } = await supabase.from("form_types").select("name").order("name");
 
   // Fetch incomplete applications (draft or needs_correction)
   let incompleteQuery = supabase
@@ -79,6 +83,10 @@ export const load: PageServerLoad = async ({
     "applications",
   );
 
+  if (formType !== "all") {
+    incompleteQuery = incompleteQuery.eq("form_type", formType);
+  }
+
   const {
     data: incompleteApplications,
     count: incompleteCount,
@@ -90,8 +98,6 @@ export const load: PageServerLoad = async ({
   if (incompleteError) {
     console.error("Error fetching incomplete apps:", incompleteError);
   }
-  console.log("Incomplete Apps Count:", incompleteCount);
-  console.log("Incomplete Apps Data Length:", incompleteApplications?.length);
 
   // Fetch recent SUBMITTED/VERIFIED applications to list separately
   let recentQuery = supabase
@@ -124,6 +130,10 @@ export const load: PageServerLoad = async ({
     "applications",
   );
 
+  if (formType !== "all") {
+    recentQuery = recentQuery.eq("form_type", formType);
+  }
+
   const { data: recentApplications, error: recentError } = await recentQuery
     .order("updated_at", { ascending: false })
     .limit(10);
@@ -137,7 +147,9 @@ export const load: PageServerLoad = async ({
     incompleteApplications: incompleteApplications || [],
     recentApplications: recentApplications || [],
     incompleteCount: incompleteCount || 0,
+    formTypes: formTypes || [],
     page,
     limit,
+    selectedFormType: formType
   };
 };

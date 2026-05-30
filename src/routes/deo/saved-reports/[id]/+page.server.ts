@@ -25,6 +25,50 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
         throw error(403, 'Forbidden');
     }
     
+    // NEW: Fetch dynamic options for select parameters to ensure they are complete
+    if (template.configuration.parameters) {
+        for (const param of template.configuration.parameters) {
+            if (param.type === 'select') {
+                try {
+                    let uniqueValues = new Set(param.options || []);
+                    const col = param.column;
+
+                    // 1. Check for known master tables based on column path/name
+                    if (col.includes('courses') && col.includes('name')) {
+                        const { data } = await supabase.from('courses').select('name');
+                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                    } else if (col.includes('branches') && col.includes('name')) {
+                        const { data } = await supabase.from('branches').select('name');
+                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                    } else if (col.includes('form_type') || col === 'form_type') {
+                        const { data } = await supabase.from('form_types').select('name');
+                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                    } else if (col.includes('admission_cycles') && col.includes('name')) {
+                        const { data } = await supabase.from('admission_cycles').select('name');
+                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                    } else {
+                        const { data: optionsData } = await supabase
+                            .from(template.base_table)
+                            .select(param.column)
+                            .limit(2000);
+                        
+                        if (optionsData) {
+                            optionsData.forEach((row: any) => {
+                                const val = getValueByPath(row, param.column);
+                                if (val !== null && val !== undefined && val !== '') {
+                                    uniqueValues.add(String(val));
+                                }
+                            });
+                        }
+                    }
+                    param.options = Array.from(uniqueValues).filter(v => v).sort();
+                } catch (e) {
+                    console.error(`Failed to fetch dynamic options for ${param.name}:`, e);
+                }
+            }
+        }
+    }
+    
     return { template };
 };
 

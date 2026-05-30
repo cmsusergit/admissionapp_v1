@@ -32,7 +32,8 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                     student_profiles(*)
                 ),
                 marks(*),
-                account_admissions(admission_number)
+                account_admissions(admission_number),
+                payments(receipt_number, payment_type, status)
             `)
             .eq('id', applicationId)
             .single();
@@ -41,6 +42,12 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             console.error('Data fetch error:', appError);
             return json({ error: 'Failed to fetch application data' }, { status: 500 });
         }
+
+        // Extract relevant payment receipt
+        const isProvType = (appData.form_type || '').toLowerCase().includes('provisional');
+        const payment = (appData.payments || []).find((p: any) => 
+            (p.payment_type || '').toLowerCase() === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number
+        ) || (appData.payments || []).find((p: any) => p.receipt_number);
 
         // Structure the data for easy templating
         // Handle student_profiles being an array (common in Supabase joins)
@@ -96,6 +103,7 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                 academic_year: appData.admission_cycles?.academic_years?.name,
                 submitted_at: appData.submitted_at,
                 admission_number: appData.account_admissions?.admission_number,
+                receipt_number: payment?.receipt_number || 'N/A',
                 ...appData.form_data // Spread form_data directly for easy access (acpc_number, board, etc.)
             },
             course: {
@@ -109,7 +117,10 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                 university_name: appData.courses?.colleges?.universities?.name
             },
             marks: formattedMarks,
-            entrance_marks: appData.form_data?.entrance_marks || {}
+            entrance_marks: appData.form_data?.entrance_marks || {},
+            "payments!application_id": {
+                receipt_number: payment?.receipt_number || 'N/A'
+            }
         };
 
         return json({ success: true, data: flatData });

@@ -411,11 +411,7 @@
     // Function to handle application submission
     async function handleSubmitApplication() {
         uiMessage = null;
-        if (!currentApplicationId) {
-            uiMessage = { type: 'danger', text: 'Please save as draft before submitting.' };
-            return;
-        }
-
+        
         if (dynamicForm && !dynamicForm.validate()) {
             uiMessage = { type: 'danger', text: 'Please fill in all required fields marked with *.' };
             return;
@@ -431,7 +427,10 @@
             saveFormPayload.append('branch_id', selectedBranchId);
             saveFormPayload.append('form_type', selectedFormType);
             saveFormPayload.append('form_data', JSON.stringify(applicationFormData));
-            saveFormPayload.append('application_id', currentApplicationId);
+            
+            if (currentApplicationId) {
+                saveFormPayload.append('application_id', currentApplicationId);
+            }
 
             // Silent save
             const saveResponse = await fetch('?/saveApplication', { method: 'POST', body: saveFormPayload });
@@ -440,6 +439,12 @@
             if (saveResult.type === 'success' && saveResult.data?.applicationId) {
                 currentApplicationId = saveResult.data.applicationId;
                 console.log('Synchronized applicationId after silent save:', currentApplicationId);
+            } else if (saveResult.type === 'failure') {
+                throw new Error(saveResult.data?.message || 'Failed to save application data before submission.');
+            }
+
+            if (!currentApplicationId) {
+                throw new Error('Failed to acquire application ID.');
             }
 
             const formPayload = new FormData();
@@ -580,9 +585,8 @@
                         readonly={uiMessage?.text?.includes('locked')}
                     />
                     {#if !uiMessage?.text?.includes('locked')}
-                        <div class="mt-3">
-                            <button class="btn btn-secondary me-2" on:click={handleSaveDraft}>Save as Draft</button>
-                            <button class="btn btn-success" on:click={handleSubmitApplication} disabled={!currentApplicationId}>Submit Application</button>
+                        <div class="mt-3 text-end">
+                            <button class="btn btn-success" on:click={handleSubmitApplication}>Submit Application</button>
                         </div>
                     {/if}
                 {:else}

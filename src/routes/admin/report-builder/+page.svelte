@@ -56,6 +56,11 @@
             return `application.${lastPart}`;
         }
 
+        // 8. Payment Mapping
+        if (path.includes('payments!application_id')) {
+            return `application.receipt_number`;
+        }
+
         // 7. Form Data Mapping (New)
         if (path.includes('form_data')) {
             const parts = path.split('.');
@@ -377,29 +382,29 @@
                                         </select>
                                     </div>
                                     {#if newParam.type === 'select'}
-                                        <div class="col-12">
-                                            <label class="x-small form-label fw-bold">Options (csv)</label>
-                                            <div class="input-group input-group-sm">
-                                                <input type="text" class="form-control" bind:value={newParam.options} placeholder="A,B,C">
-                                                <form method="POST" action="?/suggest_options" use:enhance={() => {
-                                                    suggesting = true;
-                                                    return async ({ update }) => {
-                                                        await update();
-                                                        suggesting = false;
-                                                    };
-                                                }}>
-                                                    <input type="hidden" name="table" value={selectedTable}>
-                                                    <input type="hidden" name="column" value={newParam.column}>
-                                                    <button class="btn btn-outline-secondary" title="Auto-detect from DB" disabled={!newParam.column || suggesting}>
-                                                        {#if suggesting}
-                                                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                                        {:else}
-                                                            <i class="bi bi-magic"></i>
-                                                        {/if}
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        </div>
+                                       <div class="col-12">
+                                           <label class="x-small form-label fw-bold">Options (csv)</label>
+                                           <div class="input-group input-group-sm">
+                                               <textarea class="form-control" bind:value={newParam.options} placeholder="A,B,C" rows="3"></textarea>
+                                               <form method="POST" action="?/suggest_options" use:enhance={() => {
+                                                   suggesting = true;
+                                                   return async ({ update }) => {
+                                                       await update();
+                                                       suggesting = false;
+                                                   };
+                                               }}>
+                                                   <input type="hidden" name="table" value={selectedTable}>
+                                                   <input type="hidden" name="column" value={newParam.column}>
+                                                   <button class="btn btn-outline-secondary h-100" title="Auto-detect from DB" disabled={!newParam.column || suggesting}>
+                                                       {#if suggesting}
+                                                           <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                                       {:else}
+                                                           <i class="bi bi-magic"></i>
+                                                       {/if}
+                                                   </button>
+                                               </form>
+                                           </div>
+                                       </div>
                                     {/if}
                                 </div>
                                 <button class="btn btn-sm btn-primary w-100" on:click={addParameter} disabled={!newParam.column || !newParam.label}>Add Parameter</button>

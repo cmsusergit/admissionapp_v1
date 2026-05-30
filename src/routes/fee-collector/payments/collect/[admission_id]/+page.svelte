@@ -374,6 +374,17 @@
                             </div>
                         </div>
 
+                        <div class="mb-4">
+                            <label for="remarks" class="form-label fw-bold">Internal Comment / Remarks</label>
+                            <textarea 
+                                id="remarks" 
+                                name="remarks" 
+                                class="form-control" 
+                                rows="2" 
+                                placeholder="Add any notes about this payment (e.g. cheque details, partial payment reason)..."
+                            ></textarea>
+                        </div>
+
                         <div class="d-grid">
                             <button type="submit" class="btn btn-primary btn-lg py-3 fw-bold" disabled={totalCollectingNow <= 0 || initialRemainingAmount <= 0}>
                                 <i class="bi bi-cash-stack me-2"></i> Confirm & Record Payment

@@ -93,7 +93,8 @@
                                 <option value="textarea">Text Area</option>
                                 <option value="select">Dropdown (Select)</option>
                                 <option value="checkbox">Checkbox</option>
-                                <option value="file">File (Document/Photo)</option>
+                                <option value="image">Document (Photo)</option>
+                                <option value="document">Document (Document)</option>
                             </select>
                         </div>
                         
