@@ -38,7 +38,7 @@ export const load: PageServerLoad = async ({
                 cycle_id,
                 form_type,
                 student_user:users!applications_student_id_fkey(full_name, email, student_profiles(enrollment_number)),
-                courses(name, code, colleges(name, logo_url, address, universities(name, logo_url, address, contact_email, website))),
+                courses(name, code, colleges(name, code, logo_url, address, universities(name, logo_url, address, contact_email, website))),
                 branches(name, code),
                 account_admissions(admission_number),
                 admission_cycles(name, academic_years(name)),

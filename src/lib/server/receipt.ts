@@ -14,89 +14,80 @@ export async function generateReceiptNumber(
     shortCode?: string, // New optional parameter
     formType?: string // Added formType for conditional prefixing
 ): Promise<string> {
-    
-    // Determine Prefix
-    let prefix = 'REC-';
-    switch (paymentType) {
-        case 'provisional_fee': prefix = 'PROV-'; break;
-        case 'application_fee': 
-            // SPECIAL CASE: MQ/NRI form types use MQ- prefix for application fees
-            if (formType === 'MQ/NRI') {
-                prefix = 'MQ-';
-            } else {
-                prefix = 'APP-';
-            }
-            break;
-        case 'tuition_fee': prefix = 'TUIT-'; break;
-        default: prefix = 'GEN-';
-    }
+    // 1. Fetch Metadata (Academic Year and Course)
+    const { data: ayData } = await supabase
+        .from('academic_years')
+        .select('short_code, name')
+        .eq('id', academicYearId)
+        .single();
 
-    // Determine Academic Year Shortcode for Format (e.g., "24-25" from "2024-2025")
-    let academicYearShortcode = shortCode || '';
-    if (!academicYearShortcode && yearName) {
-        const parts = yearName.split('-');
-        if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 4) {
-            academicYearShortcode = `${parts[0].slice(-2)}-${parts[1].slice(-2)}`; // e.g., '24-25'
-        } else if (parts.length === 1 && parts[0].length === 4) {
-            academicYearShortcode = parts[0].slice(-2); // e.g., '24' for '2024'
-        } else {
-            academicYearShortcode = yearName; // Fallback if format is unexpected
-        }
-    }
-
-    // Fetch course code for the receipt format
     const { data: courseData, error: courseError } = await supabase
         .from('courses')
         .select('code')
         .eq('id', courseId)
         .single();
 
-    let courseCode = '';
-    if (courseData?.code) {
-        courseCode = courseData.code;
-    } else if (courseError) {
-        console.warn('Error fetching course code:', courseError.message);
+    let courseCode = courseData?.code || '';
+    if (courseError) console.warn('Error fetching course code:', courseError.message);
+
+    // Determine Academic Year Shortcode
+    let academicYearShortcode = ayData?.short_code || '';
+    if (!academicYearShortcode && yearName) {
+        const parts = yearName.split('-');
+        if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 4) {
+            academicYearShortcode = `${parts[0].slice(-2)}-${parts[1].slice(-2)}`;
+        } else if (parts.length === 1 && parts[0].length === 4) {
+            academicYearShortcode = parts[0].slice(-2);
+        } else {
+            academicYearShortcode = yearName;
+        }
     }
 
-    // 1. Fetch Sequence
-    let query = supabase
+    // 2. Determine Default Prefix (for creation if missing)
+    let defaultPrefix = 'REC-';
+    switch (paymentType) {
+        case 'provisional_fee': defaultPrefix = 'PROV-'; break;
+        case 'application_fee': 
+            defaultPrefix = (formType === 'MQ/NRI') ? 'MQ-' : 'APP-';
+            break;
+        case 'tuition_fee': defaultPrefix = 'TUIT-'; break;
+        default: defaultPrefix = 'GEN-';
+    }
+
+    // 3. Fetch Sequence
+    let { data: sequence, error: fetchError } = await supabase
         .from('receipt_sequences')
         .select('id, current_sequence, prefix')
         .eq('college_id', collegeId)
         .eq('course_id', courseId)
         .eq('academic_year_id', academicYearId)
-        .eq('payment_type', paymentType);
+        .eq('payment_type', paymentType)
+        .maybeSingle();
 
-    let { data: sequence, error } = await query.maybeSingle();
-
-    // 2. Create if missing
+    // 4. Create if missing
     if (!sequence) {
-        const payload: any = {
-            college_id: collegeId,
-            course_id: courseId,
-            academic_year_id: academicYearId,
-            payment_type: paymentType,
-            prefix: prefix,
-            current_sequence: 0
-        };
-
         const { data: newSeq, error: createError } = await supabase
             .from('receipt_sequences')
-            .insert(payload)
+            .insert({
+                college_id: collegeId,
+                course_id: courseId,
+                academic_year_id: academicYearId,
+                payment_type: paymentType,
+                prefix: defaultPrefix,
+                current_sequence: 0
+            })
             .select()
             .single();
         
         if (createError) {
             console.error('Error creating receipt sequence:', createError);
-            // Fallback to timestamp if sequence fails to prevent blocking payment
             return `REC-${Date.now()}`;
         }
         sequence = newSeq;
     }
 
-    // 3. Increment
+    // 5. Increment
     const newSeqNum = (sequence.current_sequence || 0) + 1;
-    
     const { error: updateError } = await supabase
         .from('receipt_sequences')
         .update({ current_sequence: newSeqNum })
@@ -104,14 +95,14 @@ export async function generateReceiptNumber(
 
     if (updateError) {
         console.error('Error updating receipt sequence:', updateError);
-        return `REC-${Date.now()}`; // Fallback
+        return `REC-${Date.now()}`;
     }
 
-    // 4. Format: PREFIX-YYCOURSECODE-0001 (e.g., PROV-26BE-0001)
-    const courseCodePart = courseCode ? courseCode : '';
-    const yearCoursePart = academicYearShortcode && courseCodePart ? 
-        `${academicYearShortcode}${courseCodePart}` : 
-        (academicYearShortcode || courseCodePart || '');
+    // 6. Final Format using Sequence Prefix
+    const prefix = sequence.prefix || defaultPrefix;
+    const yearCoursePart = academicYearShortcode && courseCode ? 
+        `${academicYearShortcode}${courseCode}` : 
+        (academicYearShortcode || courseCode || '');
     
     return `${prefix}${yearCoursePart ? yearCoursePart + '-' : ''}${newSeqNum.toString().padStart(4, '0')}`;
 }

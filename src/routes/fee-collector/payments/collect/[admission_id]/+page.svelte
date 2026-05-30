@@ -16,15 +16,26 @@
     let feePeriod = $state('year'); 
     let paymentDate = $state(new Date().toISOString().split('T')[0]);
     let admissionCategoryCode = $state('');
-    let selectedFeeSchemeId = $state(app.assigned_fee_scheme_id || data.feeStructure?.fee_scheme_id || '');
+    let selectedFeeSchemeId = $state(
+        app.assigned_fee_scheme_id || 
+        data.feeStructure?.fee_scheme_id || 
+        data.feeSchemes.find((s: any) => s.name.toLowerCase() === 'general')?.id || 
+        ''
+    );
     let showSchemeEdit = $state(false);
 
     let paymentModes = $state([
         { type: 'cash', amount: 0, reference: '' },
         { type: 'online', amount: 0, reference: '' },
         { type: 'cheque', amount: 0, reference: '' },
-        { type: 'dd', amount: 0, reference: '' }
+        { type: 'acpc', amount: 20000, reference: '' },
+        { type: 'advance', amount: 0, reference: '' },
+        { type: 'freeship', amount: 0, reference: '' }
     ]);
+
+    // Helpers to access specific modes safely
+    let simpleModes = $derived(paymentModes.filter(m => ['cash', 'acpc', 'advance', 'freeship'].includes(m.type)));
+    let detailedModes = $derived(paymentModes.filter(m => ['online', 'cheque'].includes(m.type)));
 
     // DERIVED CALCULATIONS
     let totalPaidForStudent = $derived(data.studentPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
@@ -113,10 +124,10 @@
         }));
         
         let universityData = {
-            name: 'SVIT, Vasad',
-            address: 'Vasad, Gujarat',
-            contactEmail: 'admission@svitvasad.ac.in',
-            logoUrl: undefined
+            name: college?.name || 'SVIT, Vasad',
+            address: college?.address || 'Vasad, Gujarat',
+            contactEmail: college?.universities?.contact_email || 'admission@svitvasad.ac.in',
+            logoUrl: college?.logo_url || college?.universities?.logo_url
         };
 
         let periodDisplay: 'SEMESTER' | 'ACADEMIC YEAR';
@@ -126,12 +137,15 @@
             periodDisplay = 'ACADEMIC YEAR'; // Default for others
         }
         
+        const studentProfiles = student?.student_profiles;
+        const enrollmentNumber = (Array.isArray(studentProfiles) ? studentProfiles[0] : studentProfiles)?.enrollment_number;
+        
         return {
             receiptNumber: payment.receipt_number || 'N/A',
             date: payment.payment_date,
             studentName: student?.full_name || student?.email || 'N/A',
             email: student?.email || '',
-            enrollmentNumber: student?.student_profiles?.[0]?.enrollment_number,
+            enrollmentNumber: enrollmentNumber,
             admissionNumber: admission.admission_number,
             courseName: app.courses.name || 'N/A',
             branchName: app.branches?.name,
@@ -143,6 +157,7 @@
             amount: Number(payment.amount),
             totalStructureFee: Number(payment.amount), // Fallback
             feeBreakdown: feeBreakdown.length > 0 ? feeBreakdown : undefined,
+            collegeAlias: college?.code || 'SVIT',
             paymentModes: (payment.payment_breakdown || []).map((m: any) => ({
                 mode: m.type || m.mode,
                 amount: Number(m.amount),
@@ -200,7 +215,7 @@
                         </div>
                         <div class="col-6">
                             <small class="text-muted d-block text-uppercase">Scheme</small>
-                            <span class="fw-bold text-primary">{data.feeStructure?.fee_schemes?.name || 'Default'}</span>
+                            <span class="fw-bold text-primary">{data.feeStructure?.fee_schemes?.name || 'General'}</span>
                             <button class="btn btn-sm p-0 ms-2 text-muted" on:click={() => showSchemeEdit = !showSchemeEdit}>
                                 <i class="bi bi-pencil-square"></i>
                             </button>
@@ -281,7 +296,7 @@
                         <div class="row g-4 mb-4">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Admission Category Code</label>
-                                <input type="text" name="admission_category_code" class="form-control" placeholder="e.g. V, F, M, ACPC" bind:value={admissionCategoryCode} required />
+                                <input type="text" name="admission_category_code" class="form-control" placeholder="e.g. V, F, M, G" bind:value={admissionCategoryCode} required />
                                 <small class="text-muted">Used for Enrollment ID generation (e.g., 'V' for Vacant)</small>
                             </div>
                             <div class="col-md-6">
@@ -291,20 +306,39 @@
                         </div>
 
                         <div class="mb-4">
-                            <label class="form-label fw-bold mb-3">Payment Modes (Hybrid Collection)</label>
+                            <label class="form-label fw-bold mb-3">Payment Details (Hybrid Collection)</label>
+                            
+                            <!-- Simple Amount Inputs Grid -->
+                            <div class="row g-3 mb-4">
+                                {#each simpleModes as mode}
+                                    <div class="col-md-6">
+                                        <div class="p-3 bg-light rounded border">
+                                            <label class="form-label small fw-bold text-uppercase">{mode.type === 'acpc' ? 'ACPC/ACPDC' : mode.type}</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="number" class="form-control" bind:value={mode.amount} min="0" placeholder="0.00">
+                                            </div>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+
+                            <!-- Detailed Transaction Table -->
                             <div class="table-responsive rounded border">
                                 <table class="table table-hover align-middle mb-0">
                                     <thead class="table-light">
                                         <tr>
-                                            <th class="ps-3">Mode</th>
+                                            <th class="ps-3">Transaction Mode</th>
                                             <th width="150">Amount (₹)</th>
                                             <th class="pe-3">Reference / Transaction ID</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {#each paymentModes as mode}
+                                        {#each detailedModes as mode}
                                             <tr>
-                                                <td class="ps-3 text-capitalize fw-medium">{mode.type}</td>
+                                                <td class="ps-3 text-capitalize fw-medium">
+                                                    {mode.type === 'cheque' ? 'Cheque/DD' : mode.type}
+                                                </td>
                                                 <td>
                                                     <input type="number" class="form-control form-control-sm" bind:value={mode.amount} min="0" placeholder="0.00">
                                                 </td>

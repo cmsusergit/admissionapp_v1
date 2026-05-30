@@ -42,6 +42,7 @@ export interface ReceiptData {
     address?: string;
     contactEmail?: string;
   };
+  collegeAlias?: string;
 }
 
 function formatCurrency(amount: any): string {
@@ -116,9 +117,9 @@ function createProvisionalReceiptContent(data: ReceiptData, copyLabel: string): 
     headerRow.push({
         width: "*",
         stack: [
-                { text: data.university.name.toUpperCase(), fontSize: 10, bold: true, alignment: "center", margin: [0, 0, 0, 1] },
-            { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" },
-            { text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 9, alignment: "center" },
+                { text: data.university.name.toUpperCase(), fontSize: 12, bold: true, alignment: "center", margin: [0, 0, 0, 1] },
+            { text: data.university.address || "Vasad", fontSize: 10, alignment: "center" },
+            { text: data.university.contactEmail || "admission@svitvasad.ac.in", fontSize: 10, alignment: "center" },
         ],
         margin: [0, 5, 0, 0] // Vertical alignment adjustment
     });
@@ -137,7 +138,7 @@ function createProvisionalReceiptContent(data: ReceiptData, copyLabel: string): 
         columns: headerRow,
         margin: [0, 0, 0, 15]
     });
-    content.push({ text: "FEE RECEIPT", fontSize: 14, bold: true, alignment: "center", margin: [0, 0, 0, 15] });
+    content.push({ text: "FEE RECEIPT", fontSize: 16, bold: true, alignment: "center", margin: [0, 0, 0, 15] });
     content.push({ columns: [ { text: `Receipt No: ${data.receiptNumber}`, bold: true, fontSize: 11 }, { text: `Date: ${formatDate(data.date)}`, alignment: "right", fontSize: 11 } ], margin: [0, 0, 0, 10] });
     content.push({
         columns: [
@@ -186,8 +187,8 @@ function createSimpleReceiptContent(data: ReceiptData, copyLabel: string): any[]
     headerRow.push({
         width: "*",
         stack: [
-                      { text: data.university.name.toUpperCase(), fontSize: 10, bold: true, alignment: "center" },
-                      { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" }
+                      { text: data.university.name.toUpperCase(), fontSize: 12, bold: true, alignment: "center" },
+                      { text: data.university.address || "Vasad", fontSize: 10, alignment: "center" }
                   ],
                   margin: [0, 2, 0, 0]    });
 
@@ -199,7 +200,7 @@ function createSimpleReceiptContent(data: ReceiptData, copyLabel: string): any[]
         margin: [0, 0, 0, 15]
     });
 
-    content.push({ text: "FEE RECEIPT", fontSize: 12, bold: true, alignment: "center", margin: [0, 0, 0, 20] });
+    content.push({ text: "FEE RECEIPT", fontSize: 16, bold: true, alignment: "center", margin: [0, 0, 0, 20] });
     content.push({
       columns: [
         { width: "*", stack: [ { text: `Receipt No: ${data.receiptNumber}`, bold: true }, { text: `Date: ${formatDate(data.date)}` } ] },
@@ -250,12 +251,23 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
   }
 
   // Middle column: Centered University Info
+  const universityName = data.university.name.toUpperCase();
+  const nameParts = universityName.split('(');
+  const universityTitleStack: any[] = [];
+  
+  if (nameParts.length > 1) {
+      universityTitleStack.push({ text: nameParts[0].trim(), fontSize: 12, bold: true, alignment: "center" });
+      universityTitleStack.push({ text: '(' + nameParts.slice(1).join('(').trim(), fontSize: 12, bold: true, alignment: "center", margin: [0, 0, 0, 1] });
+  } else {
+      universityTitleStack.push({ text: universityName, fontSize: 12, bold: true, alignment: "center", margin: [0, 0, 0, 1] });
+  }
+
   headerRow.push({
       width: "*",
       stack: [
-          { text: data.university.name.toUpperCase(), fontSize: 10, bold: true, alignment: "center" },
-          { text: data.university.address || "Vasad", fontSize: 9, alignment: "center" },
-          { text: `Academic Year: ${data.academicYear || "-"}`, fontSize: 10, bold: true, alignment: "center", margin: [0, 2, 0, 0] },
+          ...universityTitleStack,
+          { text: data.university.address || "Vasad", fontSize: 10, alignment: "center" },
+          { text: `Academic Year: ${data.academicYear || "-"}`, fontSize: 11, bold: true, alignment: "center", margin: [0, 2, 0, 0] },
       ],
       margin: [0, 2, 0, 0]
   });
@@ -294,15 +306,17 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
   const cash = modes.find(m => m.mode.toLowerCase() === 'cash');
   const cheque = modes.find(m => m.mode.toLowerCase() === 'cheque' || m.mode.toLowerCase() === 'dd');
   const online = modes.find(m => m.mode.toLowerCase() === 'online');
+  const advance = modes.find(m => m.mode.toLowerCase() === 'advance');
+  const freeship = modes.find(m => m.mode.toLowerCase() === 'freeship');
   const acpc = modes.find(m => m.mode.toLowerCase() === 'acpc');
   content.push({
     table: {
       widths: ["*", "*", "*", "*"],
       body: [
-        [ { text: "CASH", fontSize: 9, bold: true, fillColor: "#f9f9f9" }, { text: `Amount: ${cash ? formatCurrency(cash.amount) : "0.00"}`, fontSize: 8 }, { text: "ADVANCE Amount: 0", fontSize: 8 }, { text: "Freeship Amount: 0", fontSize: 8 } ],
+        [ { text: "CASH", fontSize: 9, bold: true, fillColor: "#f9f9f9" }, { text: `Amount: ${cash ? formatCurrency(cash.amount) : "0.00"}`, fontSize: 8 }, { text: `ADVANCE Amount: ${advance ? formatCurrency(advance.amount) : "0.00"}`, fontSize: 8 }, { text: `Freeship Amount: ${freeship ? formatCurrency(freeship.amount) : "0.00"}`, fontSize: 8 } ],
         [ { text: "DD/Cheque", fontSize: 9, bold: true, fillColor: "#f9f9f9" }, { text: `Amount: ${cheque ? formatCurrency(cheque.amount) : "0.00"}`, fontSize: 8 }, { text: `Bank Name: ${cheque?.bankName || "-"}`, fontSize: 8 }, { text: `Ref.: ${cheque?.ref || "-"} Date: ${cheque?.date ? formatDate(cheque.date) : "-"}`, fontSize: 8 } ],
         [ { text: "Online", fontSize: 9, bold: true, fillColor: "#f9f9f9" }, { text: `Amount: ${online ? formatCurrency(online.amount) : "0.00"}`, fontSize: 8 }, { text: `Reference Number: ${online?.ref || "-"}`, fontSize: 8, colSpan: 2 }, {} ],
-        [ { text: "ACPC", fontSize: 9, bold: true, fillColor: "#f9f9f9" }, { text: `Amount: ${acpc ? formatCurrency(acpc.amount) : "0.00"}`, fontSize: 8 }, { text: `Rec.Number: ${acpc?.ref || "-"}`, fontSize: 8 }, { text: `Payment Date: ${acpc?.date ? formatDate(acpc.date) : "-"}`, fontSize: 8 } ],
+        [ { text: "ACPC", fontSize: 9, bold: true, fillColor: "#f9f9f9" }, { text: `Amount: ${acpc ? formatCurrency(acpc.amount) : "0.00"}`, fontSize: 8, colSpan: 3 }, {}, {} ],
       ]
     },
     margin: [0, 0, 0, 2]
@@ -316,9 +330,9 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
           {
             width: 150,
             stack: [
-              { canvas: [{ type: 'rect', x: 37, y: 0, w: 75, h: 95, lineColor: 'black', lineWidth: 1 }], margin: [0, 0, 0, 5] },
+              { canvas: [{ type: 'rect', x: 42, y: 0, w: 65, h: 65, lineColor: 'black', lineWidth: 1 }], margin: [0, 0, 0, 5] },
               { text: "Authorized Signature", fontSize: 10, bold: true, alignment: "center" },
-              { text: "SVIT,Vasad", fontSize: 10, alignment: "center" }
+              { text: `${data.collegeAlias || "SVIT"}, Vasad`, fontSize: 10, alignment: "center" }
             ]
           }
         ],
@@ -326,7 +340,7 @@ function createDetailedReceiptContent(data: ReceiptData, copyLabel: string): any
       },
       { 
           text: [ 
-              { text: "Note:: ", bold: true }, "In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year 2025-26\n", 
+              { text: "Note:: ", bold: true }, `In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year ${data.academicYear || "-"}\n`, 
               { text: "Note:: ", bold: true }, "Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet" 
           ], 
           fontSize: 8, 

@@ -47,71 +47,12 @@
         </div>
     </div>
 
-    <!-- Incomplete Forms Section -->
-    <div class="card mb-4 border-warning">
-        <div class="card-header bg-warning text-dark">
-            <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Incomplete Forms (Drafts)</h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>Student</th>
-                            <th>Course / Type / Branch</th>
-                            <th>Status</th>
-                            <th>Last Saved</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {#each data.incompleteApplications as app}
-                            {@const appAny = app as any}
-                            <tr>
-                                <td>
-                                    {appAny.users?.full_name || 'N/A'} <br>
-                                    <small class="text-muted">{appAny.users?.email}</small>
-                                </td>
-                                <td>
-                                    {appAny.courses?.name}
-                                    {#if appAny.branches?.name}
-                                        <br><small class="text-muted"><i class="bi bi-diagram-3"></i> {appAny.branches.name}</small>
-                                    {/if}
-                                    <br>
-                                    <span class="badge bg-info text-dark mt-1">{appAny.form_type}</span>
-                                </td>
-                                <td><span class="badge bg-secondary">{appAny.status}</span></td>
-                                <td>{new Date(appAny.updated_at).toLocaleDateString()}</td>
-                                <td>
-                                    <a href="/deo/apply?applicationId={appAny.id}" class="btn btn-sm btn-primary">
-                                        Continue <i class="bi bi-arrow-right"></i>
-                                    </a>
-                                </td>
-                            </tr>
-                        {:else}
-                            <tr>
-                                <td colspan="5" class="text-center text-muted p-3">No incomplete drafts found.</td>
-                            </tr>
-                        {/each}
-                    </tbody>
-                </table>
-            </div>
-            {#if totalPages > 1}
-                <div class="card-footer d-flex justify-content-center">
-                    <button class="btn btn-sm btn-secondary me-2" disabled={data.page <= 1} on:click={() => changePage(data.page - 1)}>Prev</button>
-                    <span class="align-self-center">Page {data.page} of {totalPages}</span>
-                    <button class="btn btn-sm btn-secondary ms-2" disabled={data.page >= totalPages} on:click={() => changePage(data.page + 1)}>Next</button>
-                </div>
-            {/if}
-        </div>
-    </div>
-
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h3>Recent Activity</h3>
         <a href="/deo/apply" class="btn btn-primary">Create New Application</a>
     </div>
 
-    <div class="card">
+    <div class="card mb-4">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-striped table-hover mb-0">
@@ -168,6 +109,65 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- Incomplete Forms Section -->
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Incomplete Forms (Drafts)</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Course / Type / Branch</th>
+                            <th>Status</th>
+                            <th>Last Saved</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each data.incompleteApplications as app}
+                            {@const appAny = app as any}
+                            <tr>
+                                <td>
+                                    {appAny.users?.full_name || 'N/A'} <br>
+                                    <small class="text-muted">{appAny.users?.email}</small>
+                                </td>
+                                <td>
+                                    {appAny.courses?.name}
+                                    {#if appAny.branches?.name}
+                                        <br><small class="text-muted"><i class="bi bi-diagram-3"></i> {appAny.branches.name}</small>
+                                    {/if}
+                                    <br>
+                                    <span class="badge bg-info text-dark mt-1">{appAny.form_type}</span>
+                                </td>
+                                <td><span class="badge bg-secondary">{appAny.status}</span></td>
+                                <td>{new Date(appAny.updated_at).toLocaleDateString()}</td>
+                                <td>
+                                    <a href="/deo/apply?applicationId={appAny.id}" class="btn btn-sm btn-primary">
+                                        Continue <i class="bi bi-arrow-right"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        {:else}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted p-3">No incomplete drafts found.</td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
+            {#if totalPages > 1}
+                <div class="card-footer d-flex justify-content-center">
+                    <button class="btn btn-sm btn-secondary me-2" disabled={data.page <= 1} on:click={() => changePage(data.page - 1)}>Prev</button>
+                    <span class="align-self-center">Page {data.page} of {totalPages}</span>
+                    <button class="btn btn-sm btn-secondary ms-2" disabled={data.page >= totalPages} on:click={() => changePage(data.page + 1)}>Next</button>
+                </div>
+            {/if}
         </div>
     </div>
 </div>

@@ -225,13 +225,13 @@
             logoUrl: undefined
         };
 
-        if (isTuition && payment.applications?.courses?.colleges) {
-            const college = payment.applications.courses.colleges;
+        const college = payment.applications?.courses?.colleges;
+        if (college) {
             universityData = {
                 name: college.name || universityData.name,
                 address: college.address || universityData.address,
-                logoUrl: college.logo_url,
-                contactEmail: universityData.contactEmail
+                logoUrl: college.logo_url || college.universities?.logo_url,
+                contactEmail: college.universities?.contact_email || universityData.contactEmail
             };
         }
 
@@ -242,12 +242,15 @@
             periodDisplay = 'ACADEMIC YEAR'; // Default for others
         }
 
+        const studentProfiles = payment.applications?.student_user?.student_profiles;
+        const enrollmentNumber = (Array.isArray(studentProfiles) ? studentProfiles[0] : studentProfiles)?.enrollment_number;
+
         return {
             receiptNumber: payment.receipt_number || 'N/A',
             date: payment.payment_date,
             studentName: payment.applications?.student_user?.full_name || payment.applications?.student_user?.email || 'N/A',
             email: payment.applications?.student_user?.email || '',
-            enrollmentNumber: payment.applications?.student_user?.student_profiles?.enrollment_number,
+            enrollmentNumber: enrollmentNumber,
             admissionNumber: payment.applications?.account_admissions?.[0]?.admission_number,
             courseName: payment.applications?.courses?.name || 'N/A',
             branchName: payment.applications?.branches?.name,
@@ -259,6 +262,7 @@
             amount: Number(payment.amount),
             totalStructureFee: Number(payment.amount), // Fallback
             feeBreakdown: feeBreakdown.length > 0 ? feeBreakdown : undefined,
+            collegeAlias: college?.code || 'SVIT',
             paymentModes: (payment.payment_breakdown || []).map((m: any) => ({
                 mode: m.type || m.mode,
                 amount: Number(m.amount),

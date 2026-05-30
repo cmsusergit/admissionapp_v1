@@ -31,6 +31,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                     college_id,
                     colleges(
                         name, 
+                        code,
                         address,
                         logo_url,
                         universities(name, logo_url, contact_email, contact_phone, website, address, footer_text)
@@ -167,7 +168,11 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     const feeStructures = (await Promise.all(feeStructuresPromises)).filter((item): item is NonNullable<typeof item> => item !== null);
 
     return {
-        payments: payments || [],
+        payments: allPayments || [],
+        tuitionPayments,
+        applicationFeePayments,
+        provisionalFeePayments,
+        admissions: admissionsWithProvFees,
         feeStructures: feeStructures,
         userProfile // Pass userProfile
     };

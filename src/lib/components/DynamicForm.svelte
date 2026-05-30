@@ -613,6 +613,7 @@
             <div class="col-md-6">
                 <input
                     type="number"
+                    step="any"
                     class="form-control"
                     id="{fieldId}-value"
                     name="{key}-value"
@@ -632,6 +633,7 @@
             <div class="col-md-6">
                 <input
                     type="number"
+                    step="any"
                     class="form-control"
                     id="{fieldId}-max-score"
                     name="{key}-max-score"
@@ -650,6 +652,7 @@
     {:else if field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date'}
         <input
             type={field.type}
+            step={field.type === 'number' ? 'any' : undefined}
             class="form-control"
             id={fieldId}
             name={key}
@@ -824,6 +827,7 @@
                                         {:else}
                                             <input
                                                 type={col.type === 'number' ? 'number' : 'text'}
+                                                step={col.type === 'number' ? 'any' : undefined}
                                                 class="form-control"
                                                 id={cellId}
                                                 name={`${key}-${col.key}`}
@@ -851,6 +855,7 @@
                                         <td>
                                             <input
                                                 type="number"
+                                                step="any"
                                                 class="form-control"
                                                 id={maxScoreId}
                                                 name={`${key}-${col.key}-max`}

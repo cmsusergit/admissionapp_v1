@@ -97,11 +97,12 @@
                 date: m.date || payment.payment_date,
                 bankName: m.bankName
             })),
+            collegeAlias: college?.code || 'SVIT',
             university: {
-                name: college?.name || university?.name || 'College Name',
+                name: college?.name || university?.name || 'SVIT, Vasad',
                 logoUrl: college?.logo_url || university?.logo_url,
-                address: college?.address || university?.address,
-                contactEmail: university?.contact_email
+                address: college?.address || university?.address || 'Vasad',
+                contactEmail: university?.contact_email || 'admission@svitvasad.ac.in'
             }
         };
         generateReceiptPDF(receiptData);
@@ -135,11 +136,12 @@
                 date: m.date || payment.payment_date,
                 bankName: m.bankName
             })),
+            collegeAlias: college?.code || 'SVIT',
             university: {
-                name: college?.name || university?.name || 'College Name',
+                name: college?.name || university?.name || 'SVIT, Vasad',
                 logoUrl: college?.logo_url || university?.logo_url,
-                address: college?.address || university?.address,
-                contactEmail: university?.contact_email
+                address: college?.address || university?.address || 'Vasad',
+                contactEmail: university?.contact_email || 'admission@svitvasad.ac.in'
             }
         };
         downloadReceiptPDF(receiptData);
@@ -172,7 +174,15 @@
                     {#if college?.logo_url || university?.logo_url}
                         <img src={college?.logo_url || university?.logo_url} alt="Logo" class="me-3" style="height: 60px;">
                     {/if}
-                    <h2 class="m-0 fw-bold">{college?.name || university?.name || 'College Name'}</h2>
+                    <h2 class="m-0 fw-bold">
+                        {#if (college?.name || university?.name || '').includes('(')}
+                            {@const nameParts = (college?.name || university?.name || '').split('(')}
+                            {nameParts[0].trim()}<br>
+                            ({nameParts.slice(1).join('(').trim()}
+                        {:else}
+                            {college?.name || university?.name || 'College Name'}
+                        {/if}
+                    </h2>
                 </div>
                 <h5 class="fw-bold">Academic Year: {academicYear}</h5>
             </div>
@@ -214,15 +224,21 @@
             <div class="payment-grid mb-4">
                 <table class="table table-bordered border-dark mb-0">
                     <tbody>
-                        <tr><td class="fw-bold bg-light" style="width: 120px;">CASH</td><td>Amount: {getMode('cash') ? Number(getMode('cash').amount).toLocaleString('en-IN') : '0'}</td><td>ADVANCE Amount: 0</td><td>Freeship Amount: 0</td></tr>
+                        <tr><td class="fw-bold bg-light" style="width: 120px;">CASH</td><td>Amount: {getMode('cash') ? Number(getMode('cash').amount).toLocaleString('en-IN') : '0'}</td><td>ADVANCE Amount: {getMode('advance') ? Number(getMode('advance').amount).toLocaleString('en-IN') : '0'}</td><td>Freeship Amount: {getMode('freeship') ? Number(getMode('freeship').amount).toLocaleString('en-IN') : '0'}</td></tr>
                         <tr><td class="fw-bold bg-light">DD/Cheque</td><td>Amount: {(getMode('cheque') || getMode('dd')) ? Number((getMode('cheque') || getMode('dd')).amount).toLocaleString('en-IN') : '0'}</td><td>Bank Name: {(getMode('cheque') || getMode('dd'))?.bankName || '-'}</td><td>Ref.: {(getMode('cheque') || getMode('dd'))?.ref || '-'} Date: {(getMode('cheque') || getMode('dd'))?.date ? new Date((getMode('cheque') || getMode('dd')).date).toLocaleDateString() : '-'}</td></tr>
                         <tr><td class="fw-bold bg-light">Online</td><td>Amount: {getMode('online') ? Number(getMode('online').amount).toLocaleString('en-IN') : '0'}</td><td colspan="2">Reference Number: {getMode('online')?.ref || '-'}</td></tr>
-                        <tr><td class="fw-bold bg-light">ACPC</td><td>Amount: {getMode('acpc') ? Number(getMode('acpc').amount).toLocaleString('en-IN') : '0'}</td><td>Rec.Number: {getMode('acpc')?.ref || '-'}</td><td>Payment Date: {getMode('acpc')?.date ? new Date(getMode('acpc').date).toLocaleDateString() : '-'}</td></tr>
+                        <tr><td class="fw-bold bg-light">ACPC</td><td colspan="3">Amount: {getMode('acpc') ? Number(getMode('acpc').amount).toLocaleString('en-IN') : '0'}</td></tr>
                     </tbody>
                 </table>
             </div>
-            <div class="d-flex justify-content-end mb-5"><div class="text-center" style="width: 200px;"><div style="height: 60px;"></div><p class="mb-0 fw-bold">Authorized Signature</p><p class="small">SVIT, Vasad</p></div></div>
-            <div class="footer-notes border-top pt-3 mt-auto"><p class="small mb-1 italic"><strong>Note::</strong> In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year 2025-26</p><p class="small italic"><strong>Note::</strong> Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet</p></div>
+            <div class="d-flex justify-content-end mb-5">
+                <div class="text-center" style="width: 200px;">
+                    <div style="height: 65px; border: 1px solid black; width: 65px; margin: 0 auto 5px;"></div>
+                    <p class="mb-0 fw-bold">Authorized Signature</p>
+                    <p class="small">{college?.code || 'SVIT'}, Vasad</p>
+                </div>
+            </div>
+            <div class="footer-notes border-top pt-3 mt-auto"><p class="small mb-1 italic"><strong>Note::</strong> In addition to above tuition fees, candidate shall have to pay the fees of course/institute fixed by the Fees Regulatory Committee as and when declared from the academic year {academicYear}</p><p class="small italic"><strong>Note::</strong> Rs.5,000/- refundable deposit after Final Semester clear and verification of original Marksheet</p></div>
         {/if}
 
         {#if isProvisional && payment.payment_type !== 'tuition_fee'}

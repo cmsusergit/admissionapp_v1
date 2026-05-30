@@ -13,13 +13,13 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
     }
     
     const { id } = params;
-    const { data: template, error } = await supabase
+    const { data: template, error: fetchError } = await supabase
         .from('report_templates')
         .select('id, name, description, allowed_roles, report_type, configuration')
         .eq('id', params.id)
         .single();
         
-    if (err || !template) throw error(404, 'Template not found');
+    if (fetchError || !template) throw error(404, 'Template not found');
     
     if (!userProfile.role || (!template.allowed_roles.includes(userProfile.role) && userProfile.role !== 'admin')) {
         throw error(403, 'Forbidden');

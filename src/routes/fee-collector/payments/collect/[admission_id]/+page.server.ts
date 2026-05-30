@@ -41,6 +41,7 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
                     college_id,
                     colleges(
                         name,
+                        code,
                         address,
                         logo_url,
                         universities(name, logo_url, contact_email, address)
@@ -75,30 +76,25 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
         .eq('status', 'completed')
         .order('payment_date', { ascending: false });
 
-    // 4. Fetch Fee Structure
+    // 4. Fetch All Available Fee Structures for this Course/Year/Type
     const app = admission.applications as any;
     const feeSchemeId = app.assigned_fee_scheme_id;
 
-    let fsQuery = supabase
+    const { data: fsData, error: fsError } = await supabase
         .from('fee_structures')
         .select('*, fee_schemes(name)')
         .eq('course_id', app.course_id)
         .eq('academic_year_id', app.admission_cycles?.academic_year_id)
         .eq('form_type', app.form_type);
 
-    if (feeSchemeId && feeSchemeId !== 'null') {
-        fsQuery = fsQuery.eq('fee_scheme_id', feeSchemeId);
-    }
-
-    const { data: fsData, error: fsError } = await fsQuery;
-
     if (fsError) {
         console.error('Error fetching fee structures:', fsError.message);
     }
 
-    // Fallback logic: 
-    // If a scheme is assigned, use that one.
-    // If no scheme assigned, pick the 'General' one if it exists, else the first one found.
+    // Resolve Fee Structure: 
+    // 1. If a scheme is explicitly assigned, try to find that structure.
+    // 2. Fallback to 'General' scheme if it exists.
+    // 3. Fallback to the first available structure.
     let feeStructure = null;
     if (fsData && fsData.length > 0) {
         if (feeSchemeId) {
@@ -108,7 +104,7 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
         if (!feeStructure) {
             // Try to find 'General' scheme
             feeStructure = fsData.find(fs => fs.fee_schemes?.name?.toLowerCase() === 'general');
-            // If still not found, just take the first one
+            // If still not found and no specific scheme was assigned, take the first one
             if (!feeStructure) feeStructure = fsData[0];
         }
     }

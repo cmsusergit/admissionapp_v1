@@ -169,8 +169,18 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             return { ...c, signedUrl };
         }));
 
+        // Filter applications to only show those where the corresponding form is enabled for students
+        const visibleApplications = appsWithMeritStatus.filter(app => {
+            const appFormType = app.form_type || 'MQ/NRI';
+            return allowedEnabledForms.some(f => 
+                f.course_id === app.course_id && 
+                f.cycle_id === app.cycle_id &&
+                (f.form_type === appFormType)
+            );
+        });
+
         return {
-            applications: appsWithMeritStatus,
+            applications: visibleApplications,
             activeYears: activeYears,
             availableCourses: availableCourses,
             circulars: circularsWithUrls || []
