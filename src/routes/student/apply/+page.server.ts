@@ -165,6 +165,7 @@ const applicationSchema = z.object({
   cycle_id: z.string().uuid(),
   branch_id: z.string().uuid().optional().or(z.literal("")),
   form_type: z.string().min(1),
+  admission_type: z.string().optional().default("Regular"),
   form_data: z.record(z.string(), z.any()).optional(), // Dynamic JSON data
   application_id: z.string().uuid().optional(), // For updates
 });
@@ -256,7 +257,7 @@ export const load: PageServerLoad = async ({
   const { data: existingApplications, error: existError } = await supabase
     .from("applications")
     .select(
-      "id, course_id, cycle_id, branch_id, form_type, status, application_fee_status",
+      "id, course_id, cycle_id, branch_id, form_type, admission_type, status, application_fee_status",
     )
     .eq("student_id", userProfile.id);
 
@@ -318,6 +319,7 @@ export const actions: Actions = {
     const cycle_id = formData.get("cycle_id") as string;
     const branch_id = formData.get("branch_id") as string;
     const form_type = formData.get("form_type") as string;
+    const admission_type = formData.get("admission_type") as string;
     const form_data_str = formData.get("form_data") as string;
 
     let application_id = formData.get("application_id") as
@@ -341,15 +343,16 @@ export const actions: Actions = {
       cycle_id,
       branch_id,
       form_type,
+      admission_type,
       form_data: parsedFormData,
       application_id,
     });
 
     if (!parsed.success) {
-      console.error("Validation failed:", parsed.error.errors);
+      console.error("Validation failed:", parsed.error.issues);
       return fail(400, {
         message: "Invalid form submission",
-        errors: parsed.error.errors,
+        errors: parsed.error.issues,
         error: true,
       });
     }
@@ -359,6 +362,7 @@ export const actions: Actions = {
       cycle_id: validatedCycleId,
       branch_id: validatedBranchId,
       form_type: validatedFormType,
+      admission_type: validatedAdmissionType,
       form_data: validatedFormData,
       application_id: validatedApplicationId,
     } = parsed.data;
@@ -414,6 +418,7 @@ export const actions: Actions = {
           form_data: validatedFormData,
           branch_id: validatedBranchId || null,
           form_type: validatedFormType,
+          admission_type: validatedAdmissionType,
           status: existingAppCheck.status, // Preserve current status
           updated_at: new Date().toISOString(),
           updated_by: userProfile.id, // Audit
@@ -487,6 +492,7 @@ export const actions: Actions = {
             form_data: validatedFormData,
             branch_id: validatedBranchId || null,
             form_type: validatedFormType,
+            admission_type: validatedAdmissionType,
             updated_at: new Date().toISOString(),
             updated_by: userProfile.id,
             application_fee_status: newFeeStatus,
@@ -519,6 +525,7 @@ export const actions: Actions = {
           cycle_id: validatedCycleId,
           branch_id: validatedBranchId || null,
           form_type: validatedFormType,
+          admission_type: validatedAdmissionType,
           form_data: validatedFormData,
           status: "draft",
           submitted_at: null,

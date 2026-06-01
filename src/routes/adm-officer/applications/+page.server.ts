@@ -44,7 +44,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     let query = supabaseAdmin
         .from('applications')
         .select(`
-            id, status, form_type, submitted_at,
+            id, status, form_type, admission_type, submitted_at,
             student_user:users!student_id!inner (
                 full_name, 
                 email,

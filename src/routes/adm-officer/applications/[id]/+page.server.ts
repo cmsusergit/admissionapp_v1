@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({
     .from("applications")
     .select(
       `
-            id, status, form_type, submitted_at, updated_at, student_id, course_id, cycle_id, branch_id, form_data, application_fee_status, created_by, updated_by, approval_comment,
+            id, status, form_type, admission_type, submitted_at, updated_at, student_id, course_id, cycle_id, branch_id, form_data, application_fee_status, created_by, updated_by, approval_comment,
             student_user:users!applications_student_id_fkey(id, full_name, email, student_profiles(enrollment_number)),
             creator_user:users!applications_created_by_fkey(id, full_name, email),
             updater_user:users!applications_updated_by_fkey(id, full_name, email),
@@ -129,7 +129,7 @@ export const load: PageServerLoad = async ({
   // Fetch lists for Transfer Modal
   const { data: allCourses } = await supabaseAdmin
     .from("courses")
-    .select("id, name, code, branches(id, name, code)")
+    .select("id, name, code, collegeid_code, branches(id, name, code, collegeid_code)")
     .order("name");
 
   const { data: allCycles } = await supabaseAdmin
@@ -877,7 +877,7 @@ export const actions: Actions = {
     // 1. Fetch Target Details & Check Vacancy
     const { data: courseData } = await supabaseAdmin
       .from("courses")
-      .select("intake_capacity, code, college_id, branches(id, code)")
+      .select("intake_capacity, code, collegeid_code, college_id, branches(id, code, collegeid_code)")
       .eq("id", new_course_id)
       .single();
 
@@ -906,13 +906,15 @@ export const actions: Actions = {
     // 2. Fetch Current Application & Profile
     const { data: currentApp, error: appFetchError } = await supabaseAdmin
       .from("applications")
-      .select("*")
+      .select("*, admission_type")
       .eq("id", application_id)
       .single();
 
     if (appFetchError || !currentApp) {
       return fail(404, { message: "Application not found.", error: true });
     }
+
+    const admissionType = currentApp.admission_type || 'Regular';
 
     const { data: studentProfile } = await supabaseAdmin
       .from("student_profiles")
@@ -957,13 +959,13 @@ export const actions: Actions = {
       return fail(500, { message: "Failed to fetch cycle details.", error: true });
     }
 
-    let branchCode = "GEN";
+    let branchCode = "";
     if (new_branch_id && courseData.branches) {
       const b = (courseData.branches as any[]).find((b: any) => b.id === new_branch_id);
-      if (b) branchCode = b.code || "BR";
+      if (b) branchCode = b.collegeid_code || "";
     }
 
-    const courseCode = courseData.code || "CRS";
+    const courseCode = courseData.collegeid_code || courseData.code || "CRS";
     const yearName = cycleData.academic_years?.name || "2025";
     const yearStart = yearName.substring(0, 4).slice(-2);
 
@@ -996,7 +998,12 @@ export const actions: Actions = {
     }
 
     const newSequenceNumber = (sequence?.current_sequence ?? 0) + 1;
-    const newEnrollmentNumber = `${prefix}${newSequenceNumber.toString().padStart(3, "0")}`;
+    let newEnrollmentNumber = `${prefix}${newSequenceNumber.toString().padStart(3, "0")}`;
+    
+    // Apply D2D/C2D prefix logic
+    if (admissionType === 'D2D' || admissionType === 'C2D') {
+        newEnrollmentNumber = `2${newEnrollmentNumber}`;
+    }
 
     // 5. Update All Records (Manual Transaction)
     

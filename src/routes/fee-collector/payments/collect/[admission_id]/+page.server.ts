@@ -35,6 +35,7 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
                 cycle_id,
                 branch_id,
                 form_type,
+                admission_type,
                 assigned_fee_scheme_id,
                 courses!inner(
                     name, 
@@ -155,6 +156,7 @@ export const actions: Actions = {
                 course_id, 
                 branch_id, 
                 form_type, 
+                admission_type,
                 assigned_fee_scheme_id,
                 courses(college_id, code), 
                 branches(code), 

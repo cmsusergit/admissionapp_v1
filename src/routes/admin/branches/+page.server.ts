@@ -35,6 +35,7 @@ export const actions: Actions = {
         const formData = await request.formData();
         const name = formData.get('name') as string;
         const code = formData.get('code') as string;
+        const collegeid_code = formData.get('collegeid_code') as string;
         const course_id = formData.get('course_id') as string;
         const intake_capacity = parseInt(formData.get('intake_capacity') as string) || 0;
 
@@ -42,7 +43,7 @@ export const actions: Actions = {
             return fail(400, { message: 'Name and Course are required' });
         }
 
-        const { error } = await supabase.from('branches').insert({ name, code, course_id, intake_capacity });
+        const { error } = await supabase.from('branches').insert({ name, code, collegeid_code, course_id, intake_capacity });
 
         if (error) {
             return fail(500, { message: error.message });
@@ -61,6 +62,7 @@ export const actions: Actions = {
         const id = formData.get('id') as string;
         const name = formData.get('name') as string;
         const code = formData.get('code') as string;
+        const collegeid_code = formData.get('collegeid_code') as string;
         const course_id = formData.get('course_id') as string;
         const intake_capacity = parseInt(formData.get('intake_capacity') as string) || 0;
 
@@ -68,7 +70,7 @@ export const actions: Actions = {
             return fail(400, { message: 'ID, Name and Course are required' });
         }
 
-        const { error } = await supabase.from('branches').update({ name, code, course_id, intake_capacity }).eq('id', id);
+        const { error } = await supabase.from('branches').update({ name, code, collegeid_code, course_id, intake_capacity }).eq('id', id);
 
         if (error) {
             return fail(500, { message: error.message });

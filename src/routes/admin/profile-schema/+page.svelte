@@ -14,13 +14,14 @@
         label: '',
         type: 'text',
         is_required: false,
+        force_uppercase: false,
         options: '',
         default_value: ''
     };
 
     function resetForm() {
         editingId = null;
-        newField = { key: '', label: '', type: 'text', is_required: false, options: '', default_value: '' };
+        newField = { key: '', label: '', type: 'text', is_required: false, force_uppercase: false, options: '', default_value: '' };
         defaultCheckboxValue = false;
     }
 
@@ -34,6 +35,7 @@
             label: field.label,
             type: field.type,
             is_required: field.is_required,
+            force_uppercase: field.force_uppercase || false,
             options: field.options ? field.options.join('\n') : '',
             default_value: field.type === 'checkbox' ? '' : (field.default_value || '')
         };
@@ -162,10 +164,19 @@
                             {/if}
                         </div>
 
-                        <div class="form-check mb-3">
+                        <div class="form-check mb-1">
                             <input class="form-check-input" type="checkbox" name="is_required" id="req" bind:checked={newField.is_required}>
                             <label class="form-check-label" for="req">Required Field</label>
                         </div>
+
+                        {#if ['text', 'textarea', 'email'].includes(newField.type)}
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" name="force_uppercase" id="force_up" bind:checked={newField.force_uppercase}>
+                                <label class="form-check-label" for="force_up">Force Uppercase</label>
+                            </div>
+                        {:else}
+                            <div class="mb-3"></div>
+                        {/if}
 
                         <div class="d-flex gap-2">
                             <button class="btn btn-primary w-100" disabled={isSubmitting}>
@@ -195,6 +206,7 @@
                                     <th>Key</th>
                                     <th>Type</th>
                                     <th>Required</th>
+                                    <th>Force Upper</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -205,6 +217,7 @@
                                         <td><code>{field.key}</code></td>
                                         <td><span class="badge bg-secondary">{field.type}</span></td>
                                         <td>{field.is_required ? 'Yes' : 'No'}</td>
+                                        <td>{field.force_uppercase ? 'Yes' : 'No'}</td>
                                         <td>
                                             <div class="d-flex gap-2">
                                                 <button class="btn btn-sm btn-outline-primary" title="Edit" on:click={() => editField(field)}>

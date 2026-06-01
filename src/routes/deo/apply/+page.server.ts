@@ -166,6 +166,7 @@ const applicationSchema = z.object({
     cycle_id: z.string().uuid(),
     branch_id: z.string().uuid().optional().nullable().or(z.literal("")),
     form_type: z.string().min(1).default("Provisional"),
+    admission_type: z.string().optional().default("Regular"),
     form_data: z.record(z.string(), z.any()).optional(),
     application_id: z.string().uuid().optional(),
 });
@@ -226,6 +227,7 @@ export const load: PageServerLoad = async ({
         course_id: app.course_id,
         cycle_id: app.cycle_id,
         form_type: app.form_type,
+        admission_type: app.admission_type,
         branch_id: app.branch_id,
         status: app.status,
       };
@@ -549,6 +551,7 @@ export const actions: Actions = {
     const cycle_id = formData.get("cycle_id") as string;
     const branch_id = (formData.get("branch_id") as string) || null;
     const form_type = formData.get("form_type") as string;
+    const admission_type = formData.get("admission_type") as string;
     const form_data_str = formData.get("form_data") as string;
 
     let application_id = formData.get("application_id") as
@@ -572,12 +575,13 @@ export const actions: Actions = {
       cycle_id,
       branch_id,
       form_type: form_type as any,
+      admission_type,
       form_data: parsedFormData,
       application_id,
     });
 
     if (!parsed.success) {
-      console.error("Validation failed:", parsed.error.errors);
+      console.error("Validation failed:", parsed.error.issues);
       return fail(400, {
         message: "Invalid form submission",
         errors: parsed.error.issues,
@@ -591,6 +595,7 @@ export const actions: Actions = {
       cycle_id: validatedCycleId,
       branch_id: validatedBranchId,
       form_type: validatedFormType,
+      admission_type: validatedAdmissionType,
       form_data: validatedFormData,
       application_id: validatedApplicationId,
     } = parsed.data;
@@ -676,6 +681,7 @@ export const actions: Actions = {
           status: existingAppCheck.status, // Preserve current status
           branch_id: validatedBranchId,
           form_type: validatedFormType,
+          admission_type: validatedAdmissionType,
           application_fee_status: newFeeStatus,
           updated_by: authenticatedUser.id,
         })
@@ -738,6 +744,7 @@ export const actions: Actions = {
             form_data: validatedFormData,
             branch_id: validatedBranchId,
             form_type: validatedFormType,
+            admission_type: validatedAdmissionType,
             application_fee_status: newFeeStatus,
             updated_by: authenticatedUser.id,
           })
@@ -786,6 +793,7 @@ export const actions: Actions = {
           cycle_id: validatedCycleId,
           branch_id: validatedBranchId,
           form_type: validatedFormType,
+          admission_type: validatedAdmissionType,
           form_data: validatedFormData,
           status: "draft",
           submitted_at: null,

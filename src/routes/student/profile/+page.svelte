@@ -73,17 +73,16 @@
     }
 
     $effect(() => {
-        // Automatically uppercase all text values for data integrity (except emails and selects)
+        // Automatically uppercase values if force_uppercase is enabled in schema
         const fields = data.schemaFields || [];
         for (const key in profileData) {
-            if (typeof profileData[key] === 'string' && !key.toLowerCase().includes('email')) {
-                // Find field type to avoid breaking selects
+            if (typeof profileData[key] === 'string') {
                 const field = fields.find((f: any) => f.key === key);
-                if (field && (field.type === 'select' || field.type === 'radio' || field.type === 'checkbox')) continue;
-
-                const upper = profileData[key].toUpperCase();
-                if (profileData[key] !== upper) {
-                    profileData[key] = upper;
+                if (field?.force_uppercase) {
+                    const upper = profileData[key].toUpperCase();
+                    if (profileData[key] !== upper) {
+                        profileData[key] = upper;
+                    }
                 }
             }
         }
@@ -146,7 +145,13 @@
                                             {/each}
                                         </select>
                                     {:else if field.type === 'textarea'}
-                                        <textarea class="form-control" name={field.key} bind:value={profileData[field.key]} required={!isDraft && field.is_required}></textarea>
+                                        <textarea 
+                                            class="form-control" 
+                                            name={field.key} 
+                                            bind:value={profileData[field.key]} 
+                                            required={!isDraft && field.is_required}
+                                            style={field.force_uppercase ? 'text-transform: uppercase;' : ''}
+                                        ></textarea>
                                     {:else if field.type === 'file'}
                                         <input type="hidden" name={field.key} value={profileData[field.key] ?? ''}>
                                         <div class="input-group">
@@ -177,6 +182,7 @@
                                             name={field.key} 
                                             bind:value={profileData[field.key]}
                                             required={!isDraft && field.is_required}
+                                            style={field.force_uppercase ? 'text-transform: uppercase;' : ''}
                                         >
                                     {/if}
                                 </div>

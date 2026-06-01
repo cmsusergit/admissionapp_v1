@@ -44,6 +44,7 @@
     let selectedCycleId = $state('');
     let selectedBranchId = $state(''); // Branch Selection
     let selectedFormType = $state('Provisional'); // Form Type Selection
+    let selectedAdmissionType = $state('Regular'); // Admission Type Selection
     
     let currentApplicationId = $state<string | null>(null);
     let applicationFormData = $state<Record<string, any>>({});
@@ -63,6 +64,13 @@
     // Track schema availability
     let isSchemaAvailable = $state(true);
     let schemaErrorMessage = $state('');
+
+    // Derived allowed admission types
+    let allowedAdmissionTypes = $derived(
+        currentAdmissionFormSchema?.allowedAdmissionTypes
+            ? currentAdmissionFormSchema.allowedAdmissionTypes.split(',').map((t: string) => t.trim()).filter(Boolean)
+            : []
+    );
 
     // Create lookup for profile field defaults (for backward compatibility)
     let profileFieldDefaults = $derived(Object.fromEntries(
@@ -86,6 +94,7 @@
             if (appData.cycle_id) selectedCycleId = appData.cycle_id;
             if (appData.form_type) selectedFormType = appData.form_type;
             if (appData.branch_id) selectedBranchId = appData.branch_id;
+            if (appData.admission_type) selectedAdmissionType = appData.admission_type;
             
             // If student is preloaded from server
             if (data.selectedStudent) {
@@ -230,6 +239,7 @@
                 label: field.label,
                 type: field.type,
                 required: field.is_required,
+                transform: field.force_uppercase ? 'uppercase' : 'none',
                 dataSource: parsedOptions ? {
                     type: 'static',
                     options: parsedOptions
@@ -669,7 +679,7 @@
         
         const { data: application, error } = await supabase
             .from('applications')
-            .select('form_data, course_id, cycle_id, branch_id, form_type, student_id, status')
+            .select('form_data, course_id, cycle_id, branch_id, form_type, admission_type, student_id, status')
             .eq('id', appId)
             .limit(1)
             .maybeSingle();
@@ -691,6 +701,7 @@
         selectedCycleId = application.cycle_id;
         selectedBranchId = application.branch_id || '';
         selectedFormType = application.form_type || 'Provisional';
+        selectedAdmissionType = application.admission_type || 'Regular';
         applicationFormData = application.form_data || {};
         isLoadedFromApplicationId = true;
         isEditingExistingApplication = true;
@@ -719,6 +730,7 @@
         formPayload.append('course_id', selectedCourseId);
         formPayload.append('cycle_id', selectedCycleId);
         formPayload.append('form_type', selectedFormType);
+        formPayload.append('admission_type', selectedAdmissionType);
         if (selectedBranchId) formPayload.append('branch_id', selectedBranchId);
         formPayload.append('form_data', JSON.stringify(applicationFormData));
         if (currentApplicationId) formPayload.append('application_id', currentApplicationId);
@@ -1117,6 +1129,18 @@
                             {/each}
                         </select>
                     </div>
+
+                    {#if allowedAdmissionTypes.length > 0}
+                        <div class="col-md-6 mb-3">
+                            <label for="admission-type-select" class="form-label">Admission Type</label>
+                            <select class="form-select" id="admission-type-select" bind:value={selectedAdmissionType} disabled={isEditingExistingApplication}>
+                                {#each allowedAdmissionTypes as type}
+                                    <option value={type}>{type === 'D2D' ? 'D2D (Diploma to Degree)' : type === 'C2D' ? 'C2D (Certificate to Degree)' : type}</option>
+                                {/each}
+                            </select>
+                        </div>
+                    {/if}
+
                     {#if branchesForSelectedCourse.length > 0 && !isBranchSelectionDisabled}
                         <div class="col-md-6 mb-3">
                             <label for="branch-select" class="form-label">Branch</label>

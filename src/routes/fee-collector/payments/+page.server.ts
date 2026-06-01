@@ -71,6 +71,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 course_id,
                 cycle_id,
                 form_type,
+                admission_type,
                 assigned_fee_scheme_id,
                 courses!inner(name, college_id),
                 admission_cycles(academic_year_id)

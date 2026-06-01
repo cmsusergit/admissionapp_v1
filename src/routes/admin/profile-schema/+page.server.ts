@@ -22,6 +22,7 @@ const fieldSchema = z.object({
     "document",
   ]),
   is_required: z.coerce.boolean(),
+  force_uppercase: z.coerce.boolean(),
   options: z.string().optional(), // Comma-separated options for select
   default_value: z.string().optional(), // Default value for the field
 });
@@ -37,7 +38,7 @@ export const load: PageServerLoad = async ({
 
   const { data: fields, error } = await supabase
     .from("student_profile_fields")
-    .select("id, key, label, type, is_required, options, default_value")
+    .select("id, key, label, type, is_required, force_uppercase, options, default_value")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -65,6 +66,7 @@ export const actions: Actions = {
     const payload = {
       ...rawData,
       is_required: formData.has("is_required"),
+      force_uppercase: formData.has("force_uppercase"),
     };
 
     const parsed = fieldSchema.safeParse(payload);
@@ -76,7 +78,7 @@ export const actions: Actions = {
       });
     }
 
-    const { key, label, type, is_required, options, default_value } =
+    const { key, label, type, is_required, force_uppercase, options, default_value } =
       parsed.data;
 
     let optionsJson = null;
@@ -92,6 +94,7 @@ export const actions: Actions = {
       label,
       type,
       is_required,
+      force_uppercase,
       options: optionsJson,
       default_value: default_value || null,
     });
@@ -127,6 +130,7 @@ export const actions: Actions = {
     const payload = {
       ...rawData,
       is_required: formData.has("is_required"),
+      force_uppercase: formData.has("force_uppercase"),
     };
 
     const parsed = fieldSchema.safeParse(payload);
@@ -138,7 +142,7 @@ export const actions: Actions = {
       });
     }
 
-    const { key, label, type, is_required, options, default_value } =
+    const { key, label, type, is_required, force_uppercase, options, default_value } =
       parsed.data;
 
     let optionsJson = null;
@@ -156,6 +160,7 @@ export const actions: Actions = {
         label,
         type,
         is_required,
+        force_uppercase,
         options: optionsJson,
         default_value: default_value || null,
       })

@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({
   // 1. Fetch Schema Definition
   const { data: schemaFields } = await supabase
     .from("student_profile_fields")
-    .select("key, label, type, is_required, options, default_value")
+    .select("key, label, type, is_required, options, default_value, force_uppercase")
     .order("created_at");
 
   // 2. Fetch Student Profile Data from parent layout

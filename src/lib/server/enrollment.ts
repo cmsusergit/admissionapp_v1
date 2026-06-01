@@ -12,7 +12,8 @@ export async function generateEnrollmentNumber(
     academicYearId: string,
     branchId: string | null = null,
     formType: string = 'MQ/NRI',
-    categoryAliasOverride?: string
+    categoryAliasOverride?: string,
+    admissionType: string = 'Regular'
 ): Promise<string> {
     
     // 1. Fetch required metadata
@@ -24,7 +25,7 @@ export async function generateEnrollmentNumber(
     
     const { data: courseData } = await supabase
         .from('courses')
-        .select('code')
+        .select('code, collegeid_code')
         .eq('id', courseId)
         .single();
 
@@ -32,14 +33,14 @@ export async function generateEnrollmentNumber(
     if (branchId) {
         const { data: branchData } = await supabase
             .from('branches')
-            .select('code')
+            .select('code, collegeid_code')
             .eq('id', branchId)
             .single();
-        branchCode = branchData?.code || '';
+        branchCode = branchData?.collegeid_code || '';
     }
     
     const yearShort = ayData?.short_code || ayData?.name.substring(0, 4).slice(-2) || new Date().getFullYear().toString().slice(-2);
-    const courseAlias = courseData?.code || 'GEN';
+    const courseAlias = courseData?.collegeid_code || courseData?.code || 'GEN';
     
     const categoryMap: Record<string, string> = {
         'ACPC': 'A',
@@ -116,7 +117,14 @@ export async function generateEnrollmentNumber(
     }
 
     // 4. Return formatted number: [YY][Course][Branch][Category][001]
-    return `${yearShort}${courseAlias}${branchCode}${categoryChar}${newSeqNum.toString().padStart(3, '0')}`;
+    const baseEnrollment = `${yearShort}${courseAlias}${branchCode}${categoryChar}${newSeqNum.toString().padStart(3, '0')}`;
+    
+    // If D2D or C2D, prepend '2' as per requirement
+    if (admissionType === 'D2D' || admissionType === 'C2D') {
+        return `2${baseEnrollment}`;
+    }
+    
+    return baseEnrollment;
 }
 
 /**
@@ -138,6 +146,7 @@ export async function ensureStudentEnrolled(
             branch_id, 
             cycle_id,
             form_type,
+            admission_type,
             admission_cycles(academic_year_id),
             courses(college_id)
         `)
@@ -169,7 +178,8 @@ export async function ensureStudentEnrolled(
             academicYearId,
             app.branch_id,
             app.form_type,
-            categoryAliasOverride
+            categoryAliasOverride,
+            app.admission_type || 'Regular'
         );
 
         // Update student profile and official college affiliation in users table

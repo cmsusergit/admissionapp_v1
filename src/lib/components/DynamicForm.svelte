@@ -435,7 +435,26 @@
             const key = getKey(field);
             // Only validate visible fields
             if (isFieldVisible(field) && field.required) {
-                if (field.is_merit) {
+                const section = normalizedSchema.sections.find(s => s.id === field.sectionId) || normalizedSchema.sections[0];
+                const isTableLayout = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0;
+                const isDatagridField = isTableLayout && field.inDatagrid === true;
+
+                if (isDatagridField) {
+                    // For datagrid fields, we check each column (except calculated ones)
+                    section.tableColumns?.forEach(col => {
+                        if (col.type === 'calculated') return;
+                        
+                        const cellVal = col.is_merit 
+                            ? formData[key]?.[col.key]?.value 
+                            : formData[key]?.[col.key];
+                            
+                        if (cellVal === undefined || cellVal === null || cellVal === '') {
+                            // If any column is missing, the row is invalid
+                            errors[key] = `${field.label} is required`;
+                            isValid = false;
+                        }
+                    });
+                } else if (field.is_merit) {
                     if (formData[key] === undefined || formData[key] === null || formData[key].value === undefined || formData[key].value === null || formData[key].value === '') {
                         errors[key] = `${field.label} is required`;
                         isValid = false;

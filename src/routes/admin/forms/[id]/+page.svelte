@@ -130,7 +130,7 @@
         <div class="card-body">
             <!-- Integrate FormBuilder with Profile Fields -->
             <FormBuilder 
-                schema={builderSchema} 
+                bind:schema={builderSchema} 
                 studentProfileFields={data.studentProfileFields} 
                 on:change={handleSchemaChange} 
             />

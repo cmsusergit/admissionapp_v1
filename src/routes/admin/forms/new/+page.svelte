@@ -142,9 +142,23 @@
                 </div>
 
                 <div class="mb-3">
+                    <label for="add-allowed-admission-types" class="form-label">Allowed Admission Types (comma-separated, e.g. Regular,D2D,C2D)</label>
+                    <input type="text" class="form-control" id="add-allowed-admission-types" 
+                        value={builderSchema.allowedAdmissionTypes || ''} 
+                        on:input={(e) => {
+                            const target = e.target as HTMLInputElement;
+                            builderSchema.allowedAdmissionTypes = target.value;
+                            builderSchemaString = JSON.stringify(builderSchema);
+                        }}
+                        placeholder="Regular,D2D,C2D"
+                    >
+                    <div class="form-text">Specify which admission types should be available for selection. If empty, 'Regular' is assumed.</div>
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label">Form Schema Builder</label>
                     <div class="border p-3 rounded bg-light">
-                        <FormBuilder schema={builderSchema} studentProfileFields={data.studentProfileFields} on:change={handleSchemaChange} />
+                        <FormBuilder bind:schema={builderSchema} studentProfileFields={data.studentProfileFields} on:change={handleSchemaChange} />
                     </div>
                     <input type="hidden" name="schema_json" value={builderSchemaString} />
                 </div>

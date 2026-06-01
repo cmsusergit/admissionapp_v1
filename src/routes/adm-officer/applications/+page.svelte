@@ -202,6 +202,9 @@
                                 {app.courses?.name} 
                                 {#if app.branches} - {app.branches.name}{/if}
                                 <span class="badge bg-secondary ms-2">{app.form_type}</span>
+                                {#if app.admission_type && app.admission_type !== 'Regular'}
+                                    <span class="badge bg-dark ms-1">{app.admission_type}</span>
+                                {/if}
                             </p>
                             {#if appReceiptPayment?.receipt_number}
                                 <small class="text-muted text-nowrap">Receipt: <span class="fw-bold text-dark">{appReceiptPayment.receipt_number}</span></small>

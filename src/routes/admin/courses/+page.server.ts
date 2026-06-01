@@ -38,10 +38,11 @@ export const actions: Actions = {
         const college_id = formData.get('college_id') as string;
         const name = formData.get('name') as string;
         const code = formData.get('code') as string;
+        const collegeid_code = formData.get('collegeid_code') as string;
         const duration_years = parseInt(formData.get('duration_years') as string);
         const intake_capacity = parseInt(formData.get('intake_capacity') as string) || 0;
 
-        const { error } = await supabase.from('courses').insert({ college_id, name, code, duration_years, intake_capacity });
+        const { error } = await supabase.from('courses').insert({ college_id, name, code, collegeid_code, duration_years, intake_capacity });
 
         if (error) {
             console.error('Error creating course:', error.message);
@@ -62,10 +63,11 @@ export const actions: Actions = {
         const college_id = formData.get('college_id') as string;
         const name = formData.get('name') as string;
         const code = formData.get('code') as string;
+        const collegeid_code = formData.get('collegeid_code') as string;
         const duration_years = parseInt(formData.get('duration_years') as string);
         const intake_capacity = parseInt(formData.get('intake_capacity') as string) || 0;
 
-        const { error } = await supabase.from('courses').update({ college_id, name, code, duration_years, intake_capacity }).eq('id', id);
+        const { error } = await supabase.from('courses').update({ college_id, name, code, collegeid_code, duration_years, intake_capacity }).eq('id', id);
 
         if (error) {
             console.error('Error updating course:', error.message);

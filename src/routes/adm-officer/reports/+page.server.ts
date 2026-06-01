@@ -94,6 +94,7 @@ export const load: PageServerLoad = async ({
             id,
             status,
             form_type,
+            admission_type,
             submitted_at,
             updated_at,
             approval_comment,
@@ -124,9 +125,12 @@ export const load: PageServerLoad = async ({
     previewApplications =
       rawPreviewApplications?.map((app) => ({
         ...app,
-        merit_score: Array.isArray(app.merit_list_entries)
-          ? app.merit_list_entries[0]?.merit_score
-          : app.merit_list_entries?.merit_score,
+        merit_score: (() => {
+          const entry = Array.isArray(app.merit_list_entries)
+            ? app.merit_list_entries[0]
+            : app.merit_list_entries;
+          return (entry as any)?.merit_score || "";
+        })(),
       })) || [];
   }
 

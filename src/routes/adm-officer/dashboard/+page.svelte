@@ -377,6 +377,7 @@
                 <table class="table table-striped table-hover mb-0">
                     <thead>
                         <tr>
+                            <th>Sr. No</th>
                             <th>App ID</th>
                             <th>Student</th>
                             <th>Course</th>
@@ -398,11 +399,12 @@
                     </thead>
                     <tbody>
                         {#if data.filteredApplications && data.filteredApplications.length > 0}
-                            {#each data.filteredApplications as app}
+                            {#each data.filteredApplications as app, index}
                                 {@const appAny = app as any}
                                 {@const isProvType = data.formTypesMap?.[app.form_type] === true}
                                 {@const appReceiptPayment = (appAny.payments || []).find(p => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) || (appAny.payments || []).find(p => p.receipt_number)}
                                 <tr>
+                                    <td>{(data.pagination.page - 1) * data.pagination.limit + index + 1}</td>
                                     <td><small>{app.id.slice(0, 8)}...</small></td>
                                     <td>
                                         <div>{appAny.users?.full_name || 'N/A'}</div>
@@ -468,7 +470,7 @@
                             {/each}
                         {:else}
                             <tr>
-                                <td colspan="9" class="text-center py-4">No applications found matching your filters.</td>
+                                <td colspan="12" class="text-center py-4">No applications found matching your filters.</td>
                             </tr>
                         {/if}
                     </tbody>

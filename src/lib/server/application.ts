@@ -41,6 +41,7 @@ export async function approveApplicationLogic(
             course_id, 
             cycle_id, 
             form_type,
+            admission_type,
             courses(college_id, code), 
             admission_cycles(
                 academic_year_id,
@@ -66,9 +67,15 @@ export async function approveApplicationLogic(
     .eq("name", application.form_type)
     .single();
 
-  const academicYear = application.admission_cycles?.academic_years;
-  const college_id = application.courses?.college_id;
-  const academic_year_id = application.admission_cycles?.academic_year_id;
+  // Helper to safely get first element if array
+  const first = (val: any) => Array.isArray(val) ? val[0] : val;
+
+  const admissionCycle = first(application.admission_cycles);
+  const academicYear = first(admissionCycle?.academic_years);
+  const courseDetails = first(application.courses);
+
+  const college_id = courseDetails?.college_id;
+  const academic_year_id = admissionCycle?.academic_year_id;
   const course_id = application.course_id;
 
   if (!college_id || !academic_year_id || !course_id) {
@@ -83,7 +90,7 @@ export async function approveApplicationLogic(
   const isProvisional = formTypeDetails?.is_prov || false;
 
   // 2. Fetch and Increment Admission Sequence
-  const courseCode = application.courses?.code || "GEN";
+  const courseCode = courseDetails?.code || "GEN";
   const yearName = academicYear?.name || new Date().getFullYear().toString();
   
   // FIXED: Prioritize short_code, otherwise take last 2 digits of start year
@@ -166,6 +173,7 @@ export async function approveApplicationLogic(
       application_id: applicationId,
       admission_number: admission_number,
       admission_type: admissionType,
+      admission_mode: application.admission_type || "Regular",
       created_by: userId,
       enrollment_status: isProvisional ? "provisional" : "confirmed",
     });

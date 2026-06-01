@@ -181,6 +181,7 @@
                 col: Number(col), // User can still choose column width
                 sectionId: sectionId || (schema.sections?.[0]?.id),
                 required: selectedSpf.is_required, // Inherit requirement
+                transform: selectedSpf.force_uppercase ? 'uppercase' : 'none',
                 profileFieldKey: selectedSpf.key,
                 // Inherit options if applicable
                 dataSource: (selectedSpf.type === 'select' && selectedSpf.options) ? {
@@ -210,19 +211,22 @@
             field = constructCustomFieldObject();
         }
 
-        if (isEditing) {
+        // Check uniqueness (if editing, ignore current index)
+        const isDuplicate = schema.fields.some((f, i) => f.key === field.key && (!isEditing || i !== editingIndex));
+        if (isDuplicate) {
+            alert(`Field key "${field.key}" must be unique. Another field already uses this key.`);
+            return;
+        }
+
+        if (isEditing && editingIndex !== -1) {
             schema.fields[editingIndex] = field;
-            isEditing = false;
-            editingIndex = -1;
+            schema.fields = [...schema.fields]; // Force Svelte reactivity with a new array reference
         } else {
-            // Check uniqueness if adding new
-            if (!isEditing && schema.fields.some(f => f.key === field.key)) {
-                alert('Field key must be unique.');
-                return;
-            }
             schema.fields = [...schema.fields, field];
         }
         
+        isEditing = false;
+        editingIndex = -1;
         showAddFieldModal = false;
         notifyChange();
         clearInputs();
@@ -323,6 +327,8 @@
         // Common props
         col = String(field.col || 12);
         sectionId = field.sectionId || schema.sections?.[0]?.id || 'default';
+        isEditing = true;
+        editingIndex = index;
 
         if (field.profileFieldKey) {
             linkToProfileField = true;
@@ -398,30 +404,27 @@
                 selectSource = field.dataSource.type;
                 if (field.dataSource.type === 'static' && field.dataSource.options) {
                     staticOptions = field.dataSource.options.map((o: any) => `${o.value}|${o.label}`).join('\n');
+                }
                 if (field.dataSource.type === 'rest') {
                     endpoint = field.dataSource.endpoint || '';
                     valueField = field.dataSource.valueField || '';
                     labelField = field.dataSource.labelField || '';
                 }
-                }
-                }
+            }
+        }
 
-                // Load Copy From & Transform (Both Custom and Linked fields)
-                if (field.copyFrom) {
-                enableCopyFrom = true;
-                copyFromField = field.copyFrom.field;
-                copyFromLabel = field.copyFrom.label;
-                } else {
-                enableCopyFrom = false;
-                copyFromField = '';
-                copyFromLabel = '';
-                }
-                transformUppercase = field.transform === 'uppercase';
+        // Load Copy From & Transform (Both Custom and Linked fields)
+        if (field.copyFrom) {
+            enableCopyFrom = true;
+            copyFromField = field.copyFrom.field;
+            copyFromLabel = field.copyFrom.label;
+        } else {
+            enableCopyFrom = false;
+            copyFromField = '';
+            copyFromLabel = '';
+        }
+        transformUppercase = field.transform === 'uppercase';
 
-                isEditing = true;
-                editingIndex = index;
-                showAddFieldModal = true;
-                }
         showAddFieldModal = true;
     }
 
@@ -903,81 +906,82 @@
                             >Clear Default</button>
                         {/if}
                     </div>
-
-                    <!-- Copy From & Transform -->
-                    <div class="mt-3 p-2 border rounded bg-light">
-                        <h6><i class="bi bi-copy me-1"></i> Copy & Transformation</h6>
-                        
-                        <!-- Transform -->
-                        {#if type === 'text' || type === 'textarea'}
-                            <div class="form-check mb-2">
-                                <input bind:checked={transformUppercase} id="transform-upper" class="form-check-input" type="checkbox">
-                                <label for="transform-upper" class="form-check-label fw-bold">Force UPPERCASE</label>
-                            </div>
-                        {/if}
-
-                        <!-- Copy From -->
-                        <div class="form-check">
-                            <input bind:checked={enableCopyFrom} id="enable-copy" class="form-check-input" type="checkbox">
-                            <label for="enable-copy" class="form-check-label fw-bold">Enable "Copy From" Checkbox</label>
-                        </div>
-                        
-                        {#if enableCopyFrom}
-                            <div class="ms-4 mt-2">
-                                <label class="small fw-bold">Source Field</label>
-                                <select bind:value={copyFromField} class="form-select form-select-sm mb-2">
-                                    <option value="">-- Select Source Field --</option>
-                                    {#each schema.fields.filter(f => f.key !== key) as sf}
-                                        <option value={sf.key}>{sf.label} ({sf.key})</option>
-                                    {/each}
-                                </select>
-                                
-                                <label class="small fw-bold">Checkbox Label</label>
-                                <input bind:value={copyFromLabel} class="form-control form-select-sm" placeholder="e.g. Same as Permanent Address" />
-                            </div>
-                        {/if}
-                    </div>
-
-                    <div class="mt-3 p-2 border rounded bg-light">
-                        <h6><i class="bi bi-eye me-1"></i> Conditional Visibility</h6>
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <label class="form-label small">Field to Check</label>
-                                <input 
-                                    type="text" 
-                                    bind:value={showWhenField} 
-                                    list="available-fields-list-{sectionId}"
-                                    class="form-control form-control-sm" 
-                                    placeholder="Search or type field key..."
-                                />
-                                <datalist id="available-fields-list-{sectionId}">
-                                    {#each schema.fields.filter(f => f.key !== key) as field}
-                                        <option value={field.key}>{field.label} ({field.key})</option>
-                                    {/each}
-                                </datalist>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small">Operator</label>
-                                <select bind:value={showWhenOperator} class="form-select form-select-sm">
-                                    <option value="equals">Equals</option>
-                                    <option value="notEquals">Not Equals</option>
-                                    <option value="in">In (Multiple)</option>
-                                </select>
-                            </div>
-                            <div class="col-md-5">
-                                <label class="form-label small">
-                                    Value {showWhenOperator === 'in' ? '(comma-separated)' : ''}
-                                </label>
-                                {#if showWhenOperator === 'in'}
-                                    <input bind:value={showWhenValues} class="form-control form-control-sm" placeholder="science, medical, vocational" />
-                                {:else}
-                                    <input bind:value={showWhenValues} class="form-control form-control-sm" placeholder="value" />
-                                {/if}
-                            </div>
-                        </div>
-                        <small class="text-muted">Leave empty to show always</small>
-                    </div>
                 {/if}
+
+                <!-- Common for both Linked and Custom Fields -->
+                <div class="mt-3 p-2 border rounded bg-light">
+                    <h6><i class="bi bi-copy me-1"></i> Copy & Transformation</h6>
+                    
+                    <!-- Transform -->
+                    {#if (linkToProfileField ? studentProfileFields.find(f => f.key === selectedProfileFieldKey)?.type : type) === 'text' || 
+                         (linkToProfileField ? studentProfileFields.find(f => f.key === selectedProfileFieldKey)?.type : type) === 'textarea'}
+                        <div class="form-check mb-2">
+                            <input bind:checked={transformUppercase} id="transform-upper" class="form-check-input" type="checkbox">
+                            <label for="transform-upper" class="form-check-label fw-bold">Force UPPERCASE</label>
+                        </div>
+                    {/if}
+
+                    <!-- Copy From -->
+                    <div class="form-check">
+                        <input bind:checked={enableCopyFrom} id="enable-copy" class="form-check-input" type="checkbox">
+                        <label for="enable-copy" class="form-check-label fw-bold">Enable "Copy From" Checkbox</label>
+                    </div>
+                    
+                    {#if enableCopyFrom}
+                        <div class="ms-4 mt-2">
+                            <label class="small fw-bold">Source Field</label>
+                            <select bind:value={copyFromField} class="form-select form-select-sm mb-2">
+                                <option value="">-- Select Source Field --</option>
+                                {#each schema.fields.filter(f => f.key !== (linkToProfileField ? selectedProfileFieldKey : key)) as sf}
+                                    <option value={sf.key}>{sf.label} ({sf.key})</option>
+                                {/each}
+                            </select>
+                            
+                            <label class="small fw-bold">Checkbox Label</label>
+                            <input bind:value={copyFromLabel} class="form-control form-select-sm" placeholder="e.g. Same as Permanent Address" />
+                        </div>
+                    {/if}
+                </div>
+
+                <div class="mt-3 p-2 border rounded bg-light">
+                    <h6><i class="bi bi-eye me-1"></i> Conditional Visibility</h6>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small">Field to Check</label>
+                            <input 
+                                type="text" 
+                                bind:value={showWhenField} 
+                                list="available-fields-list-{sectionId}"
+                                class="form-control form-control-sm" 
+                                placeholder="Search or type field key..."
+                            />
+                            <datalist id="available-fields-list-{sectionId}">
+                                {#each schema.fields.filter(f => f.key !== (linkToProfileField ? selectedProfileFieldKey : key)) as field}
+                                    <option value={field.key}>{field.label} ({field.key})</option>
+                                {/each}
+                            </datalist>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Operator</label>
+                            <select bind:value={showWhenOperator} class="form-select form-select-sm">
+                                <option value="equals">Equals</option>
+                                <option value="notEquals">Not Equals</option>
+                                <option value="in">In (Multiple)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small">
+                                Value {showWhenOperator === 'in' ? '(comma-separated)' : ''}
+                            </label>
+                            {#if showWhenOperator === 'in'}
+                                <input bind:value={showWhenValues} class="form-control form-control-sm" placeholder="science, medical, vocational" />
+                            {:else}
+                                <input bind:value={showWhenValues} class="form-control form-control-sm" placeholder="value" />
+                            {/if}
+                        </div>
+                    </div>
+                    <small class="text-muted">Leave empty to show always</small>
+                </div>
 
             </div>
             <div class="modal-footer">

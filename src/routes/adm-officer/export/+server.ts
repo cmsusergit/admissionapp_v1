@@ -90,6 +90,7 @@ export const GET: RequestHandler = async ({
     },
     branch: { label: "Branch", getValue: (app) => app.branches?.name || "-" },
     form_type: { label: "Form Type", getValue: (app) => app.form_type || "" },
+    admission_type: { label: "Admission Mode", getValue: (app) => app.admission_type || "Regular" },
     college: {
       label: "College",
       getValue: (app) => `"${app.courses?.colleges?.name || ""}"`,

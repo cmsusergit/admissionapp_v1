@@ -129,6 +129,7 @@
                 <div class="card-header bg-warning text-dark">Course & Status</div>
                 <div class="card-body">
                     <p><strong>Course:</strong> {application.courses?.name} ({application.courses?.code})</p>
+                    <p><strong>Admission Type:</strong> <span class="badge bg-dark">{application.admission_type || 'Regular'}</span></p>
                     <p><strong>College:</strong> {application.courses?.colleges?.name}</p>
                     <p><strong>University:</strong> {application.courses?.colleges?.universities?.name}</p>
                     <p><strong>Cycle:</strong> {application.admission_cycles?.name} ({application.admission_cycles?.academic_years?.name})</p>

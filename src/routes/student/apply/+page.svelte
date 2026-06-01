@@ -19,6 +19,7 @@
     let selectedCycleId: string = '';
     let selectedFormType: string = 'Provisional'; // Default
     let selectedBranchId: string = '';
+    let selectedAdmissionType: string = 'Regular';
     
     // Application data and UI state
     let currentApplicationId: string | null = null;
@@ -75,6 +76,11 @@
     let currentAdmissionFormSchema: any = null;
     let isLoadingSchema = false;
     let uiMessage: { type: 'success' | 'danger' | 'info' | 'warning', text: string } | null = null;
+
+    // Derived allowed admission types
+    $: allowedAdmissionTypes = currentAdmissionFormSchema?.allowedAdmissionTypes 
+        ? currentAdmissionFormSchema.allowedAdmissionTypes.split(',').map((t: string) => t.trim()).filter(Boolean)
+        : [];
 
     // Payment state
     let showPaymentModal = false;
@@ -232,7 +238,7 @@
 
         let query = supabase
             .from('applications')
-            .select('id, form_data, branch_id, form_type, status')
+            .select('id, form_data, branch_id, form_type, status, admission_type')
             .eq('student_id', user.id)
             .eq('course_id', selectedCourseId)
             .eq('cycle_id', selectedCycleId)
@@ -255,6 +261,13 @@
             } else {
                 selectedBranchId = '';
                 console.log('No branch ID for existing app.');
+            }
+
+            if (existingApp.admission_type) {
+                selectedAdmissionType = existingApp.admission_type;
+                console.log('Admission Type from existing app set:', selectedAdmissionType);
+            } else {
+                selectedAdmissionType = 'Regular';
             }
             
             applicationFormData = mergeProfileData(
@@ -372,6 +385,7 @@
         formPayload.append('cycle_id', selectedCycleId);
         formPayload.append('branch_id', selectedBranchId);
         formPayload.append('form_type', selectedFormType);
+        formPayload.append('admission_type', selectedAdmissionType);
         formPayload.append('form_data', JSON.stringify(applicationFormData));
         if (currentApplicationId) {
             formPayload.append('application_id', currentApplicationId);
@@ -426,6 +440,7 @@
             saveFormPayload.append('cycle_id', selectedCycleId);
             saveFormPayload.append('branch_id', selectedBranchId);
             saveFormPayload.append('form_type', selectedFormType);
+            saveFormPayload.append('admission_type', selectedAdmissionType);
             saveFormPayload.append('form_data', JSON.stringify(applicationFormData));
             
             if (currentApplicationId) {
@@ -549,6 +564,17 @@
                         {/if}
                     </select>
                 </div>
+
+                {#if allowedAdmissionTypes.length > 0}
+                    <div class="col-md-6">
+                        <label for="admission-type-select" class="form-label">Admission Type</label>
+                        <select class="form-select" id="admission-type-select" bind:value={selectedAdmissionType}>
+                            {#each allowedAdmissionTypes as type}
+                                <option value={type}>{type === 'D2D' ? 'D2D (Diploma to Degree)' : type === 'C2D' ? 'C2D (Certificate to Degree)' : type}</option>
+                            {/each}
+                        </select>
+                    </div>
+                {/if}
 
                 <div class="col-md-6">
                     <label for="cycle-select" class="form-label">Admission Cycle</label>

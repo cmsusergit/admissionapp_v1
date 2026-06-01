@@ -258,6 +258,20 @@
                     >
                     <label class="form-check-label" for="edit-enable-branch">Enable Branch Selection</label>
                 </div>
+
+                <div class="mb-3">
+                    <label for="edit-allowed-admission-types" class="form-label">Allowed Admission Types (comma-separated, e.g. Regular,D2D,C2D)</label>
+                    <input type="text" class="form-control" id="edit-allowed-admission-types" 
+                        value={builderSchema.allowedAdmissionTypes || ''} 
+                        on:input={(e) => {
+                            const target = e.target as HTMLInputElement;
+                            builderSchema.allowedAdmissionTypes = target.value;
+                            builderSchemaString = JSON.stringify(builderSchema);
+                        }}
+                        placeholder="Regular,D2D,C2D"
+                    >
+                    <div class="form-text">Specify which admission types should be available for selection. If empty, 'Regular' is assumed.</div>
+                </div>
                 
                 <div class="mb-3">
                     <label class="form-label">Form Schema Builder</label>

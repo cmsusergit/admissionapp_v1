@@ -12,9 +12,16 @@
     let filterCourseId = $page.url.searchParams.get('courseId') || '';
     let filterCycleId = $page.url.searchParams.get('cycleId') || '';
     let filterStatus = $page.url.searchParams.get('status') || '';
+    let filterFormType = $page.url.searchParams.get('formType') || '';
+    let filterBranchId = $page.url.searchParams.get('branchId') || '';
     let filterSearch = $page.url.searchParams.get('search') || '';
     let filterCreatedBy = $page.url.searchParams.get('createdBy') || '';
     let filterUpdatedBy = $page.url.searchParams.get('updatedBy') || '';
+
+    // Filter branches based on course
+    $: filteredBranches = filterCourseId 
+        ? data.branches.filter((b: any) => b.course_id === filterCourseId)
+        : data.branches;
 
     // Pagination variables
     $: currentPage = data.page;
@@ -27,6 +34,8 @@
         if (filterCourseId) query.set('courseId', filterCourseId);
         if (filterCycleId) query.set('cycleId', filterCycleId);
         if (filterStatus) query.set('status', filterStatus);
+        if (filterFormType) query.set('formType', filterFormType);
+        if (filterBranchId) query.set('branchId', filterBranchId);
         if (filterSearch) query.set('search', filterSearch);
         if (filterCreatedBy) query.set('createdBy', filterCreatedBy);
         if (filterUpdatedBy) query.set('updatedBy', filterUpdatedBy);
@@ -54,6 +63,8 @@
         filterCourseId = '';
         filterCycleId = '';
         filterStatus = '';
+        filterFormType = '';
+        filterBranchId = '';
         filterSearch = '';
         filterCreatedBy = '';
         filterUpdatedBy = '';
@@ -210,13 +221,14 @@
     <h1 class="mb-4">My Applications (DEO)</h1>
 
     <!-- Filters -->
-    <div class="card mb-4">
-        <div class="card-header">Filter Applications</div>
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-light fw-bold">Filter Applications</div>
         <div class="card-body">
-            <div class="row g-3 align-items-end">
+            <div class="row g-3">
+                <!-- Row 1 -->
                 <div class="col-md-3">
-                    <label class="form-label">Course</label>
-                    <select class="form-select" bind:value={filterCourseId}>
+                    <label class="form-label small fw-bold">Course</label>
+                    <select class="form-select" bind:value={filterCourseId} on:change={() => filterBranchId = ''}>
                         <option value="">All Courses</option>
                         {#each data.courses as course}
                             <option value={course.id}>{course.name}</option>
@@ -224,7 +236,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Admission Cycle</label>
+                    <label class="form-label small fw-bold">Admission Cycle</label>
                     <select class="form-select" bind:value={filterCycleId}>
                         <option value="">All Cycles</option>
                         {#each data.cycles as cycle}
@@ -232,8 +244,28 @@
                         {/each}
                     </select>
                 </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Branch</label>
+                    <select class="form-select" bind:value={filterBranchId}>
+                        <option value="">All Branches</option>
+                        {#each filteredBranches as branch}
+                            <option value={branch.id}>{branch.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Form Type</label>
+                    <select class="form-select" bind:value={filterFormType}>
+                        <option value="">All Types</option>
+                        {#each data.formTypes as ft}
+                            <option value={ft.name}>{ft.name}</option>
+                        {/each}
+                    </select>
+                </div>
+
+                <!-- Row 2 -->
                 <div class="col-md-2">
-                    <label class="form-label">Status</label>
+                    <label class="form-label small fw-bold">Status</label>
                     <select class="form-select" bind:value={filterStatus}>
                         <option value="">All Statuses</option>
                         <option value="draft">Draft</option>
@@ -246,7 +278,7 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Created By</label>
+                    <label class="form-label small fw-bold">Created By</label>
                     <select class="form-select" bind:value={filterCreatedBy}>
                         <option value="">Any</option>
                         <option value="student">Student (Self)</option>
@@ -258,7 +290,7 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Updated By</label>
+                    <label class="form-label small fw-bold">Updated By</label>
                     <select class="form-select" bind:value={filterUpdatedBy}>
                         <option value="">Any</option>
                         <option value="student">Student (Self)</option>
@@ -269,20 +301,18 @@
                         </optgroup>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Search</label>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Search</label>
                     <div class="input-group">
-                        <input type="text" class="form-control" placeholder="Search Student Name" bind:value={filterSearch} on:keydown={handleSearchKeydown}>
+                        <input type="text" class="form-control" placeholder="Student Name..." bind:value={filterSearch} on:keydown={handleSearchKeydown}>
                         <button class="btn btn-primary" type="button" on:click={applyFilters}>
                             <i class="bi bi-search"></i>
                         </button>
                     </div>
                 </div>
-                <div class="col-md-2">
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-primary flex-grow-1" on:click={applyFilters}>Apply</button>
-                        <button class="btn btn-outline-secondary" on:click={clearFilters}>Clear</button>
-                    </div>
+                <div class="col-md-2 d-flex align-items-end gap-2">
+                    <button class="btn btn-primary flex-grow-1" on:click={applyFilters}>Apply</button>
+                    <button class="btn btn-outline-secondary" on:click={clearFilters}>Clear</button>
                 </div>
             </div>
         </div>

@@ -23,6 +23,8 @@ export const load: PageServerLoad = async ({
   const courseId = url.searchParams.get("courseId");
   const cycleId = url.searchParams.get("cycleId");
   const status = url.searchParams.get("status");
+  const formType = url.searchParams.get("formType");
+  const branchId = url.searchParams.get("branchId");
   const search = url.searchParams.get("search")?.trim();
   const createdBy = url.searchParams.get("createdBy"); // 'student' or UUID
   const updatedBy = url.searchParams.get("updatedBy"); // 'student' or UUID
@@ -39,6 +41,11 @@ export const load: PageServerLoad = async ({
   const { data: cycles } = await supabase
     .from("admission_cycles")
     .select("id, name");
+
+  const { data: allBranches } = await supabase
+    .from("branches")
+    .select("id, name, course_id")
+    .order("name");
 
   // Fetch colleges with UPI settings for QR code display
   const { data: colleges } = await supabase
@@ -71,15 +78,17 @@ export const load: PageServerLoad = async ({
             application_fee_status,
             updated_at,
             form_type,
+            admission_type,
             course_id,
             cycle_id,
+            branch_id,
             form_data,
             users!applications_student_id_fkey (id, full_name, email, student_profiles(enrollment_number, profile_data)),
             courses!inner (name, college_id),
             branches(name),
             admission_cycles(name),
-            creator:created_by(full_name, role),
-            updater:updated_by(full_name, role),
+            creator:created_by${createdBy === 'student' ? '!inner' : ''}(full_name, role),
+            updater:updated_by${updatedBy === 'student' ? '!inner' : ''}(full_name, role),
             payments(id, amount, status, payment_type, receipt_number)
         `,
     { count: "exact" },
@@ -90,6 +99,29 @@ export const load: PageServerLoad = async ({
     userProfile,
     "applications",
   );
+
+  // Apply filters
+  if (courseId) baseQuery = baseQuery.eq("course_id", courseId);
+  if (cycleId) baseQuery = baseQuery.eq("cycle_id", cycleId);
+  if (status) baseQuery = baseQuery.eq("status", status);
+  if (formType) baseQuery = baseQuery.eq("form_type", formType);
+  if (branchId) baseQuery = baseQuery.eq("branch_id", branchId);
+  
+  if (createdBy) {
+    if (createdBy === 'student') {
+        baseQuery = baseQuery.eq('creator.role', 'student');
+    } else {
+        baseQuery = baseQuery.eq("created_by", createdBy);
+    }
+  }
+
+  if (updatedBy) {
+    if (updatedBy === 'student') {
+        baseQuery = baseQuery.eq('updater.role', 'student');
+    } else {
+        baseQuery = baseQuery.eq("updated_by", updatedBy);
+    }
+  }
 
   const sortField = url.searchParams.get('sort') || 'updated_at';
   const sortOrder = url.searchParams.get('order') || 'desc';
@@ -145,7 +177,16 @@ export const load: PageServerLoad = async ({
         const firstName = (app.form_data?.first_name || '').toLowerCase();
         const middleName = (app.form_data?.middle_name || '').toLowerCase();
         const lastName = (app.form_data?.last_name || '').toLowerCase();
-        return firstName.includes(searchLower) || middleName.includes(searchLower) || lastName.includes(searchLower);
+        const fullName = (app.users?.full_name || '').toLowerCase();
+        const email = (app.users?.email || '').toLowerCase();
+        const enrollment = (app.users?.student_profiles?.enrollment_number || '').toLowerCase();
+        
+        return firstName.includes(searchLower) || 
+               middleName.includes(searchLower) || 
+               lastName.includes(searchLower) ||
+               fullName.includes(searchLower) ||
+               email.includes(searchLower) ||
+               enrollment.includes(searchLower);
       });
     }
 
@@ -185,9 +226,11 @@ export const load: PageServerLoad = async ({
       applications: enrich(paginatedApplications),
       courses: courses || [],
       cycles: cycles || [],
+      branches: allBranches || [],
+      formTypes: formTypesData || [],
       colleges: colleges || [],
       staffUsers: staffUsers || [],
-      filters: { courseId, cycleId, status, search, createdBy, updatedBy, sort: sortField, order: sortOrder },
+      filters: { courseId, cycleId, status, search, createdBy, updatedBy, formType, branchId, sort: sortField, order: sortOrder },
       page,
       limit,
       totalCount: finalCount,

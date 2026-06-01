@@ -17,6 +17,7 @@
         id: '',
         name: '',
         code: '',
+        collegeid_code: '',
         course_id: '',
         intake_capacity: 0
     });
@@ -30,6 +31,7 @@
             id: branch.id,
             name: branch.name,
             code: branch.code,
+            collegeid_code: branch.collegeid_code || '',
             course_id: branch.course_id,
             intake_capacity: branch.intake_capacity || 0
         });
@@ -72,6 +74,7 @@
                         <tr>
                             <th>Branch Name</th>
                             <th>Code</th>
+                            <th>Enrollment Code</th>
                             <th>Course</th>
                             <th>College</th>
                             <th>Intake Capacity</th>
@@ -83,6 +86,7 @@
                             <tr>
                                 <td>{branch.name}</td>
                                 <td>{getBranchDisplayCode(branch.name, branch.code)}</td>
+                                <td><code>{branch.collegeid_code || '-'}</code></td>
                                 <td>{branch.courses?.name}</td>
                                 <td>{branch.courses?.colleges?.name}</td>
                                 <td>{branch.intake_capacity || 0}</td>
@@ -127,6 +131,11 @@
                         <input type="text" class="form-control" id="add-code" name="code" />
                     </div>
                     <div class="mb-3">
+                        <label for="add-collegeid-code" class="form-label">Enrollment Code (CollegeID)</label>
+                        <input type="text" class="form-control" id="add-collegeid-code" name="collegeid_code" />
+                        <div class="form-text">Used for CollegeID/Enrollment generation (e.g., CE). If left empty, this part will be empty in the Enrollment Number.</div>
+                    </div>
+                    <div class="mb-3">
                         <label for="add-intake-capacity" class="form-label">Intake Capacity</label>
                         <input type="number" class="form-control" id="add-intake-capacity" name="intake_capacity" value="0" min="0" />
                     </div>
@@ -167,6 +176,11 @@
                     <div class="mb-3">
                         <label for="edit-code" class="form-label">Branch Code</label>
                         <input type="text" class="form-control" id="edit-code" name="code" bind:value={$currentBranch.code} />
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-collegeid-code" class="form-label">Enrollment Code (CollegeID)</label>
+                        <input type="text" class="form-control" id="edit-collegeid-code" name="collegeid_code" bind:value={$currentBranch.collegeid_code} />
+                        <div class="form-text">Used for CollegeID/Enrollment generation (e.g., CE). If left empty, this part will be empty in the Enrollment Number.</div>
                     </div>
                     <div class="mb-3">
                         <label for="edit-intake-capacity" class="form-label">Intake Capacity</label>

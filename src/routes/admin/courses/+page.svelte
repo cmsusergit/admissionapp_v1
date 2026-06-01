@@ -15,12 +15,13 @@
         college_id: '',
         name: '',
         code: '',
+        collegeid_code: '',
         duration_years: 0,
         intake_capacity: 0,
         colleges: { name: '' } // For displaying college name
     });
 
-    function openEditModal(course: { id: string; college_id: string; name: string; code: string; duration_years: number; intake_capacity: number; colleges: { name: string } } | any) {
+    function openEditModal(course: { id: string; college_id: string; name: string; code: string; collegeid_code: string; duration_years: number; intake_capacity: number; colleges: { name: string } } | any) {
         currentCourse.set(course);
         showEditModal = true;
     }
@@ -43,6 +44,7 @@
                                             <tr>
                                                 <th>Name</th>
                                                 <th>Code</th>
+                                                <th>Enrollment Code</th>
                                                 <th>College</th>
                                                 <th>Duration (Years)</th>
                                                 <th>Intake Capacity</th>
@@ -53,6 +55,7 @@
                         <tr>
                             <td>{course.name}</td>
                             <td>{course.code}</td>
+                            <td><code>{course.collegeid_code || '-'}</code></td>
                             <td>{course.colleges?.name || 'N/A'}</td>
                             <td>{course.duration_years}</td>
                             <td>{course.intake_capacity || 0}</td>
@@ -103,6 +106,11 @@
                     <div class="mb-3">
                         <label for="add-code" class="form-label">Course Code</label>
                         <input type="text" class="form-control" id="add-code" name="code" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="add-collegeid-code" class="form-label">Enrollment Code (CollegeID)</label>
+                        <input type="text" class="form-control" id="add-collegeid-code" name="collegeid_code" />
+                        <div class="form-text">Used for CollegeID/Enrollment generation (e.g., BE). Falls back to Course Code if empty.</div>
                     </div>
                     <div class="mb-3">
                         <label for="add-duration-years" class="form-label">Duration (Years)</label>
@@ -157,6 +165,11 @@
                     <div class="mb-3">
                         <label for="edit-code" class="form-label">Course Code</label>
                         <input type="text" class="form-control" id="edit-code" name="code" bind:value={$currentCourse.code} />
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-collegeid-code" class="form-label">Enrollment Code (CollegeID)</label>
+                        <input type="text" class="form-control" id="edit-collegeid-code" name="collegeid_code" bind:value={$currentCourse.collegeid_code} />
+                        <div class="form-text">Used for CollegeID/Enrollment generation (e.g., BE). Falls back to Course Code if empty.</div>
                     </div>
                     <div class="mb-3">
                         <label for="edit-duration-years" class="form-label">Duration (Years)</label>
