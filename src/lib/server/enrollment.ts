@@ -74,6 +74,8 @@ export async function generateEnrollmentNumber(
         query = query.is('branch_id', null);
     }
 
+    query = query.eq('admission_type', admissionType || 'Regular');
+
     let { data: sequence, error } = await query.maybeSingle();
 
     if (!sequence) {
@@ -84,6 +86,7 @@ export async function generateEnrollmentNumber(
                 course_id: courseId,
                 academic_year_id: academicYearId,
                 branch_id: branchId,
+                admission_type: admissionType || 'Regular',
                 prefix: sequencePrefix, // Store the new format prefix
                 current_sequence: 0
             })

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.enrollment_sequences (
     academic_year_id UUID REFERENCES public.academic_years(id) ON DELETE CASCADE NOT NULL,
     current_sequence INTEGER DEFAULT 0,
     prefix TEXT, -- e.g., "ENR-"
+    admission_type TEXT NOT NULL DEFAULT 'Regular',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -81,7 +82,8 @@ ON public.enrollment_sequences (
     college_id, 
     course_id, 
     academic_year_id, 
-    COALESCE(branch_id, '00000000-0000-0000-0000-000000000000') -- Handle NULL branch_id safely
+    COALESCE(branch_id, '00000000-0000-0000-0000-000000000000'::uuid), -- Handle NULL branch_id safely
+    admission_type
 );
 
 -- 9. Setup RLS

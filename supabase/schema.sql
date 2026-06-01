@@ -165,9 +165,10 @@ CREATE TABLE public.admission_sequences (
     course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE NOT NULL,
     academic_year_id UUID REFERENCES public.academic_years(id) ON DELETE CASCADE NOT NULL,
     current_sequence INTEGER DEFAULT 0,
-    prefix TEXT, -- e.g., "ADM-2026-CS-"
+    admission_type TEXT NOT NULL DEFAULT 'Regular',
+    prefix TEXT, -- e.g., "ADM-2026-CS-regular-"
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    UNIQUE(college_id, course_id, academic_year_id)
+    UNIQUE(college_id, course_id, academic_year_id, prefix)
 );
 
 -- 15. Account Admissions (For tracking final admission for accounts)

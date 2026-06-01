@@ -95,10 +95,9 @@ export async function approveApplicationLogic(
   
   // FIXED: Prioritize short_code, otherwise take last 2 digits of start year
   const yearShort = academicYear?.short_code || yearName.substring(0, 4).slice(-2);
-  
   const prefix = `${formTypeCode}-${yearShort}-${courseCode}-`;
 
-  // Fetch sequence with exact prefix match to ensure separation per form type
+  // Fetch sequence with exact prefix
   let { data: strictSequence } = await supabase
     .from("admission_sequences")
     .select("id, current_sequence")

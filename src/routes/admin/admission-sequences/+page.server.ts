@@ -56,6 +56,7 @@ export const actions: Actions = {
         const college_id = formData.get('college_id') as string;
         const course_id = formData.get('course_id') as string;
         const academic_year_id = formData.get('academic_year_id') as string;
+        const admission_type = (formData.get('admission_type') as string) || 'Regular';
         const prefix = formData.get('prefix') as string;
         const current_sequence = parseInt(formData.get('current_sequence') as string);
 
@@ -63,6 +64,7 @@ export const actions: Actions = {
             college_id,
             course_id,
             academic_year_id,
+            admission_type,
             prefix,
             current_sequence
         });
@@ -83,10 +85,12 @@ export const actions: Actions = {
 
         const formData = await request.formData();
         const id = formData.get('id') as string;
+        const admission_type = (formData.get('admission_type') as string) || 'Regular';
         const prefix = formData.get('prefix') as string;
         const current_sequence = parseInt(formData.get('current_sequence') as string);
 
         const { error } = await supabase.from('admission_sequences').update({
+            admission_type,
             prefix,
             current_sequence
         }).eq('id', id);

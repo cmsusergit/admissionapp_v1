@@ -30,7 +30,8 @@ ON public.enrollment_sequences (
     college_id, 
     course_id, 
     academic_year_id, 
-    COALESCE(branch_id, '00000000-0000-0000-0000-000000000000')
+    COALESCE(branch_id, '00000000-0000-0000-0000-000000000000'),
+    admission_type
 );
 
 

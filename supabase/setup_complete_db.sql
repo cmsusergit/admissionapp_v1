@@ -222,6 +222,7 @@ CREATE TABLE public.admission_sequences (
     course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE NOT NULL,
     academic_year_id UUID REFERENCES public.academic_years(id) ON DELETE CASCADE NOT NULL,
     current_sequence INTEGER DEFAULT 0,
+    admission_type TEXT NOT NULL DEFAULT 'Regular',
     prefix TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE(college_id, course_id, academic_year_id, prefix) -- Added prefix to unique constraint
