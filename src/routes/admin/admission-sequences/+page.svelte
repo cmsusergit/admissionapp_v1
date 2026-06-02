@@ -9,6 +9,8 @@
     let selectedCollegeId = '';
     let selectedCourseId = '';
     let selectedYearId = '';
+    let selectedAdmissionType = 'Regular';
+    const admissionTypes = ['Regular', 'D2D', 'C2D'];
 
     let showAddModal = false;
     let showEditModal = false;
@@ -19,6 +21,7 @@
         college_id: '',
         course_id: '',
         academic_year_id: '',
+        admission_type: 'Regular',
         prefix: '',
         current_sequence: 0,
         colleges: { name: '' },
@@ -30,7 +33,8 @@
     $: foundSequence = data.sequences.find(s => 
         s.college_id === selectedCollegeId && 
         s.course_id === selectedCourseId && 
-        s.academic_year_id === selectedYearId
+        s.academic_year_id === selectedYearId &&
+        (s.admission_type || 'Regular') === selectedAdmissionType
     );
 
     function openCreateModal() {
@@ -82,12 +86,20 @@
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Academic Year</label>
                     <select class="form-select" bind:value={selectedYearId}>
                         <option value="">Select Year...</option>
                         {#each data.academicYears as year}
                             <option value={year.id}>{year.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Admission Type</label>
+                    <select class="form-select" bind:value={selectedAdmissionType}>
+                        {#each admissionTypes as admissionType}
+                            <option value={admissionType}>{admissionType}</option>
                         {/each}
                     </select>
                 </div>
@@ -106,6 +118,7 @@
                         {foundSequence.prefix}<span class="text-dark">{foundSequence.current_sequence}</span>
                     </h3>
                     <p class="text-muted">Current Sequence ID: {foundSequence.id}</p>
+                    <p class="text-muted">Admission Type: {foundSequence.admission_type || 'Regular'}</p>
                     
                     <div class="d-flex justify-content-center gap-3">
                         <button class="btn btn-info" on:click={() => openEditModal(foundSequence)}>
@@ -157,12 +170,14 @@
                     <input type="hidden" name="college_id" value={selectedCollegeId} />
                     <input type="hidden" name="course_id" value={selectedCourseId} />
                     <input type="hidden" name="academic_year_id" value={selectedYearId} />
+                    <input type="hidden" name="admission_type" value={selectedAdmissionType} />
 
                     <div class="alert alert-secondary">
                         Creating for:<br>
                         <strong>College:</strong> {data.colleges.find(c => c.id === selectedCollegeId)?.name}<br>
                         <strong>Course:</strong> {data.courses.find(c => c.id === selectedCourseId)?.name}<br>
-                        <strong>Year:</strong> {data.academicYears.find(y => y.id === selectedYearId)?.name}
+                        <strong>Year:</strong> {data.academicYears.find(y => y.id === selectedYearId)?.name}<br>
+                        <strong>Admission Type:</strong> {selectedAdmissionType}
                     </div>
 
                     <div class="mb-3">
@@ -194,6 +209,14 @@
             <form method="POST" action="?/update" use:enhance={() => { showEditModal = false; return async ({update}) => {await update();} }}>
                 <div class="modal-body">
                     <input type="hidden" name="id" value={$currentSequence.id} />
+                    <div class="mb-3">
+                        <label for="edit-admission-type" class="form-label">Admission Type</label>
+                        <select class="form-select" id="edit-admission-type" name="admission_type" bind:value={$currentSequence.admission_type} required>
+                            {#each admissionTypes as admissionType}
+                                <option value={admissionType}>{admissionType}</option>
+                            {/each}
+                        </select>
+                    </div>
                     <div class="mb-3">
                         <label for="edit-prefix" class="form-label">Prefix</label>
                         <input type="text" class="form-control" id="edit-prefix" name="prefix" bind:value={$currentSequence.prefix} required />

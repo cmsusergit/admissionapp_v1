@@ -24,8 +24,9 @@ CREATE TABLE public.enrollment_sequences (
     academic_year_id UUID REFERENCES public.academic_years(id) ON DELETE CASCADE NOT NULL,
     current_sequence INTEGER DEFAULT 0,
     prefix TEXT, -- e.g., "ENR-2026-"
+    admission_type TEXT NOT NULL DEFAULT 'Regular',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    UNIQUE(college_id, course_id, academic_year_id)
+    UNIQUE(college_id, course_id, academic_year_id, admission_type)
 );
 
 -- 5. RLS Policies for new tables
