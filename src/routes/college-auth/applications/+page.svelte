@@ -227,7 +227,7 @@
                                 <div>
                                     <strong>{app.users?.full_name || app.users?.email}</strong>
                                     <br />
-                                    <small>{app.courses?.name} - {app.admission_cycles?.name}</small>
+                                    <small>{app.courses?.name} {#if app.branches} - {app.branches.name}{/if} - {app.admission_cycles?.name}</small>
                                     <br />
                                     <span class="badge bg-info">{app.status}</span>
                                 </div>
@@ -253,7 +253,7 @@
                     <div class="card-body">
                         <h5 class="card-title">Student Information</h5>
                         <p><strong>Email:</strong> {selectedApplication.users?.email}</p>
-                        <p><strong>Course:</strong> {selectedApplication.courses?.name}</p>
+                        <p><strong>Course:</strong> {selectedApplication.courses?.name} {#if selectedApplication.branches} - <span class="badge bg-secondary">{selectedApplication.branches.name}</span>{/if}</p>
                         <p><strong>College:</strong> {selectedApplication.courses?.colleges?.name}</p>
                         <p><strong>Admission Cycle:</strong> {selectedApplication.admission_cycles?.name}</p>
                         <p><strong>Current Status:</strong> <span class="badge bg-info">{selectedApplication.status}</span>

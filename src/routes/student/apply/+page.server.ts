@@ -367,6 +367,8 @@ export const actions: Actions = {
       application_id: validatedApplicationId,
     } = parsed.data;
 
+    let finalBranchId = validatedBranchId || null;
+
     // Fetch form details (schema and fee) early
     const { data: formDetails } = await supabase
       .from("admission_forms")
@@ -376,6 +378,24 @@ export const actions: Actions = {
       .eq("form_type", validatedFormType)
       .eq("is_enabled", true)
       .single();
+
+    // Auto-assign branch if disabled in schema and not provided
+    if (!finalBranchId && formDetails?.schema_json?.enableBranchSelection === false) {
+      const { data: prevApp } = await supabase
+        .from("applications")
+        .select("branch_id")
+        .eq("student_id", userProfile.id)
+        .eq("course_id", validatedCourseId)
+        .not("branch_id", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (prevApp?.branch_id) {
+        finalBranchId = prevApp.branch_id;
+        console.log(`[Auto-Assign] Branch ${finalBranchId} inherited from previous application for student ${userProfile.id}`);
+      }
+    }
 
     const formFee = formDetails?.form_fee || 0;
 
@@ -416,7 +436,7 @@ export const actions: Actions = {
         .from("applications")
         .update({
           form_data: validatedFormData,
-          branch_id: validatedBranchId || null,
+          branch_id: finalBranchId,
           form_type: validatedFormType,
           admission_type: validatedAdmissionType,
           status: existingAppCheck.status, // Preserve current status
@@ -490,7 +510,7 @@ export const actions: Actions = {
           .from("applications")
           .update({
             form_data: validatedFormData,
-            branch_id: validatedBranchId || null,
+            branch_id: finalBranchId,
             form_type: validatedFormType,
             admission_type: validatedAdmissionType,
             updated_at: new Date().toISOString(),
@@ -523,7 +543,7 @@ export const actions: Actions = {
           student_id: userProfile.id,
           course_id: validatedCourseId,
           cycle_id: validatedCycleId,
-          branch_id: validatedBranchId || null,
+          branch_id: finalBranchId,
           form_type: validatedFormType,
           admission_type: validatedAdmissionType,
           form_data: validatedFormData,

@@ -370,9 +370,10 @@
                         <p class="mb-1"><strong>Email:</strong> {selectedApplication.users?.email}</p>
                     </div>
                     <div class="col-md-6">
-                        <h6>Status</h6>
+                        <h6>Status & Course</h6>
                         <p class="mb-1"><strong>Current:</strong> {selectedApplication.status}</p>
                         <p class="mb-1"><strong>Form Type:</strong> {selectedApplication.form_type}</p>
+                        <p class="mb-1"><strong>Course:</strong> {selectedApplication.courses?.name} {#if selectedApplication.branches} <span class="badge bg-secondary">{selectedApplication.branches.name}</span>{/if}</p>
                     </div>
                 </div>
                 

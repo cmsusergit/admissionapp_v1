@@ -1207,7 +1207,7 @@
                             <label class="form-label">Reference No.</label>
                             <input type="text" class="form-control" bind:value={transactionRef} />
                         </div>
-                        <button type="button" class="btn btn-success w-100" onclick={handleRecordPayment}>Record Offline Payment</button>
+                        <button type="button" class="btn btn-success w-100" onclick={handleRecordPayment} disabled>Record Offline Payment</button>
                     </div>
                     <div class="col-md-6 ps-md-4">
                         <h6 class="text-uppercase text-muted small fw-bold mb-3">Option 2: Online Payment</h6>

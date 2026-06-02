@@ -128,7 +128,7 @@
             <div class="card h-100 border-warning">
                 <div class="card-header bg-warning text-dark">Course & Status</div>
                 <div class="card-body">
-                    <p><strong>Course:</strong> {application.courses?.name} ({application.courses?.code})</p>
+                    <p><strong>Course:</strong> {application.courses?.name} ({application.courses?.code}) {#if application.branches} - <span class="badge bg-secondary">{application.branches.name}</span>{/if}</p>
                     <p><strong>Admission Type:</strong> <span class="badge bg-dark">{application.admission_type || 'Regular'}</span></p>
                     <p><strong>College:</strong> {application.courses?.colleges?.name}</p>
                     <p><strong>University:</strong> {application.courses?.colleges?.universities?.name}</p>

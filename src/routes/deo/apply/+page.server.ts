@@ -600,6 +600,8 @@ export const actions: Actions = {
       application_id: validatedApplicationId,
     } = parsed.data;
 
+    let finalBranchId = validatedBranchId || null;
+
     // Security: Validate Course College against User Profile
     if (userProfile.college_id) {
       const { data: courseCheck } = await supabase
@@ -624,6 +626,24 @@ export const actions: Actions = {
       .eq("form_type", validatedFormType)
       .limit(1)
       .maybeSingle();
+
+    // Auto-assign branch if disabled in schema and not provided
+    if (!finalBranchId && formDetails?.schema_json?.enableBranchSelection === false) {
+      const { data: prevApp } = await supabase
+        .from("applications")
+        .select("branch_id")
+        .eq("student_id", validatedStudentId)
+        .eq("course_id", validatedCourseId)
+        .not("branch_id", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (prevApp?.branch_id) {
+        finalBranchId = prevApp.branch_id;
+        console.log(`[DEO Auto-Assign] Branch ${finalBranchId} inherited from previous application for student ${validatedStudentId}`);
+      }
+    }
 
     const formFee = formDetails?.form_fee || 0;
 
@@ -679,7 +699,7 @@ export const actions: Actions = {
         .update({
           form_data: validatedFormData,
           status: existingAppCheck.status, // Preserve current status
-          branch_id: validatedBranchId,
+          branch_id: finalBranchId,
           form_type: validatedFormType,
           admission_type: validatedAdmissionType,
           application_fee_status: newFeeStatus,
@@ -742,7 +762,7 @@ export const actions: Actions = {
           .from("applications")
           .update({
             form_data: validatedFormData,
-            branch_id: validatedBranchId,
+            branch_id: finalBranchId,
             form_type: validatedFormType,
             admission_type: validatedAdmissionType,
             application_fee_status: newFeeStatus,
@@ -791,7 +811,7 @@ export const actions: Actions = {
           student_id: validatedStudentId,
           course_id: validatedCourseId,
           cycle_id: validatedCycleId,
-          branch_id: validatedBranchId,
+          branch_id: finalBranchId,
           form_type: validatedFormType,
           admission_type: validatedAdmissionType,
           form_data: validatedFormData,
