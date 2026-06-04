@@ -33,6 +33,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         .from('applications')
         .select(`
             branch_id, 
+            course_id,
             id, 
             status, 
             form_type, 
@@ -45,11 +46,20 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             account_admissions (
                 admission_number
             )
-        `);
+        `)
+        .limit(10000); // Increase limit to ensure all records are processed
 
     if (appError) {
         console.error('Capacity Report - applications fetch error:', appError.message);
     }
+
+    // Map course_id to its first branch for apps with null branch_id
+    const courseToFirstBranchMap: Record<string, string> = {};
+    (courses || []).forEach(course => {
+        if (course.branches && course.branches.length > 0) {
+            courseToFirstBranchMap[course.id] = course.branches[0].id;
+        }
+    });
 
     // New Structure: branch_id -> { [metric]: { total: number, formTypes: { [type]: count } }, students: Set }
     const branchStats: Record<string, any> = {};
@@ -63,6 +73,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 approved: { total: 0, formTypes: {} },
                 paid: { total: 0, formTypes: {} },
                 admitted: { total: 0, formTypes: {} },
+                admitted_id: { total: 0, formTypes: {} },
+                admitted_paid: { total: 0, formTypes: {} },
                 students: {}
             };
         }
@@ -70,9 +82,16 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
     };
 
     allApps?.forEach((app) => {
-        if (!app.branch_id) return;
+        let bId = app.branch_id;
         
-        const stats = ensureBranch(app.branch_id);
+        // Fallback: If branch_id is null, attribute to first branch of course
+        if (!bId && app.course_id) {
+            bId = courseToFirstBranchMap[app.course_id];
+        }
+
+        if (!bId) return;
+        
+        const stats = ensureBranch(bId);
         const type = (app.form_type || 'Unknown').trim();
 
         // Helper to increment
@@ -81,11 +100,13 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             stats[metric].formTypes[type] = (stats[metric].formTypes[type] || 0) + 1;
         };
 
+        const isCancelledOrRemoved = app.status === 'cancelled' || app.status === 'removed';
+
         // 1. All Applications: Everything fetched
         increment('all');
 
         // 2. Submitted Apps: Anything that is not a draft (submitted, verified, approved, etc.)
-        if (app.status !== 'draft') {
+        if (app.status !== 'draft' && !isCancelledOrRemoved) {
             increment('submitted');
         }
 
@@ -99,22 +120,32 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             (p: any) => (p.payment_type === 'application_fee' || p.payment_type === 'provisional_fee') && p.status === 'completed'
         ) || app.application_fee_status === 'paid';
 
-        if (hasPaidAppFee) {
+        if (hasPaidAppFee && !isCancelledOrRemoved) {
             increment('paid');
         }
 
-        // 5. Admitted: (Tuition fee paid) AND (College ID / Admission Number generated)
-        const hasTuitionFee = (app.payments as any || []).some(
-            (p: any) => p.payment_type === 'tuition_fee' && p.status === 'completed'
-        );
-        const hasAdmissionNumber = !!(app.account_admissions as any)?.admission_number;
+        // 5. Admitted: (College ID / Admission Number generated)
+        const hasAdmissionNumber = !!(Array.isArray(app.account_admissions) 
+            ? app.account_admissions[0]?.admission_number 
+            : (app.account_admissions as any)?.admission_number);
 
-        if (hasTuitionFee && hasAdmissionNumber) {
+        if (hasAdmissionNumber && !isCancelledOrRemoved) {
+            increment('admitted_id');
+            // Legacy field for compatibility
             increment('admitted');
         }
 
+        // 6. Admitted & Paid: (Tuition fee paid) AND (ID generated)
+        const hasTuitionFee = (app.payments as any || []).some(
+            (p: any) => p.payment_type === 'tuition_fee' && p.status === 'completed'
+        );
+
+        if (hasTuitionFee && hasAdmissionNumber && !isCancelledOrRemoved) {
+            increment('admitted_paid');
+        }
+
         // Unique student tracking for Detailed View
-        if (app.student_id) {
+        if (app.student_id && !isCancelledOrRemoved) {
             if (!stats.students[app.student_id]) stats.students[app.student_id] = new Set();
             stats.students[app.student_id].add(type);
         }
@@ -135,7 +166,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             
             if (stats) {
                 // Populate form types for this college
-                ['all', 'submitted', 'approved', 'paid', 'admitted'].forEach(metric => {
+                ['all', 'submitted', 'approved', 'paid', 'admitted', 'admitted_id', 'admitted_paid'].forEach(metric => {
                     Object.keys(stats[metric].formTypes).forEach(ft => {
                         acc[collegeName].formTypesSet.add(ft);
                         globalFormTypesSet.add(ft);
@@ -171,7 +202,9 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                     submitted: { total: 0, formTypes: {} },
                     approved: { total: 0, formTypes: {} },
                     paid: { total: 0, formTypes: {} },
-                    admitted: { total: 0, formTypes: {} }
+                    admitted: { total: 0, formTypes: {} },
+                    admitted_id: { total: 0, formTypes: {} },
+                    admitted_paid: { total: 0, formTypes: {} }
                 },
                 uniqueCount,
                 commonCount,

@@ -14,13 +14,17 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     }
 
     const statusFilter = url.searchParams.get('status') || 'pending'; // Default to 'pending'
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
-    // Fetch account_admissions records
+    // Fetch account_admissions records with pagination
     let aaQuery = supabase
         .from('account_admissions')
         .select(`
             *,
-            applications(
+            applications!inner(
                 id,
                 student_id,
                 course_id,
@@ -28,48 +32,63 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 student_user:users!applications_student_id_fkey(full_name, email),
                 courses!inner(name, college_id),
                 admission_cycles(academic_year_id),
-                payments(*)
+                payments(id, amount, status)
             )
-        `)
+        `, { count: 'exact' })
         .eq('account_status', statusFilter) // Apply status filter
-        .neq('enrollment_status', 'provisional'); // Exclude provisional admissions from this view
+        .neq('enrollment_status', 'provisional') // Exclude provisional admissions from this view
+        .range(from, to);
 
     aaQuery = applyRoleBasedCollegeFilter(aaQuery, userProfile, 'admissions');
 
-    const { data: accountAdmissions, error: aaError } = await aaQuery;
+    const { data: accountAdmissions, count: totalCount, error: aaError } = await aaQuery;
 
     if (aaError) {
         console.error('Error fetching account admissions:', aaError.message);
-        return { accountAdmissions: [], feeStructures: [], selectedStatus: statusFilter };
+        return { 
+            accountAdmissions: [], 
+            feeStructures: [], 
+            selectedStatus: statusFilter,
+            pagination: { page, limit, total: 0, totalPages: 0 }
+        };
     }
 
-    // Process to get fee structures for each admission
-    const feeStructuresPromises = accountAdmissions?.map(async (aa) => {
-        const courseId = aa.applications?.courses?.id;
-        const academicYearId = aa.applications?.admission_cycles?.academic_year_id;
+    // Process to get fee structures for the current page in batch
+    const courseIds = [...new Set(accountAdmissions?.map(aa => aa.applications?.courses?.id).filter(Boolean))];
+    const academicYearIds = [...new Set(accountAdmissions?.map(aa => aa.applications?.admission_cycles?.academic_year_id).filter(Boolean))];
 
-        if (!courseId || !academicYearId) return null;
-
-        const { data: feeStructure, error: fsError } = await supabase
+    let feeStructures: any[] = [];
+    if (courseIds.length > 0 && academicYearIds.length > 0) {
+        const { data: allFs, error: fsError } = await supabase
             .from('fee_structures')
-            .select('id, total_amount, metadata')
-            .eq('course_id', courseId)
-            .eq('academic_year_id', academicYearId)
-            .single();
+            .select('id, total_amount, metadata, course_id, academic_year_id')
+            .in('course_id', courseIds)
+            .in('academic_year_id', academicYearIds);
 
         if (fsError) {
-            console.error(`Error fetching fee structure for application ${aa.application_id}:`, fsError.message);
-            return null;
+            console.error('Error fetching batch fee structures:', fsError.message);
+        } else {
+            // Map fee structures back to admissions
+            feeStructures = accountAdmissions?.map(aa => {
+                const fs = allFs?.find(f => 
+                    f.course_id === aa.applications?.courses?.id && 
+                    f.academic_year_id === aa.applications?.admission_cycles?.academic_year_id
+                );
+                return fs ? { applicationId: aa.application_id, feeStructure: fs } : null;
+            }).filter(Boolean) || [];
         }
-        return { applicationId: aa.application_id, feeStructure };
-    }) || [];
-
-    const feeStructures = (await Promise.all(feeStructuresPromises)).filter(Boolean);
+    }
 
     return {
         accountAdmissions: accountAdmissions || [],
         feeStructures: feeStructures,
-        selectedStatus: statusFilter // Return selected status
+        selectedStatus: statusFilter,
+        pagination: {
+            page,
+            limit,
+            total: totalCount || 0,
+            totalPages: Math.ceil((totalCount || 0) / limit)
+        }
     };
 };
 

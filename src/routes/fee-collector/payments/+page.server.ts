@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
-export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
+export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile }, url }) => {
     const authenticatedUser = await getAuthenticatedUser();
 
     if (!authenticatedUser) {
@@ -18,7 +18,22 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         throw redirect(303, '/login');
     }
 
-    // Fetch all payments with student details
+    const searchTerm = url.searchParams.get('search') || '';
+    const activeTab = (url.searchParams.get('type') || 'tuition') as 'tuition' | 'application' | 'provisional';
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    // Map frontend tab to DB payment type
+    const tabToDbType = {
+        'tuition': 'tuition_fee',
+        'application': 'application_fee',
+        'provisional': 'provisional_fee'
+    };
+    const dbPaymentType = tabToDbType[activeTab];
+
+    // Fetch payments with student details and server-side search/pagination
     let paymentsQuery = supabase
         .from('payments')
         .select(`
@@ -43,22 +58,33 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 ),
                 account_admissions (admission_number)
             )
-        `);
+        `, { count: 'exact' });
+
+    // ALWAYS filter by the active tab's payment type to ensure pagination is consistent
+    paymentsQuery = paymentsQuery.eq('payment_type', dbPaymentType);
+
+    if (searchTerm) {
+        paymentsQuery = paymentsQuery.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`, { foreignTable: 'applications.student_user' });
+    }
 
     paymentsQuery = applyRoleBasedCollegeFilter(paymentsQuery, userProfile, 'payments');
 
-    const { data: allPayments, error: paymentsError } = await paymentsQuery.order('payment_date', { ascending: false });
+    const { data: allPayments, count: totalPaymentsCount, error: paymentsError } = await paymentsQuery
+        .order('payment_date', { ascending: false })
+        .range(from, to);
 
     if (paymentsError) {
         console.error('Error fetching payments:', paymentsError.message);
     }
 
-    // Separate payments by type
-    const tuitionPayments = allPayments?.filter(p => p.payment_type === 'tuition_fee') || [];
-    const applicationFeePayments = allPayments?.filter(p => p.payment_type === 'application_fee') || [];
-    const provisionalFeePayments = allPayments?.filter(p => p.payment_type === 'provisional_fee') || [];
+    // Return the list for the current tab
+    const tuitionPayments = activeTab === 'tuition' ? (allPayments || []) : [];
+    const applicationFeePayments = activeTab === 'application' ? (allPayments || []) : [];
+    const provisionalFeePayments = activeTab === 'provisional' ? (allPayments || []) : [];
 
-    // Fetch account_admissions for the "Record Payment" dropdown
+    // --- Optimization for "Record Payment" Dropdown ---
+    // If no search is performed, only fetch top 50 recently admitted students to keep it fast.
+    // If a search is performed, fetch matching admissions.
     let admQuery = supabase
         .from('account_admissions')
         .select(`
@@ -78,9 +104,16 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             )
         `);
 
+    if (searchTerm) {
+        admQuery = admQuery.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,admission_number.ilike.%${searchTerm}%`, { foreignTable: 'applications.student_user' });
+    }
+
     admQuery = applyRoleBasedCollegeFilter(admQuery, userProfile, 'admissions');
 
-    const { data: rawAdmissions, error: admError } = await admQuery.order('admission_number');
+    // Limit the dropdown list to prevent massive overhead
+    const { data: rawAdmissions, error: admError } = await admQuery
+        .order('created_at', { ascending: false })
+        .limit(100);
 
     if (admError) {
         console.error('Error fetching admissions:', admError.message);
@@ -103,27 +136,30 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         .eq('is_active', true)
         .order('name');
 
-    // Fetch provisional fee payments for each admission's application
-    const admissionsWithProvFees = await Promise.all(admissions?.map(async (adm) => {
-        const { data: provPayments, error: provPayError } = await supabase
+    // BATCH FETCH: Provisional fee payments for the current set of admissions
+    const appIdsForAdmissions = admissions.map(a => a.application_id);
+    let allProvPayments: any[] = [];
+    if (appIdsForAdmissions.length > 0) {
+        const { data: provData } = await supabase
             .from('payments')
-            .select('amount')
-            .eq('application_id', adm.application_id)
+            .select('application_id, amount')
+            .in('application_id', appIdsForAdmissions)
             .eq('payment_type', 'provisional_fee')
             .eq('status', 'completed');
+        allProvPayments = provData || [];
+    }
 
-        if (provPayError) {
-            console.error(`Error fetching provisional payments for app ${adm.application_id}:`, provPayError);
-        }
-
-        const totalProvPaid = provPayments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+    const admissionsWithProvFees = admissions.map(adm => {
+        const totalProvPaid = allProvPayments
+            .filter(p => p.application_id === adm.application_id)
+            .reduce((sum, p) => sum + p.amount, 0);
         return { ...adm, totalProvPaid };
-    }) || []);
+    });
 
-    // Fetch all fee structures for robust lookup
+    // BATCH FETCH: All fee structures for the current college
     let fsQuery = supabase
         .from('fee_structures')
-        .select('*, courses!inner(college_id), fee_schemes(name)'); // Join to filter by college
+        .select('*, courses!inner(college_id), fee_schemes(name)'); 
 
     fsQuery = applyRoleBasedCollegeFilter(fsQuery, userProfile, 'fee_structures');
 
@@ -133,8 +169,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         console.error('Error fetching all fee structures:', allFsError.message);
     }
 
-    // Process to get fee structures for each admission
-    const feeStructuresPromises = admissionsWithProvFees?.map(async (adm) => {
+    // Process to get fee structures for each admission from the batched list
+    const feeStructures = admissionsWithProvFees?.map((adm) => {
         const app = adm.applications as any;
         const courseId = app?.course_id;
         const academicYearId = app?.admission_cycles?.academic_year_id;
@@ -152,7 +188,6 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             if (feeSchemeId) {
                 return fs.fee_scheme_id === feeSchemeId;
             } else {
-                // If no scheme assigned, prefer 'General'
                 return fs.fee_schemes?.name?.toLowerCase() === 'general';
             }
         }) || allFeeStructures?.find(fs => 
@@ -164,9 +199,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         if (!feeStructure) return null;
 
         return { admissionId: adm.id, feeStructure };
-    }) || [];
-
-    const feeStructures = (await Promise.all(feeStructuresPromises)).filter((item): item is NonNullable<typeof item> => item !== null);
+    }).filter(Boolean);
 
     return {
         payments: allPayments || [],
@@ -175,7 +208,15 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         provisionalFeePayments,
         admissions: admissionsWithProvFees,
         feeStructures: feeStructures,
-        userProfile // Pass userProfile
+        userProfile,
+        pagination: {
+            page,
+            limit,
+            total: totalPaymentsCount || 0,
+            totalPages: Math.ceil((totalPaymentsCount || 0) / limit)
+        },
+        searchTerm,
+        activeTab
     };
 };
 

@@ -5,12 +5,14 @@
     export let data: PageData;
 
     let viewMode: 'detailed' | 'simple' = 'simple';
-    let selectedMetric: 'all' | 'submitted' | 'approved' | 'paid' | 'admitted' = 'paid';
+    let selectedMetric: 'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid' = 'paid';
 
     const metrics = [
         { id: 'paid', label: 'Paid Students', icon: 'bi-currency-dollar' },
         { id: 'submitted', label: 'Submitted Apps', icon: 'bi-file-earmark-check' },
         { id: 'approved', label: 'Approved Apps', icon: 'bi-check-all' },
+        { id: 'admitted_id', label: 'ID Generated', icon: 'bi-person-vcard' },
+        { id: 'admitted_paid', label: 'ID & Paid', icon: 'bi-person-check' },
         { id: 'admitted', label: 'Final Admissions', icon: 'bi-person-badge' },
         { id: 'all', label: 'All Applications', icon: 'bi-list-ul' }
     ];
@@ -222,8 +224,9 @@
                             });
 
                             row['Total Approved'] = branch.approved;
-                            row['Admissions Done'] = branch.admissions;
-                            row['Vacancy'] = calculateVacancy(branch.capacity, branch.admissions);
+                            row['Admissions Done (ID Gen)'] = branch.metrics.admitted_id.total;
+                            row['Tuition Paid'] = branch.metrics.admitted_paid.total;
+                            row['Vacancy'] = calculateVacancy(branch.capacity, branch.metrics.admitted_id.total);
 
                             return row;
                         }
@@ -343,8 +346,8 @@
                                                         {#if collegeGroup.uniqueFormTypes.length > 0}
                                                             <th colspan={collegeGroup.uniqueFormTypes.length} class="bg-success bg-opacity-10">Form-wise Applications (Total / Approved)</th>
                                                         {/if}
-                                                        <th rowspan="2">Total Approved</th>
-                                                        <th rowspan="2">Admissions Done</th>
+                                                        <th rowspan="2">Approved / Admitted<br><small class="fw-normal text-muted" style="font-size: 0.7rem;">(Appr / ID Gen)</small></th>
+                                                        <th rowspan="2">Admissions Done<br><small class="fw-normal text-muted" style="font-size: 0.7rem;">(ID Gen / Paid)</small></th>
                                                         <th rowspan="2">Vacancy</th>
                                                     </tr>
                                                     <tr>
@@ -382,11 +385,21 @@
                                                                 </td>
                                                             {/each}
 
-                                                            <td>{branch.approved}</td>
-                                                            <td>{branch.admissions}</td>
                                                             <td>
-                                                                <span class="badge {calculateVacancy(branch.capacity, branch.admissions) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
-                                                                    {calculateVacancy(branch.capacity, branch.admissions)}
+                                                                <div class="d-flex flex-column align-items-center">
+                                                                    <span class="fw-bold" title="Total Approved">{branch.approved}</span>
+                                                                    <span class="text-secondary" style="font-size: 0.75rem;" title="College ID Generated">(ID: {branch.metrics.admitted_id.total})</span>
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <div class="d-flex flex-column align-items-center">
+                                                                    <span class="fw-bold" title="College ID Generated">{branch.metrics.admitted_id.total}</span>
+                                                                    <span class="text-primary" style="font-size: 0.75rem;" title="Tuition Fee Paid">(Paid: {branch.metrics.admitted_paid.total})</span>
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge {calculateVacancy(branch.capacity, branch.metrics.admitted_id.total) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
+                                                                    {calculateVacancy(branch.capacity, branch.metrics.admitted_id.total)}
                                                                 </span>
                                                             </td>
                                                         </tr>
@@ -403,11 +416,21 @@
                                                             </td>
                                                         {/each}
 
-                                                        <td>{branchTotal(course.branches, 'approved')}</td>
-                                                        <td>{branchTotal(course.branches, 'admissions')}</td>
                                                         <td>
-                                                            <span class="badge {calculateVacancy(branchTotal(course.branches, 'capacity'), branchTotal(course.branches, 'admissions')) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
-                                                                {calculateVacancy(branchTotal(course.branches, 'capacity'), branchTotal(course.branches, 'admissions'))}
+                                                            <div class="d-flex flex-column align-items-center">
+                                                                <span>{branchTotal(course.branches, 'approved')}</span>
+                                                                <span class="text-secondary" style="font-size: 0.75rem;">(ID: {course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)})</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="d-flex flex-column align-items-center">
+                                                                <span>{course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)}</span>
+                                                                <span class="text-primary" style="font-size: 0.75rem;">(Paid: {course.branches.reduce((sum, b) => sum + (b.metrics.admitted_paid.total || 0), 0)})</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge {calculateVacancy(branchTotal(course.branches, 'capacity'), course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
+                                                                {calculateVacancy(branchTotal(course.branches, 'capacity'), course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0))}
                                                             </span>
                                                         </td>
                                                     </tr>

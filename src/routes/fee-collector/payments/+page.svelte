@@ -13,8 +13,28 @@
 
     let showRecordModal = $state(false);
     let showReceiptModal = $state(false);
-    let searchTerm = $state('');
-    let activeTab: 'tuition' | 'application' | 'provisional' = $state('tuition');
+    let searchTerm = $state(data.searchTerm || '');
+    let activeTab: 'tuition' | 'application' | 'provisional' = $state(data.activeTab || 'tuition');
+
+    function handleSearch() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('search', searchTerm);
+        url.searchParams.set('page', '1');
+        goto(url.toString());
+    }
+
+    function handleTabChange(tab: typeof activeTab) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('type', tab);
+        url.searchParams.set('page', '1');
+        goto(url.toString());
+    }
+
+    function changePage(newPage: number) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', newPage.toString());
+        goto(url.toString());
+    }
 
     $effect(() => {
         if (form?.message) {
@@ -26,18 +46,10 @@
         }
     });
 
-    let currentList = $derived(activeTab === 'tuition' ? data.tuitionPayments : 
+    // filteredPayments now simply uses the current list provided by the server for this specific tab
+    let filteredPayments = $derived(activeTab === 'tuition' ? data.tuitionPayments : 
                      activeTab === 'application' ? data.applicationFeePayments : 
                      data.provisionalFeePayments);
-    
-    let filteredPayments = $derived(currentList.filter(p => {
-        const term = searchTerm.toLowerCase();
-        const admNo = p.applications?.account_admissions?.[0]?.admission_number?.toLowerCase() || '';
-        const name = p.applications?.users?.full_name?.toLowerCase() || '';
-        const email = p.applications?.users?.email?.toLowerCase() || '';
-        const txId = p.transaction_id?.toLowerCase() || '';
-        return admNo.includes(term) || name.includes(term) || email.includes(term) || txId.includes(term);
-    }));
 
     let selectedAdmissionId = $state(''); 
     let feePeriod = $state('year'); // 'year' or 'semester'
@@ -274,38 +286,55 @@
     }
 </script>
 
-<svelte:window on:click={handleWindowClick} />
+<svelte:window onclick={handleWindowClick} />
 
 <div class="container-fluid">
     <h1 class="mb-4">Payment History</h1>
 
     <ul class="nav nav-tabs mb-4">
         <li class="nav-item">
-            <a class="nav-link {activeTab === 'tuition' ? 'active' : ''}" href="#" on:click|preventDefault={() => activeTab = 'tuition'}>
+            <a class="nav-link {activeTab === 'tuition' ? 'active' : ''}" href="#" onclick={(e) => { e.preventDefault(); handleTabChange('tuition'); }}>
                 Tuition / Admission Fees
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link {activeTab === 'application' ? 'active' : ''}" href="#" on:click|preventDefault={() => activeTab = 'application'}>
+            <a class="nav-link {activeTab === 'application' ? 'active' : ''}" href="#" onclick={(e) => { e.preventDefault(); handleTabChange('application'); }}>
                 Application Form Fees
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link {activeTab === 'provisional' ? 'active' : ''}" href="#" on:click|preventDefault={() => activeTab = 'provisional'}>
+            <a class="nav-link {activeTab === 'provisional' ? 'active' : ''}" href="#" onclick={(e) => { e.preventDefault(); handleTabChange('provisional'); }}>
                 Provisional Fees
             </a>
         </li>
     </ul>
 
     <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex gap-2 align-items-center">
+            <div class="input-group student-autocomplete-container" style="max-width: 400px;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input 
+                    type="text" 
+                    class="form-control" 
+                    placeholder="Search by Name/Email/Adm No..." 
+                    bind:value={searchTerm}
+                    onkeydown={(e) => e.key === 'Enter' && handleSearch()}
+                >
+                <button class="btn btn-primary" onclick={handleSearch}>Search</button>
+            </div>
+            {#if data.searchTerm}
+                <button class="btn btn-link btn-sm text-danger" onclick={() => { searchTerm = ''; handleSearch(); }}>Clear</button>
+            {/if}
+        </div>
+        
         <div class="input-group student-autocomplete-container" style="max-width: 400px;">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <span class="input-group-text"><i class="bi bi-person-plus"></i></span>
             <input 
                 type="text" 
                 class="form-control" 
-                placeholder="Search Student by Name or Adm No..." 
+                placeholder="Search Student to Record Payment..." 
                 bind:value={studentSearchQuery}
-                on:focus={() => showStudentDropdown = true}
+                onfocus={() => showStudentDropdown = true}
             >
             {#if showStudentDropdown && filteredAdmissions.length > 0}
                 <div class="list-group position-absolute w-100 shadow-lg z-3 top-100 mt-1" style="max-height: 300px; overflow-y: auto;">
@@ -313,7 +342,7 @@
                         <button 
                             type="button" 
                             class="list-group-item list-group-item-action text-start"
-                            on:click={() => recordStudentPayment(adm)}
+                            onclick={() => recordStudentPayment(adm)}
                         >
                             <div class="fw-bold">{adm.admission_number}</div>
                             <small class="text-muted">{(adm.applications as any)?.student_user?.full_name}</small>
@@ -380,10 +409,10 @@
                                 </td>
                                 <td>
                                     <div class="btn-group">
-                                        <button class="btn btn-sm btn-secondary" title="Print" on:click={() => printReceipt(payment)}>
+                                        <button class="btn btn-sm btn-secondary" title="Print" onclick={() => printReceipt(payment)}>
                                             <i class="bi bi-printer"></i>
                                         </button>
-                                        <button class="btn btn-sm btn-outline-secondary" title="Download" on:click={() => downloadReceipt(payment)}>
+                                        <button class="btn btn-sm btn-outline-secondary" title="Download" onclick={() => downloadReceipt(payment)}>
                                             <i class="bi bi-download"></i>
                                         </button>
                                     </div>
@@ -398,6 +427,33 @@
                 </table>
             </div>
         </div>
+
+        {#if data.pagination && data.pagination.totalPages > 1}
+            <div class="card-footer bg-white border-0">
+                <div class="d-flex justify-content-center align-items-center gap-3 py-2">
+                    <button 
+                        class="btn btn-sm btn-outline-secondary" 
+                        disabled={data.pagination.page <= 1}
+                        onclick={() => changePage(data.pagination.page - 1)}
+                    >
+                        <i class="bi bi-chevron-left"></i> Previous
+                    </button>
+                    
+                    <span class="text-muted">
+                        Page <strong>{data.pagination.page}</strong> of {data.pagination.totalPages}
+                        <small class="ms-1">({data.pagination.total} total records)</small>
+                    </span>
+
+                    <button 
+                        class="btn btn-sm btn-outline-secondary" 
+                        disabled={data.pagination.page >= data.pagination.totalPages}
+                        onclick={() => changePage(data.pagination.page + 1)}
+                    >
+                        Next <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        {/if}
     </div>
 </div>
 

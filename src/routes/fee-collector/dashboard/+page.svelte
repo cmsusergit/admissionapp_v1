@@ -12,7 +12,13 @@
     function handleStatusChange(event: Event) {
         const target = event.target as HTMLSelectElement;
         const newStatus = target.value;
-        goto(`?status=${newStatus}`);
+        goto(`?status=${newStatus}&page=1`);
+    }
+
+    function changePage(newPage: number) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', newPage.toString());
+        goto(url.toString());
     }
 
     let showStatusUpdateModal = false;
@@ -121,6 +127,32 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination Controls -->
+                {#if data.pagination && data.pagination.totalPages > 1}
+                    <div class="d-flex justify-content-center align-items-center mt-3 gap-3">
+                        <button 
+                            class="btn btn-sm btn-outline-secondary" 
+                            disabled={data.pagination.page <= 1}
+                            on:click={() => changePage(data.pagination.page - 1)}
+                        >
+                            <i class="bi bi-chevron-left"></i> Previous
+                        </button>
+                        
+                        <span class="text-muted">
+                            Page <strong>{data.pagination.page}</strong> of {data.pagination.totalPages}
+                            <small class="ms-1">({data.pagination.total} total)</small>
+                        </span>
+
+                        <button 
+                            class="btn btn-sm btn-outline-secondary" 
+                            disabled={data.pagination.page >= data.pagination.totalPages}
+                            on:click={() => changePage(data.pagination.page + 1)}
+                        >
+                            Next <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                {/if}
             {:else}
                 <p>No admissions found for payment tracking.</p>
             {/if}
