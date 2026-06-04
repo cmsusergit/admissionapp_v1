@@ -1,7 +1,11 @@
 import { redirect, fail } from "@sveltejs/kit";
 import type { PageServerLoad, Actions } from "./$types";
 import { z } from "zod"; // Will need to install zod
+import { createClient } from "@supabase/supabase-js";
+import { PUBLIC_SUPABASE_URL } from "$env/static/public";
+import { SUPABASE_SERVICE_ROLE_KEY } from "$env/static/private";
 import { getUnprocessedInquiry, mapInquiryToProfile } from "$lib/server/inquiry";
+import { approveApplicationLogic } from "$lib/server/application";
 
 function extractLinkedProfileFields(
   formData: any,
@@ -682,6 +686,49 @@ export const actions: Actions = {
     const finalFeeStatus =
       feeStatusUpdate["application_fee_status"] ||
       appData.application_fee_status;
+
+    // Check for Direct Admission on Submit
+    const { data: formTypeCheck } = await supabase
+      .from("form_types")
+      .select("direct_admission_on_submit, name")
+      .eq("name", appData.form_type)
+      .single();
+
+    if (
+      formTypeCheck?.direct_admission_on_submit &&
+      finalFeeStatus === "not_applicable"
+    ) {
+      console.log(
+        `[Direct Admission] Triggering auto-approval for ${application_id} (Zero Fee)`,
+      );
+      const supabaseAdmin = createClient(
+        PUBLIC_SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+      );
+      const approveResult = await approveApplicationLogic(
+        supabaseAdmin,
+        application_id,
+        userProfile.id,
+        appData.admission_type || "Merit",
+        "Direct Admission on Submit (Zero Fee)",
+      );
+      if (approveResult.success) {
+        return {
+          success: true,
+          message: "Application submitted and admitted successfully!",
+          feeStatus: finalFeeStatus,
+          feeAmount: formSchema.form_fee,
+          admitted: true,
+          admissionNumber: approveResult.admissionNumber,
+        };
+      } else {
+        console.error(
+          "[Direct Admission] Auto-approval failed:",
+          approveResult.message,
+        );
+        // We still return success for submission, but maybe with a warning or just let it stay as submitted
+      }
+    }
 
     return {
       success: true,

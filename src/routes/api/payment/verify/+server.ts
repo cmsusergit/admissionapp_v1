@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { verifyPayment } from '$lib/server/payment';
 import { createFeeReceipt } from '$lib/server/receipt';
 import { ensureStudentEnrolled } from '$lib/server/enrollment';
+import { approveApplicationLogic } from '$lib/server/application';
 import type { RequestHandler } from './$types';
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
@@ -104,6 +105,32 @@ export const POST: RequestHandler = async ({ request, locals: { getSession } }) 
                 .from('applications')
                 .update({ application_fee_status: 'paid' })
                 .eq('id', transaction.application_id);
+
+            // Check for Direct Admission on Payment
+            if (formType) {
+                const { data: formTypeCheck } = await supabaseAdmin
+                    .from('form_types')
+                    .select('direct_admission_on_submit')
+                    .eq('name', formType)
+                    .single();
+
+                if (formTypeCheck?.direct_admission_on_submit) {
+                    console.log(`[Direct Admission] Triggering auto-approval for ${transaction.application_id} (Fee Paid Online)`);
+                    const { data: appData } = await supabaseAdmin
+                        .from('applications')
+                        .select('admission_type')
+                        .eq('id', transaction.application_id)
+                        .single();
+
+                    await approveApplicationLogic(
+                        supabaseAdmin,
+                        transaction.application_id,
+                        session.user.id,
+                        appData?.admission_type || 'Merit',
+                        'Direct Admission on Submit (Fee Paid - Online)'
+                    );
+                }
+            }
         }
 
         // Trigger auto-enrollment if this was a tuition payment

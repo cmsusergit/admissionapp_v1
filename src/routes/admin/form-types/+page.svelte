@@ -22,6 +22,7 @@
         is_government_quota: false,
         application_fee_required: true,
         auto_approve_on_verification: false,
+        direct_admission_on_submit: false,
         is_prov: false
     };
 
@@ -166,6 +167,10 @@
                         <input class="form-check-input" type="checkbox" id="add-auto" name="auto_approve_on_verification">
                         <label class="form-check-label" for="add-auto">Auto-Approve (Bypass Univ Approval)</label>
                     </div>
+                    <div class="form-check mb-2 text-primary fw-bold">
+                        <input class="form-check-input" type="checkbox" id="add-direct" name="direct_admission_on_submit">
+                        <label class="form-check-label" for="add-direct">Direct Admission (Bypass Entire Queue)</label>
+                    </div>
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="add-prov" name="is_prov">
                         <label class="form-check-label" for="add-prov">Is Provisional (Seat Reservation)</label>
@@ -235,6 +240,10 @@
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="edit-auto" name="auto_approve_on_verification" checked={$currentFormType.auto_approve_on_verification}>
                         <label class="form-check-label" for="edit-auto">Auto-Approve (Bypass Univ Approval)</label>
+                    </div>
+                    <div class="form-check mb-2 text-primary fw-bold">
+                        <input class="form-check-input" type="checkbox" id="edit-direct" name="direct_admission_on_submit" checked={$currentFormType.direct_admission_on_submit}>
+                        <label class="form-check-label" for="edit-direct">Direct Admission (Bypass Entire Queue)</label>
                     </div>
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="edit-prov" name="is_prov" checked={$currentFormType.is_prov}>

@@ -379,6 +379,7 @@
                         <tr>
                             <th>Sr. No</th>
                             <th>App ID</th>
+                            <th>College ID</th>
                             <th>Student</th>
                             <th>Course</th>
                             <th>Branch</th>
@@ -406,6 +407,15 @@
                                 <tr>
                                     <td>{(data.pagination.page - 1) * data.pagination.limit + index + 1}</td>
                                     <td><small>{app.id.slice(0, 8)}...</small></td>
+                                    <td>
+                                        {#if appAny.users?.student_profiles?.enrollment_number}
+                                            <span class="badge bg-light text-dark border font-monospace">{appAny.users.student_profiles.enrollment_number}</span>
+                                        {:else if appAny.users?.student_profiles?.[0]?.enrollment_number}
+                                            <span class="badge bg-light text-dark border font-monospace">{appAny.users.student_profiles[0].enrollment_number}</span>
+                                        {:else}
+                                            <small class="text-muted">-</small>
+                                        {/if}
+                                    </td>
                                     <td>
                                         <div>{appAny.users?.full_name || 'N/A'}</div>
                                         <small class="text-muted">{appAny.users?.email || 'N/A'}</small>
@@ -470,7 +480,7 @@
                             {/each}
                         {:else}
                             <tr>
-                                <td colspan="12" class="text-center py-4">No applications found matching your filters.</td>
+                                <td colspan="13" class="text-center py-4">No applications found matching your filters.</td>
                             </tr>
                         {/if}
                     </tbody>

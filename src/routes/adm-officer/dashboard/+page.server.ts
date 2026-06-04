@@ -133,7 +133,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         .select(`
             *,
             approval_comment,
-            users!student_id!inner(full_name, email),
+            users!student_id!inner(full_name, email, student_profiles(enrollment_number)),
             courses(name, code, colleges(name)),
             branches(name),
             merit_list_entries(merit_score, merit_rank),

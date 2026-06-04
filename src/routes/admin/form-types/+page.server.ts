@@ -12,6 +12,7 @@ const formTypeSchema = z.object({
     is_government_quota: z.coerce.boolean(),
     application_fee_required: z.coerce.boolean(),
     auto_approve_on_verification: z.coerce.boolean(),
+    direct_admission_on_submit: z.coerce.boolean(),
     is_prov: z.coerce.boolean(),
 });
 
@@ -28,7 +29,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     const { data: formTypes, error } = await supabase
         .from('form_types')
-        .select('id, name, description, is_active, is_prov, application_fee_required')
+        .select('id, name, description, is_active, is_prov, application_fee_required, direct_admission_on_submit')
         .order('name');
 
     if (error) {
@@ -58,6 +59,7 @@ export const actions: Actions = {
             is_government_quota: formData.has('is_government_quota'),
             application_fee_required: formData.has('application_fee_required'),
             auto_approve_on_verification: formData.has('auto_approve_on_verification'),
+            direct_admission_on_submit: formData.has('direct_admission_on_submit'),
             is_prov: formData.has('is_prov'),
         };
 
@@ -104,6 +106,7 @@ export const actions: Actions = {
             is_government_quota: formData.has('is_government_quota'),
             application_fee_required: formData.has('application_fee_required'),
             auto_approve_on_verification: formData.has('auto_approve_on_verification'),
+            direct_admission_on_submit: formData.has('direct_admission_on_submit'),
             is_prov: formData.has('is_prov'),
         };
 

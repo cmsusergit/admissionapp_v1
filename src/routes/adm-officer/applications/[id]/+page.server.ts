@@ -584,6 +584,30 @@ export const actions: Actions = {
       });
     }
 
+    // Check for Direct Admission on Payment
+    const { data: formTypeCheck } = await supabaseAdmin
+      .from("form_types")
+      .select("direct_admission_on_submit")
+      .eq("name", application.form_type)
+      .single();
+
+    if (formTypeCheck?.direct_admission_on_submit) {
+      console.log(`[Direct Admission] Triggering auto-approval for ${application_id} (Fee Paid Manual)`);
+      const { data: appData } = await supabaseAdmin
+        .from("applications")
+        .select("admission_type")
+        .eq("id", application_id)
+        .single();
+
+      await approveApplicationLogic(
+        supabaseAdmin,
+        application_id,
+        authenticatedUser.id,
+        appData?.admission_type || "Merit",
+        "Direct Admission on Submit (Fee Paid - Manual Override)"
+      );
+    }
+
     return {
       success: true,
       message: "Application fee marked as PAID manually.",

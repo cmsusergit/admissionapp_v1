@@ -6,6 +6,7 @@ import { PUBLIC_SUPABASE_URL } from "$env/static/public";
 import { SUPABASE_SERVICE_ROLE_KEY } from "$env/static/private";
 import { generateReceiptNumber } from "$lib/server/receipt";
 import { applyRoleBasedCollegeFilter } from "$lib/server/security";
+import { approveApplicationLogic } from "$lib/server/application";
 
 const createStudentSchema = z.object({
   email: z.string().email(),
@@ -948,6 +949,43 @@ export const actions: Actions = {
       feeStatusUpdate["application_fee_status"] ||
       appData.application_fee_status;
 
+    // Check for Direct Admission on Submit
+    const { data: formTypeCheck } = await supabase
+      .from("form_types")
+      .select("direct_admission_on_submit, name")
+      .eq("name", appData.form_type)
+      .single();
+
+    if (
+      formTypeCheck?.direct_admission_on_submit &&
+      finalFeeStatus === "not_applicable"
+    ) {
+      console.log(
+        `[DEO Direct Admission] Triggering auto-approval for ${application_id} (Zero Fee)`,
+      );
+      const supabaseAdmin = createClient(
+        PUBLIC_SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+      );
+      const approveResult = await approveApplicationLogic(
+        supabaseAdmin,
+        application_id,
+        authenticatedUser.id,
+        appData.admission_type || "Regular",
+        "Direct Admission on Submit (Zero Fee - DEO)",
+      );
+      if (approveResult.success) {
+        return {
+          success: true,
+          message: "Application submitted and admitted successfully!",
+          feeStatus: finalFeeStatus,
+          feeAmount: feeAmount,
+          admitted: true,
+          admissionNumber: approveResult.admissionNumber,
+        };
+      }
+    }
+
     return {
       success: true,
       message: "Application submitted successfully!",
@@ -1071,6 +1109,38 @@ export const actions: Actions = {
         message: "Payment recorded but status update failed.",
         error: true,
       });
+    }
+
+    // Check for Direct Admission on Payment
+    const { data: formTypeCheck } = await supabase
+      .from("form_types")
+      .select("direct_admission_on_submit, name")
+      .eq("name", application.form_type)
+      .single();
+
+    if (formTypeCheck?.direct_admission_on_submit) {
+      console.log(
+        `[DEO Direct Admission] Triggering auto-approval for ${application_id} (Fee Paid)`,
+      );
+      const supabaseAdmin = createClient(
+        PUBLIC_SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+      );
+      const approveResult = await approveApplicationLogic(
+        supabaseAdmin,
+        application_id,
+        authenticatedUser.id,
+        "Regular", // Default for manual payment
+        "Direct Admission on Submit (Fee Paid - DEO Manual)",
+      );
+      if (approveResult.success) {
+        return {
+          success: true,
+          message: "Payment recorded and admitted successfully!",
+          admitted: true,
+          admissionNumber: approveResult.admissionNumber,
+        };
+      }
     }
 
     return { success: true, message: "Payment recorded successfully!" };
