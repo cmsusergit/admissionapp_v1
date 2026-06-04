@@ -1,24 +1,23 @@
-
 <script lang="ts">
     import { enhance } from '$app/forms';
     import type { PageData, ActionData } from './$types';
     import SchemaTree from '$lib/components/SchemaTree.svelte';
     import ProfileTemplateHelp from '$lib/components/reports/ProfileTemplateHelp.svelte';
+    import VisualBuilder from '$lib/components/reports/visual-builder/VisualBuilder.svelte';
     import { onMount } from 'svelte';
 
-    export let data: PageData;
-    export let form: ActionData;
+    let { data, form }: { data: PageData, form: ActionData } = $props();
 
-    let showHelpModal = false;
-    let sideBySide = false;
-    let textareaRef: HTMLTextAreaElement;
+    let showHelpModal = $state(false);
+    let sideBySide = $state(false);
+    let textareaRef: HTMLTextAreaElement | undefined = $state();
+
+    // Visual Builder State
+    let editorMode = $state('visual'); // 'visual' or 'code'
+    let visualLayout: any[] = $state([]);
 
     function mapPathToVariable(path: string): string {
-        // Translate technical join paths to Handlebars paths based on profile-data API structure
-        
-        // 1. Student Mapping
         if (path.includes('users!student_id')) {
-            // Handle student_profiles nested under users
             if (path.includes('student_profiles!student_profiles_user_id_fkey')) {
                 const parts = path.split('.');
                 const lastPart = parts[parts.length - 1];
@@ -28,17 +27,12 @@
             const lastPart = parts[parts.length - 1];
             return `student.${lastPart}`;
         }
-
-        // 2. Course Mapping
         if (path.includes('courses!course_id')) {
             const parts = path.split('.');
             const lastPart = parts[parts.length - 1];
             return `course.${lastPart}`;
         }
-
-        // 3. College Mapping (nested under courses)
         if (path.includes('colleges!college_id')) {
-             // Handle universities nested under colleges
             if (path.includes('universities!university_id')) {
                 const parts = path.split('.');
                 const lastPart = parts[parts.length - 1];
@@ -48,131 +42,93 @@
             const lastPart = parts[parts.length - 1];
             return `college.${lastPart}`;
         }
-
-        // 4. Application/Admission Mapping
         if (path.includes('account_admissions!application_id')) {
             const parts = path.split('.');
             const lastPart = parts[parts.length - 1];
             return `application.${lastPart}`;
         }
-
-        // 8. Payment Mapping
         if (path.includes('payments!application_id')) {
             return `application.receipt_number`;
         }
-
-        // 7. Form Data Mapping (New)
         if (path.includes('form_data')) {
             const parts = path.split('.');
             const lastPart = parts[parts.length - 1];
             return `application.${lastPart}`;
         }
-
-        // 5. Academic Year Mapping (nested under cycles)
         if (path.includes('academic_years!academic_year_id')) {
              return `application.academic_year`;
         }
-
-        // 6. Marks Mapping
         if (path.includes('marks!application_id')) {
             const parts = path.split('.');
             const lastPart = parts[parts.length - 1];
             return `marks.[subject].${lastPart}`;
         }
-
-        // Default: use the last part of the path if it's the base table (applications)
         const parts = path.split('.');
         const lastPart = parts[parts.length - 1];
-        
-        // If it's a root application field
         if (path === lastPart) {
             return `application.${lastPart}`;
         }
-
-        return path; // Fallback
+        return path;
     }
 
     function handleInsertVariable(event: CustomEvent) {
         let { variable, path } = event.detail;
-        
-        // If it comes from SchemaTree, it will have 'path'. Map it.
-        if (path) {
-            variable = `{{${mapPathToVariable(path)}}}`;
-        }
-
+        if (path) variable = `{{${mapPathToVariable(path)}}}`;
         if (!textareaRef) return;
-
         const start = textareaRef.selectionStart;
         const end = textareaRef.selectionEnd;
         const text = htmlContent;
-        
         htmlContent = text.substring(0, start) + variable + text.substring(end);
-        
-        // Wait for Svelte to update the DOM then set cursor
         setTimeout(() => {
-            textareaRef.focus();
-            textareaRef.setSelectionRange(start + variable.length, start + variable.length);
+            textareaRef!.focus();
+            textareaRef!.setSelectionRange(start + variable.length, start + variable.length);
         }, 0);
     }
 
-    // Load bootstrap JS dynamically for interactive components like the Accordion in the Help Modal
     onMount(async () => {
         if (typeof window !== 'undefined' && !(window as any).bootstrap) {
             import('bootstrap');
         }
     });
 
-    let selectedTable = '';
-    let selectedColumns: any[] = [];
-    let templateName = '';
-    let templateDesc = '';
-    let allowedRoles = ['adm_officer']; // Default
-    
-    // New variables for HTML Profile Reports
-    let reportType = 'tabular'; // 'tabular' or 'html_profile'
-    let targetFormTypeId = '';
-    let htmlContent = '';
+    let selectedTable = $state('');
+    let selectedColumns: any[] = $state([]);
+    let templateName = $state('');
+    let templateDesc = $state('');
+    let allowedRoles = $state(['adm_officer']);
+    let reportType = $state('tabular');
+    let targetFormTypeId = $state('');
+    let htmlContent = $state('');
+    let previewData: any[] = $state([]);
+    let previewColumns: string[] = $state([]);
+    let generatedQuery = $state('');
+    let loading = $state(false);
+    let editingId: string | null = $state(null);
+    let suggesting = $state(false);
+    let selectedParameters: any[] = $state([]);
+    let newParam = $state({ label: '', column: '', type: 'text', operator: 'eq', options: '' });
 
-    let previewData: any[] = [];
-    let previewColumns: string[] = [];
-    let generatedQuery = '';
-    let loading = false;
-    let editingId: string | null = null;
-    let suggesting = false;
-
-    // Parameters State
-    let selectedParameters: any[] = [];
-    let newParam = { label: '', column: '', type: 'text', operator: 'eq', options: '' };
-
-    // Helper to find table definition
-    $: tableDef = (name: string) => data.schema.find(t => t.name === name);
-    
-    // Use selectedColumns directly for parameter dropdown to support deep nesting
-    $: availableColumns = selectedColumns.map(c => ({ path: c.path, label: c.label }));
+    let tableDef = $derived((name: string) => data.schema.find(t => t.name === name));
+    let availableColumns = $derived(selectedColumns.map(c => ({ path: c.path, label: c.label })));
 
     function addParameter() {
         if (!newParam.label || !newParam.column) return;
-        
-        const paramToAdd = { ...newParam, name: newParam.column + '_' + Date.now() };
+        const paramToAdd: any = { ...newParam, name: newParam.column + '_' + Date.now() };
         if (paramToAdd.type === 'select' && typeof paramToAdd.options === 'string') {
-             // @ts-ignore
-             paramToAdd.options = paramToAdd.options.split(',').map(s => s.trim()).filter(s => s);
+             paramToAdd.options = (paramToAdd.options as string).split(',').map(s => s.trim()).filter(s => s);
         }
-
         selectedParameters = [...selectedParameters, paramToAdd];
-        newParam = { label: '', column: '', type: 'text', operator: 'eq', options: '' }; // Reset
+        newParam = { label: '', column: '', type: 'text', operator: 'eq', options: '' };
     }
 
     function removeParameter(idx: number) {
-        selectedParameters.splice(idx, 1);
-        selectedParameters = [...selectedParameters];
+        selectedParameters = selectedParameters.filter((_, i) => i !== idx);
     }
 
     function toggleColumn(path: string, label: string) {
         const idx = selectedColumns.findIndex(c => c.path === path);
         if (idx >= 0) {
-            selectedColumns.splice(idx, 1);
-            selectedColumns = [...selectedColumns];
+            selectedColumns = selectedColumns.filter((_, i) => i !== idx);
         } else {
             selectedColumns = [...selectedColumns, { path, label }];
         }
@@ -181,21 +137,18 @@
     function editTemplate(template: any) {
         editingId = template.id;
         templateName = template.name;
-        // templateDesc = template.description; // TODO: Add desc field to form if needed, currently missing in UI
         selectedTable = template.base_table;
         allowedRoles = template.allowed_roles;
         reportType = template.report_type || 'tabular';
         targetFormTypeId = template.target_form_type_id || '';
         htmlContent = template.html_content || '';
-        
-        // Parse config
-        // Assuming config structure matches what we expect
         if (template.configuration) {
             selectedColumns = template.configuration.columns || [];
             selectedParameters = template.configuration.parameters || [];
+            visualLayout = template.configuration.visualLayout || [];
+            if (visualLayout.length > 0) editorMode = 'visual';
+            else if (reportType === 'html_profile') editorMode = 'code';
         }
-        
-        // Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -209,6 +162,8 @@
         htmlContent = '';
         selectedColumns = [];
         selectedParameters = [];
+        visualLayout = [];
+        editorMode = 'visual';
         previewData = [];
         generatedQuery = '';
     }
@@ -216,65 +171,39 @@
     async function suggestOptions() {
         if (!selectedTable || !newParam.column) return;
         suggesting = true;
-        
         const formData = new FormData();
         formData.append('table', selectedTable);
         formData.append('column', newParam.column);
-        
-        // Use fetch directly for simplicity since it's an API-like call within page logic
-        // Or trigger a form submission. Fetch is cleaner here for partial update.
-        // But we need to hit the server action endpoint.
-        // Actually, let's use a hidden form submit? No, easier to just use standard fetch to an API endpoint or invoke action.
-        // In SvelteKit, easiest way to invoke action without navigation is use:enhance on a form button.
-        // Let's create a hidden button for this or just simulate.
-        
-        // We will just do a fetch to a dedicated API endpoint? 
-        // No, let's stick to actions.
-        // We can submit to ?/suggest_options
-        
-        const response = await fetch('?/suggest_options', {
-            method: 'POST',
-            body: formData
-        });
-        
+        const response = await fetch('?/suggest_options', { method: 'POST', body: formData });
         if (response.ok) {
             const result = await response.json();
-             // SvelteKit returns serialized result. We need to deserialize if it's complex.
-             // Usually it returns { type: 'success', data: ... }
-             // Wait, action response is wrapped.
-             // Let's parse the text response manually if needed.
-             // Actually, `deserialize` from `$app/forms` is needed.
-             // Let's try simpler approach: just assume text for now or simple JSON.
-             // The server returns JSON object { type: 'data', data: { success: true, suggestions: ... } }
-             
-             // Quick fix: Let's just create a button that uses enhance and updates the newParam.options
-             // See below in HTML structure.
+            // result is serialized, usually we'd need to deserialize it but we can just check form success below
         }
         suggesting = false;
     }
 
-    $: if (form?.success) {
-        if (form.suggestions) {
-            newParam.options = form.suggestions;
-        } else if (!form.previewData) {
-            // Save success
-            if (editingId) {
-                // Keep editing mode or reset? Usually reset after save.
-                cancelEdit();
-            } else {
-                // Clear form
-                templateName = '';
-                selectedColumns = [];
-                selectedParameters = [];
+    $effect(() => {
+        if (form?.success) {
+            if (form.suggestions) {
+                newParam.options = form.suggestions;
+            } else if (!form.previewData) {
+                if (editingId) cancelEdit();
+                else {
+                    templateName = '';
+                    selectedColumns = [];
+                    selectedParameters = [];
+                }
             }
         }
-    }
+    });
     
-    $: if (form?.success && form.previewData) {
-        previewData = form.previewData;
-        previewColumns = form.previewColumns;
-        generatedQuery = form.queryString || '';
-    }
+    $effect(() => {
+        if (form?.success && form.previewData) {
+            previewData = form.previewData;
+            previewColumns = form.previewColumns;
+            generatedQuery = form.queryString || '';
+        }
+    });
 </script>
 
 <div class="container-fluid">
@@ -307,7 +236,6 @@
     </div>
     
     <div class="row">
-        <!-- Sidebar: Configuration & Guide (col-md-3) -->
         <div class="col-md-3">
             <div class="card mb-3 shadow-sm border-0">
                 <div class="card-header bg-dark text-white fw-bold">
@@ -322,9 +250,6 @@
                                 <option value={table.name}>{table.label}</option>
                             {/each}
                         </select>
-                        {#if editingId && reportType === 'tabular'}
-                            <div class="form-text x-small text-muted">Base table is locked for tabular reports.</div>
-                        {/if}
                     </div>
 
                     {#if reportType === 'tabular'}
@@ -336,7 +261,7 @@
                                     tableName={selectedTable} 
                                     schema={data.schema} 
                                     {selectedColumns}
-                                    on:toggle={(e) => toggleColumn(e.detail.path, e.detail.label)}
+                                    on:toggle={(e: any) => toggleColumn(e.detail.path, e.detail.label)}
                                 />
                             </div>
 
@@ -407,7 +332,7 @@
                                        </div>
                                     {/if}
                                 </div>
-                                <button class="btn btn-sm btn-primary w-100" on:click={addParameter} disabled={!newParam.column || !newParam.label}>Add Parameter</button>
+                                <button type="button" class="btn btn-sm btn-primary w-100" onclick={addParameter} disabled={!newParam.column || !newParam.label}>Add Parameter</button>
                             </div>
 
                             {#if selectedParameters.length > 0}
@@ -419,18 +344,16 @@
                                                 <br>
                                                 <span class="badge bg-secondary">{p.operator}</span>
                                             </div>
-                                            <button class="btn btn-xs btn-outline-danger border-0" on:click={() => removeParameter(idx)}>&times;</button>
+                                            <button type="button" class="btn btn-xs btn-outline-danger border-0" onclick={() => removeParameter(idx)}>&times;</button>
                                         </li>
                                     {/each}
                                 </ul>
                             {/if}
                         {/if}
                     {:else}
-                        <!-- HTML Profile Dynamic Schema Picker in Sidebar -->
                         <div class="mt-2">
                             <h6 class="small fw-bold mb-2">Variable Picker</h6>
                             <p class="x-small text-muted mb-3">Explore tables and click <span class="badge bg-primary">+</span> to insert into editor.</p>
-                            
                             {#if selectedTable}
                                 <div class="border rounded p-2 bg-light mb-3" style="max-height: 600px; overflow-y: auto;">
                                     <SchemaTree 
@@ -440,6 +363,7 @@
                                         on:insert={handleInsertVariable}
                                     />
                                 </div>
+
                             {:else}
                                 <div class="alert alert-warning x-small">Please select a <strong>Base Table</strong> (usually Applications) to start picking variables.</div>
                             {/if}
@@ -449,13 +373,12 @@
             </div>
         </div>
 
-        <!-- Main Content: Template Form (col-md-9) -->
         <div class="col-md-9">
             <div class="card mb-4 shadow-sm border-0">
                 <div class="card-header d-flex justify-content-between align-items-center bg-white border-bottom-0 pt-3">
                     <h5 class="mb-0 fw-bold">{editingId ? 'Edit Template' : '2. Define Template'}</h5>
                     {#if editingId}
-                        <button class="btn btn-sm btn-outline-secondary" on:click={cancelEdit}>Cancel Edit</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick={cancelEdit}>Cancel Edit</button>
                     {/if}
                 </div>
                 <div class="card-body">
@@ -477,7 +400,11 @@
                             <input type="hidden" name="id" value={editingId}>
                         {/if}
                         <input type="hidden" name="base_table" value={selectedTable}>
-                        <input type="hidden" name="configuration" value={JSON.stringify({ columns: selectedColumns, parameters: selectedParameters })}>
+                        <input type="hidden" name="configuration" value={JSON.stringify({ 
+                            columns: selectedColumns, 
+                            parameters: selectedParameters,
+                            visualLayout: visualLayout
+                        })}>
                         <input type="hidden" name="allowed_roles" value={JSON.stringify(allowedRoles)}>
                         
                         <div class="row">
@@ -506,11 +433,10 @@
 
                         <div class="row border-top pt-3 mt-2">
                             <input type="hidden" name="report_type" value={reportType}>
-                            
                             {#if reportType === 'html_profile'}
                                 <div class="col-md-12 mb-3">
                                     <div class="row align-items-center">
-                                        <div class="col-md-6">
+                                        <div class="col-md-5">
                                             <label class="form-label fw-bold small">Target Form Type (Linkage)</label>
                                             <select class="form-select form-select-sm" name="target_form_type_id" bind:value={targetFormTypeId}>
                                                 <option value="">-- Apply to All Form Types --</option>
@@ -521,25 +447,45 @@
                                                 {/if}
                                             </select>
                                         </div>
-                                        <div class="col-md-6 text-end">
-                                            <button type="button" class="btn btn-sm btn-info text-white" on:click={() => showHelpModal = true}>
+                                        <div class="col-md-7 text-end">
+                                            <div class="btn-group btn-group-sm me-2">
+                                                <button type="button" class="btn btn-outline-primary" class:active={editorMode === 'visual'} onclick={() => editorMode = 'visual'}>
+                                                    <i class="bi bi-grid-3x3-gap-fill me-1"></i> Visual
+                                                </button>
+                                                <button type="button" class="btn btn-outline-primary" class:active={editorMode === 'code'} onclick={() => editorMode = 'code'}>
+                                                    <i class="bi bi-code-slash me-1"></i> Code
+                                                </button>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-info text-white" onclick={() => showHelpModal = true}>
                                                 <i class="bi bi-fullscreen me-1"></i> Full Guide Modal
                                             </button>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-12 mb-3">
-                                    <label class="form-label fw-bold small">HTML Content</label>
-                                    <textarea 
-                                        bind:this={textareaRef}
-                                        class="form-control font-monospace" 
-                                        name="html_content" 
-                                        rows="25" 
-                                        bind:value={htmlContent} 
-                                        placeholder="&lt;div&gt;Hello &lbrace;&lbrace;student.full_name&rbrace;&rbrace;&lt;/div&gt;" 
-                                        style="font-size: 0.85rem; background-color: #fcfcfc;"></textarea>
-                                    <div class="form-text x-small">Click variables in the sidebar to insert. Use standard HTML/CSS.</div>
-                                </div>
+                                {#if editorMode === 'visual'}
+                                    <div class="col-12 mb-3">
+                                        <VisualBuilder 
+                                            bind:layout={visualLayout} 
+                                            bind:htmlContent={htmlContent}
+                                            schema={data.schema}
+                                            selectedTable={selectedTable}
+                                        />
+                                        <input type="hidden" name="html_content" value={htmlContent}>
+                                    </div>
+                                {:else}
+                                    <div class="col-12 mb-3">
+                                        <label class="form-label fw-bold small">HTML Content (Code View)</label>
+                                        <textarea 
+                                            bind:this={textareaRef}
+                                            class="form-control font-monospace" 
+                                            name="html_content" 
+                                            rows="25" 
+                                            bind:value={htmlContent} 
+                                            placeholder="&lt;div&gt;Hello &lbrace;&lbrace;student.full_name&rbrace;&rbrace;&lt;/div&gt;" 
+                                            style="font-size: 0.85rem; background-color: #fcfcfc;"></textarea>
+                                        <div class="form-text x-small">Click variables in the sidebar to insert. Use standard HTML/CSS.</div>
+                                    </div>
+                                {/if}
                             {/if}
                         </div>
 
@@ -574,9 +520,7 @@
                 </div>
             </div>
 
-            <!-- Full Help Modal -->
             <ProfileTemplateHelp bind:showModal={showHelpModal} />
-...
 
             {#if previewData.length > 0}
                 <div class="card mb-4 border-info">
@@ -625,8 +569,8 @@
                                     <td>{t.allowed_roles.join(', ')}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <button class="btn btn-primary" on:click={() => editTemplate(t)}>Edit</button>
-                                            <form method="POST" action="?/delete" on:submit={(e) => !confirm('Are you sure you want to delete this template?') && e.preventDefault()}>
+                                            <button type="button" class="btn btn-primary" onclick={() => editTemplate(t)}>Edit</button>
+                                            <form method="POST" action="?/delete" onsubmit={(e) => !confirm('Are you sure you want to delete this template?') && e.preventDefault()}>
                                                 <input type="hidden" name="id" value={t.id}>
                                                 <button class="btn btn-danger rounded-0 rounded-end">Delete</button>
                                             </form>
