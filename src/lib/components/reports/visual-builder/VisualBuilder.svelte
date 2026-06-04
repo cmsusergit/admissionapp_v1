@@ -47,11 +47,29 @@
     }
 
     function onDrop(targetId: string, type: string, data: any) {
+        const isRoot = targetId === 'root';
         const newNode: any = {
             id: generateId(),
             type,
             children: (type === 'row' || type === 'column') ? [] : undefined,
-            style: { padding: '5px', margin: '0' },
+            style: isRoot ? { 
+                position: 'absolute',
+                left: '20px',
+                top: '20px',
+                width: type === 'image' ? '150px' : (type === 'divider' ? '100%' : '200px'),
+                height: type === 'image' ? '150px' : 'auto',
+                padding: '0px',
+                margin: '0px'
+            } : {
+                width: '100%',
+                height: 'auto',
+                padding: '5px',
+                margin: '0px'
+            },
+            x: isRoot ? 20 : undefined,
+            y: isRoot ? 20 : undefined,
+            w: isRoot ? (type === 'image' ? 150 : 200) : undefined,
+            h: isRoot ? (type === 'image' ? 150 : 40) : undefined,
             width: type === 'column' ? 6 : undefined
         };
 
@@ -60,9 +78,11 @@
             newNode.variableLabel = data.variableLabel;
         } else if (type === 'text') {
             newNode.content = 'New Text Block';
+        } else if (type === 'image') {
+            newNode.src = '{{college.logo_url}}';
         }
 
-        if (targetId === 'root') {
+        if (isRoot) {
             layout = [...layout, newNode];
         } else {
             const newLayout = JSON.parse(JSON.stringify(layout));
@@ -83,11 +103,49 @@
     function handleRootDrop(e: DragEvent) {
         e.preventDefault();
         rootIsOver = false;
+        
         const type = e.dataTransfer?.getData('componentType');
         const variablePath = e.dataTransfer?.getData('variablePath');
         const variableLabel = e.dataTransfer?.getData('variableLabel');
+        
+        // Calculate drop position relative to canvas
+        const canvas = e.currentTarget as HTMLElement;
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / zoom;
+        const y = (e.clientY - rect.top) / zoom;
+
         if (type) {
-            onDrop('root', type, { variablePath, variableLabel });
+            const newNode: any = {
+                id: generateId(),
+                type,
+                children: (type === 'row' || type === 'column') ? [] : undefined,
+                style: { 
+                    position: 'absolute',
+                    left: `${Math.round(x / 10) * 10}px`,
+                    top: `${Math.round(y / 10) * 10}px`,
+                    width: type === 'image' ? '150px' : (type === 'divider' ? '100%' : 'auto'),
+                    height: type === 'image' ? '150px' : 'auto',
+                    padding: '0px',
+                    margin: '0px'
+                },
+                x: Math.round(x / 10) * 10,
+                y: Math.round(y / 10) * 10,
+                w: type === 'image' ? 150 : 200,
+                h: type === 'image' ? 150 : 40
+            };
+            
+            if (type === 'variable') {
+                newNode.variablePath = variablePath;
+                newNode.variableLabel = variableLabel;
+            } else if (type === 'text') {
+                newNode.content = 'New Text Block';
+            } else if (type === 'image') {
+                newNode.src = '{{college.logo_url}}';
+            }
+            
+            layout = [...layout, newNode];
+            selectedId = newNode.id;
+            compile();
         }
     }
 
@@ -97,8 +155,24 @@
 
     function compileNode(node: any): string {
         let styleStr = '';
-        if (node.style) {
-            Object.entries(node.style).forEach(([k, v]) => {
+        const combinedStyle = { ...node.style };
+        
+        // Use absolute positioning for top-level, relative for nested
+        if (node.x !== undefined && node.y !== undefined) {
+            combinedStyle.position = 'absolute';
+            combinedStyle.left = `${node.x}px`;
+            combinedStyle.top = `${node.y}px`;
+            if (node.w) combinedStyle.width = `${node.w}px`;
+            if (node.h && node.type !== 'text') combinedStyle.height = `${node.h}px`;
+        } else {
+            // Nested elements
+            combinedStyle.position = 'relative';
+            combinedStyle.width = combinedStyle.width || '100%';
+        }
+
+        if (combinedStyle) {
+            Object.entries(combinedStyle).forEach(([k, v]) => {
+                if (v === undefined || v === null) return;
                 const cssKey = k.replace(/[A-Z]/g, m => "-" + m.toLowerCase());
                 styleStr += `${cssKey}:${v};`;
             });
@@ -106,15 +180,15 @@
 
         switch (node.type) {
             case 'row':
-                return `<div class="row" style="position:relative; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
+                return `<div class="row g-0" style="min-height:20px; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
             case 'column':
-                return `<div class="col-md-${node.width || 12}" style="position:relative; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
+                return `<div class="col-md-${node.width || 12}" style="min-height:10px; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
             case 'text':
-                return `<div style="position:relative; ${styleStr}">${node.content || ''}</div>`;
+                return `<div style="${styleStr}">${node.content || ''}</div>`;
             case 'variable':
-                return `<span style="position:relative; ${styleStr}">{{${node.variablePath}}}</span>`;
+                return `<span style="${styleStr}">{{${node.variablePath}}}</span>`;
             case 'image':
-                return `<div style="text-align:center; position:relative; ${styleStr}"><img src="${node.src || '{{college.logo_url}}'}" style="max-width:100%; height:auto;"></div>`;
+                return `<div style="text-align:center; ${styleStr}"><img src="${node.src || '{{college.logo_url}}'}" style="width:100%; height:100%; object-fit:contain;"></div>`;
             case 'divider':
                 return `<hr style="${styleStr}">`;
             default:
@@ -147,6 +221,160 @@
             layout = [];
             selectedId = '';
             compile();
+        }
+    }
+
+    // Drag and Resize State
+    let dragState = $state({
+        activeId: '',
+        type: '' as 'move' | 'resize' | '',
+        resizeDir: '',
+        startX: 0,
+        startY: 0,
+        initialX: 0,
+        initialY: 0,
+        initialW: 0,
+        initialH: 0
+    });
+
+    let guidelines = $state<{ x?: number, y?: number }[]>([]);
+    const SNAP_THRESHOLD = 5;
+
+    function startAction(nodeId: string, type: 'move' | 'resize', event: MouseEvent, dir = '') {
+        const node = findNode(layout, nodeId);
+        if (!node) return;
+
+        dragState = {
+            activeId: nodeId,
+            type,
+            resizeDir: dir,
+            startX: event.clientX,
+            startY: event.clientY,
+            initialX: node.x || 0,
+            initialY: node.y || 0,
+            initialW: node.w || 100,
+            initialH: node.h || 40
+        };
+
+        window.addEventListener('mousemove', handleGlobalMouseMove);
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        event.stopPropagation();
+    }
+
+    function handleGlobalMouseMove(e: MouseEvent) {
+        if (!dragState.activeId) return;
+
+        const dx = (e.clientX - dragState.startX) / zoom;
+        const dy = (e.clientY - dragState.startY) / zoom;
+        
+        let newX = dragState.initialX + dx;
+        let newY = dragState.initialY + dy;
+        let newW = dragState.initialW + dx;
+        let newH = dragState.initialH + dy;
+        
+        const activeNode = findNode(layout, dragState.activeId);
+        if (!activeNode) return;
+
+        const currentW = activeNode.w || 100;
+        const currentH = activeNode.h || 40;
+        
+        guidelines = [];
+
+        if (dragState.type === 'move') {
+            // SNAP LOGIC
+            const snapPointsX = [0, 210 * 3.78 / 2, 210 * 3.78]; // Left, Center, Right of A4 (approx px)
+            // Better: use real mm to px conversion
+            const canvasWidth = 210 * 3.7795275591; // mm to px
+            const canvasHeight = 297 * 3.7795275591;
+            
+            const targetsX = [0, canvasWidth / 2, canvasWidth]; 
+            const targetsY = [0, canvasHeight / 2, canvasHeight];
+
+            // Add other nodes to snap targets
+            layout.forEach(n => {
+                if (n.id === dragState.activeId || n.x === undefined) return;
+                targetsX.push(n.x, n.x + (n.w || 0), n.x + (n.w || 0) / 2);
+                targetsY.push(n.y, n.y + (n.h || 0), n.y + (n.h || 0) / 2);
+            });
+
+            // Check X snapping
+            let snappedX = false;
+            for (const tx of targetsX) {
+                // Snap Left
+                if (Math.abs(newX - tx) < SNAP_THRESHOLD) {
+                    newX = tx;
+                    guidelines.push({ x: tx });
+                    snappedX = true;
+                }
+                // Snap Center
+                else if (Math.abs((newX + currentW / 2) - tx) < SNAP_THRESHOLD) {
+                    newX = tx - currentW / 2;
+                    guidelines.push({ x: tx });
+                    snappedX = true;
+                }
+                // Snap Right
+                else if (Math.abs((newX + currentW) - tx) < SNAP_THRESHOLD) {
+                    newX = tx - currentW;
+                    guidelines.push({ x: tx });
+                    snappedX = true;
+                }
+            }
+
+            // Check Y snapping
+            let snappedY = false;
+            for (const ty of targetsY) {
+                // Snap Top
+                if (Math.abs(newY - ty) < SNAP_THRESHOLD) {
+                    newY = ty;
+                    guidelines.push({ y: ty });
+                    snappedY = true;
+                }
+                // Snap Middle
+                else if (Math.abs((newY + currentH / 2) - ty) < SNAP_THRESHOLD) {
+                    newY = ty - currentH / 2;
+                    guidelines.push({ y: ty });
+                    snappedY = true;
+                }
+                // Snap Bottom
+                else if (Math.abs((newY + currentH) - ty) < SNAP_THRESHOLD) {
+                    newY = ty - currentH;
+                    guidelines.push({ y: ty });
+                    snappedY = true;
+                }
+            }
+
+            // Grid fallback if not snapped
+            if (!snappedX) newX = Math.round(newX / 5) * 5;
+            if (!snappedY) newY = Math.round(newY / 5) * 5;
+
+            updateSelectedNode({ x: newX, y: newY });
+
+        } else if (dragState.type === 'resize') {
+            const dir = dragState.resizeDir;
+            let finalX = dragState.initialX;
+            let finalY = dragState.initialY;
+            let finalW = dragState.initialW;
+            let finalH = dragState.initialH;
+
+            if (dir.includes('e')) finalW = Math.max(20, dragState.initialW + dx);
+            if (dir.includes('s')) finalH = Math.max(20, dragState.initialH + dy);
+            if (dir.includes('w')) {
+                const deltaW = Math.min(dragState.initialW - 20, dx);
+                finalW = dragState.initialW - deltaW;
+                finalX = dragState.initialX + deltaW;
+            }
+            if (dir.includes('n')) {
+                const deltaH = Math.min(dragState.initialH - 20, dy);
+                finalH = dragState.initialH - deltaH;
+                finalY = dragState.initialY + deltaH;
+            }
+
+            updateSelectedNode({
+                x: Math.round(finalX / 5) * 5,
+                y: Math.round(finalY / 5) * 5,
+                w: Math.round(finalW / 5) * 5,
+                h: Math.round(finalH / 5) * 5
+            });
         }
     }
 
@@ -186,6 +414,13 @@
         compile();
     }
 
+    function handleGlobalMouseUp() {
+        dragState = { activeId: '', type: '', resizeDir: '', startX: 0, startY: 0, initialX: 0, initialY: 0, initialW: 0, initialH: 0 };
+        guidelines = [];
+        window.removeEventListener('mousemove', handleGlobalMouseMove);
+        window.removeEventListener('mouseup', handleGlobalMouseUp);
+    }
+
     let selectedNode = $derived(findNode(layout, selectedId));
 </script>
 
@@ -216,43 +451,78 @@
         </div>
     </div>
 
-    <div class="row g-0">
-        <div class="col-md-3 border-end bg-light p-3" style="height: 800px; overflow-y: auto;">
-            <Sidebar 
-                {schema} 
-                {selectedTable} 
-                selectedNode={selectedNode} 
-                onUpdateNode={updateSelectedNode}
-                onInsertVariable={(detail: any) => onDrop('root', 'variable', detail)}
-            />
+    <div class="builder-body position-relative">
+        <!-- Sidebar Drawer -->
+        <div class="sidebar-drawer border-end bg-light">
+            <div class="drawer-handle d-flex align-items-center justify-content-center text-muted">
+                <i class="bi {selectedId ? 'bi-gear-fill text-primary' : 'bi-chevron-right'}"></i>
+            </div>
+            <div class="drawer-content p-3">
+                <Sidebar 
+                    {schema} 
+                    {selectedTable} 
+                    selectedNode={selectedNode} 
+                    onUpdateNode={updateSelectedNode}
+                    onInsertVariable={(detail: any) => onDrop('root', 'variable', detail)}
+                />
+            </div>
         </div>
 
-        <div class="col-md-9 workspace-viewport" style="height: 800px;">
+        <!-- Main Workspace -->
+        <div class="workspace-viewport" style="height: 800px; width: 100%;">
             {#if previewMode}
-                <div class="canvas-paper shadow p-5" style="overflow-x: hidden;">
+                <div class="canvas-paper shadow p-5" style="overflow-x: hidden; height: 297mm; position: relative;">
                     {@html htmlContent}
+                    <div class="page-boundary-indicator"></div>
+                    <div class="page-boundary-label">End of A4 Page (297mm)</div>
                 </div>
             {:else}
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div 
-                    class="canvas-paper shadow p-4" 
+                    class="canvas-paper shadow" 
                     class:drag-over={rootIsOver}
                     style:transform="scale({zoom})"
                     style:transform-origin="top center"
+                    style:height="297mm"
+                    style:padding="0"
                     ondragover={handleRootDragOver}
                     ondragleave={() => rootIsOver = false}
                     ondrop={handleRootDrop}
+                    onclick={() => selectedId = ''}
                 >
+                    <div class="print-margin-guide"></div>
                     {#if layout.length === 0}
-                        <div class="text-center text-muted mt-5 py-5 border-dashed border-2 rounded">
+                        <div class="text-center text-muted mt-5 py-5 border-dashed border-2 rounded mx-5">
                             <i class="bi bi-plus-circle display-4"></i>
                             <p class="mt-2">Drag components from the sidebar to start designing.</p>
                         </div>
                     {:else}
-                        {#each layout as node (node.id)}
-                            <CanvasNode {node} onSelect={handleSelect} {onDrop} {selectedId} />
-                        {/each}
+                        <div style="position: relative; width: 100%; height: 100%;">
+                            {#each layout as node (node.id)}
+                                <CanvasNode 
+                                    {node} 
+                                    onSelect={handleSelect} 
+                                    {onDrop} 
+                                    {selectedId} 
+                                    {zoom} 
+                                    onUpdateNode={updateSelectedNode}
+                                    onStartAction={startAction}
+                                />
+                            {/each}
+
+                            <!-- Alignment Guidelines -->
+                            {#each guidelines as guide}
+                                {#if guide.x !== undefined}
+                                    <div class="guideline vertical" style:left="{guide.x}px"></div>
+                                {/if}
+                                {#if guide.y !== undefined}
+                                    <div class="guideline horizontal" style:top="{guide.y}px"></div>
+                                {/if}
+                            {/each}
+                        </div>
                     {/if}
+                    <div class="page-boundary-indicator"></div>
+                    <div class="page-boundary-label">End of A4 Page (297mm)</div>
                 </div>
             {/if}
         </div>
@@ -265,6 +535,43 @@
         flex-direction: column;
         background-color: #f8f9fa;
         overflow: hidden;
+    }
+    .builder-body {
+        display: flex;
+        flex-direction: row;
+        height: 800px;
+        overflow: hidden;
+    }
+    .sidebar-drawer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 320px;
+        z-index: 1050;
+        background: #f8f9fa;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transform: translateX(-300px);
+    }
+    .sidebar-drawer:hover, .sidebar-drawer.active {
+        transform: translateX(0);
+    }
+    .drawer-handle {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 20px;
+        background-color: #f1f1f1;
+        cursor: pointer;
+        border-left: 1px solid #dee2e6;
+        font-size: 12px;
+    }
+    .drawer-content {
+        height: 100%;
+        overflow-y: auto;
+        width: 300px;
     }
     .workspace-viewport {
         flex: 1;
@@ -279,13 +586,63 @@
     .canvas-paper {
         background-color: white;
         width: 210mm;
-        min-height: 297mm;
+        /* Fixed A4 height */
+        height: 297mm; 
         box-shadow: 0 0 20px rgba(0,0,0,0.15);
         position: relative;
         transition: transform 0.2s ease;
         /* Grid Pattern */
         background-image: radial-gradient(#d1d1d1 1px, transparent 1px);
         background-size: 20px 20px;
+        overflow: hidden; /* Enforce single page */
+        padding: 0 !important;
+    }
+    .print-margin-guide {
+        position: absolute;
+        top: 10mm;
+        left: 10mm;
+        right: 10mm;
+        bottom: 10mm;
+        border: 1px dashed rgba(13, 110, 253, 0.2);
+        pointer-events: none;
+        z-index: 1;
+    }
+    .page-boundary-indicator {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        border-bottom: 2px dashed #ff4d4d;
+        z-index: 100;
+        pointer-events: none;
+    }
+    .page-boundary-label {
+        position: absolute;
+        bottom: 5px;
+        right: 10px;
+        font-size: 10px;
+        color: #ff4d4d;
+        font-weight: bold;
+        z-index: 100;
+        pointer-events: none;
+        text-transform: uppercase;
+    }
+    .guideline {
+        position: absolute;
+        background-color: #ff00ff;
+        z-index: 10000;
+        pointer-events: none;
+    }
+    .guideline.vertical {
+        width: 1px;
+        top: 0;
+        bottom: 0;
+    }
+    .guideline.horizontal {
+        height: 1px;
+        left: 0;
+        right: 0;
     }
     .canvas-paper.drag-over {
         box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.4) !important;

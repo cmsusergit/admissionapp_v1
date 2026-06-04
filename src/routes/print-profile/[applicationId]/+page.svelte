@@ -46,6 +46,7 @@
 
     onMount(async () => {
         try {
+            console.log('Fetching data for Application:', data.applicationId);
             // 1. Fetch the data from the API
             const response = await fetch('/api/reports/profile-data', {
                 method: 'POST',
@@ -58,13 +59,16 @@
                 throw new Error(resData.error || 'Failed to fetch profile data');
             }
 
-            const { data: profileData } = await response.json();
+            const res = await response.json();
+            const profileData = res.data;
+            console.log('Profile Data received:', profileData);
 
             // 2. Interpolate HTML string
             let rawHtml = data.rawHtml;
+            console.log('Raw HTML from template:', rawHtml);
 
             // Handle #if / else logic
-            rawHtml = rawHtml.replace(/\{\{#if\s+([a-zA-Z0-9_.!\[\]]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g, (match: string, conditionPath: string, trueBlock: string, falseBlock?: string) => {
+            rawHtml = rawHtml.replace(/\{\{\s*#if\s+([a-zA-Z0-9_.!\[\]]+)\s*\}\}([\s\S]*?)(?:\{\{\s*else\s*\}\}([\s\S]*?))?\{\{\s*\/if\s*\}\}/g, (match: string, conditionPath: string, trueBlock: string, falseBlock?: string) => {
                 const condition = getNestedValue(profileData, conditionPath);
                 if (condition && condition !== 'null' && condition !== 'N/A' && condition !== '') {
                     return trueBlock;
@@ -73,17 +77,20 @@
                 }
             });
 
-            // Replace standard variables
+            // Replace standard variables - More robust regex
             compiledHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_.!\[\]]+)\s*\}\}/g, (match: string, path: string) => {
                 const value = getNestedValue(profileData, path);
-                return value !== null && value !== undefined ? String(value) : '';
+                console.log(`Interpolating ${path} -> ${value}`);
+                return value !== null && value !== undefined && value !== '' ? String(value) : '';
             });
+
+            console.log('Compiled HTML:', compiledHtml);
 
             // 3. Prepare PDF
             const content = await convertHtmlToPdfMake(compiledHtml);
             const docDefinition = {
                 pageSize: 'A4',
-                pageMargins: [40, 40, 40, 40],
+                pageMargins: [0, 0, 0, 0], // Zero margins for absolute positioning to match visual canvas
                 content: content,
                 defaultStyle: {
                     fontSize: 10
@@ -114,26 +121,30 @@
             <p class="mt-2">Preparing Profile Data...</p>
         </div>
     {:else if fetchError}
-        <div class="alert alert-danger m-5">
+        <div class="alert alert-danger m-5 text-center shadow-sm">
+            <i class="bi bi-exclamation-triangle display-4 text-danger mb-3 d-block"></i>
             <h4>Error generating report</h4>
-            <p>{fetchError}</p>
-            <button class="btn btn-outline-secondary mt-3" on:click={() => window.close()}>Close Window</button>
+            <p class="text-muted">{fetchError}</p>
+            <button class="btn btn-primary mt-3" on:click={() => window.location.reload()}>
+                <i class="bi bi-arrow-clockwise me-1"></i> Try Again
+            </button>
+            <button class="btn btn-outline-secondary mt-3 ms-2" on:click={() => window.close()}>Close Window</button>
         </div>
     {:else}
-        <div class="controls no-print d-flex justify-content-between align-items-center p-3 bg-light border-bottom sticky-top shadow-sm">
+        <div class="controls no-print d-flex justify-content-between align-items-center p-3 bg-white border-bottom sticky-top shadow-sm">
             <div>
-                <h5 class="mb-0">{data.templateName}</h5>
+                <h5 class="mb-0 fw-bold">{data.templateName}</h5>
                 <small class="text-muted">ID: {data.applicationId}</small>
             </div>
             <div class="d-flex gap-2">
-                <button class="btn btn-secondary" on:click={() => window.close()}>
+                <button class="btn btn-outline-secondary" on:click={() => window.close()}>
                     <i class="bi bi-x-lg me-1"></i> Close
                 </button>
-                <button class="btn btn-primary" on:click={() => generatePdf('print')} disabled={!isPdfReady}>
-                    <i class="bi bi-printer me-1"></i> Print / Save as PDF
+                <button class="btn btn-primary px-4" on:click={() => generatePdf('print')} disabled={!isPdfReady}>
+                    <i class="bi bi-printer me-1"></i> Print / Save
                 </button>
                 <button class="btn btn-success" on:click={() => generatePdf('download')} disabled={!isPdfReady}>
-                    <i class="bi bi-download me-1"></i> Download PDF
+                    <i class="bi bi-download me-1"></i> Download
                 </button>
             </div>
         </div>
@@ -157,15 +168,19 @@
         display: flex;
         justify-content: center;
         min-height: calc(100vh - 75px);
+        background-color: #525659; /* PDF-like dark background */
+        padding-top: 40px !important;
+        padding-bottom: 40px !important;
     }
 
     .preview-paper {
         background: white;
-        width: 100%;
-        max-width: 210mm;
-        min-height: 297mm;
-        padding: 15mm;
+        width: 210mm;
+        height: 297mm;
+        padding: 0 !important; /* Zero padding to match designer origin */
         box-sizing: border-box;
+        position: relative; /* REQUIRED for absolute elements */
+        overflow: hidden;
     }
 
     .loading-overlay {
@@ -177,13 +192,13 @@
 
     @media print {
         .no-print { display: none !important; }
-        .preview-wrapper { padding: 0 !important; }
+        .preview-wrapper { padding: 0 !important; background: none !important; }
         .preview-paper {
             box-shadow: none !important;
-            width: 100% !important;
-            max-width: none !important;
-            min-height: auto !important;
-            padding: 0 !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            padding: 1.5rem !important;
+            margin: 0 auto;
         }
     }
 </style>

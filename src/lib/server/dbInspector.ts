@@ -197,6 +197,9 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
     columns: [
       { name: "name", label: "Name", type: "text" },
       { name: "code", label: "Code", type: "text" },
+      { name: "logo_url", label: "Logo URL", type: "text" },
+      { name: "address", label: "Address", type: "text" },
+      { name: "upi_vpa", label: "UPI ID", type: "text" },
     ],
     relationships: [
       {
@@ -213,6 +216,10 @@ export const DB_SCHEMA: Record<string, TableDefinition> = {
     columns: [
       { name: "name", label: "Name", type: "text" },
       { name: "code", label: "Code", type: "text" },
+      { name: "logo_url", label: "Logo URL", type: "text" },
+      { name: "footer_text", label: "Footer Text", type: "text" },
+      { name: "website", label: "Website", type: "text" },
+      { name: "address", label: "Address", type: "text" },
     ],
     relationships: [],
   },

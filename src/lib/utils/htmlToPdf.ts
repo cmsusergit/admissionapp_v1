@@ -31,30 +31,44 @@ async function parseElement(element: Element): Promise<any[]> {
 
             let item: any = {};
             
-            // Extract margins
-            const marginTop = parseFloat(style.marginTop) || 0;
-            const marginBottom = parseFloat(style.marginBottom) || 0;
-            const marginLeft = parseFloat(style.marginLeft) || 0;
-            const marginRight = parseFloat(style.marginRight) || 0;
+            const scale = 0.75; // px to pt scale factor
+
+            // Extract margins with scaling
+            const marginTop = (parseFloat(style.marginTop) || 0) * scale;
+            const marginBottom = (parseFloat(style.marginBottom) || 0) * scale;
+            const marginLeft = (parseFloat(style.marginLeft) || 0) * scale;
+            const marginRight = (parseFloat(style.marginRight) || 0) * scale;
             if (marginTop || marginBottom || marginLeft || marginRight) {
                 item.margin = [marginLeft, marginTop, marginRight, marginBottom];
             }
 
-            // Common styles
+            // Common styles with scaling
             if (style.textAlign) item.alignment = style.textAlign;
-            if (style.fontSize) item.fontSize = parseFloat(style.fontSize);
+            if (style.fontSize) item.fontSize = parseFloat(style.fontSize) * scale;
             if (style.fontWeight === 'bold' || tagName === 'b' || tagName === 'strong' || tagName === 'th') item.bold = true;
             if (style.color) item.color = style.color;
             if (style.backgroundColor) item.fillColor = style.backgroundColor;
             if (style.textDecoration === 'underline') item.decoration = 'underline';
+
+            // Absolute positioning support for Visual Builder
+            const isAbsolute = style.position === 'absolute';
+            if (isAbsolute) {
+                const x = parseFloat(style.left) || 0;
+                const y = parseFloat(style.top) || 0;
+                item.absolutePosition = { x: x * scale, y: y * scale };
+                
+                // Fixed dimensions with scaling
+                if (style.width && style.width.endsWith('px')) item.width = parseFloat(style.width) * scale;
+                if (style.height && style.height.endsWith('px') && tagName !== 'text') item.height = parseFloat(style.height) * scale;
+            }
 
             // Tag specific handling
             if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
                 item.text = await parseElement(el);
                 item.bold = true;
                 const sizes: Record<string, number> = { h1: 22, h2: 18, h3: 16, h4: 14, h5: 12, h6: 11 };
-                item.fontSize = item.fontSize || sizes[tagName];
-                if (!item.margin) item.margin = [0, 5, 0, 5];
+                item.fontSize = item.fontSize || (sizes[tagName] * scale);
+                if (!item.margin && !isAbsolute) item.margin = [0, 5, 0, 5];
                 content.push(item);
             } else if (tagName === 'p' || tagName === 'div') {
                 const children = await parseElement(el);
@@ -66,6 +80,10 @@ async function parseElement(element: Element): Promise<any[]> {
                         item.stack = children;
                         content.push(item);
                     }
+                } else if (isAbsolute) {
+                    // Empty div with background color/border used as shape
+                    item.text = ' ';
+                    content.push(item);
                 }
             } else if (tagName === 'span' || tagName === 'strong' || tagName === 'b' || tagName === 'i' || tagName === 'em' || tagName === 'th' || tagName === 'td') {
                 const children = await parseElement(el);
@@ -83,10 +101,11 @@ async function parseElement(element: Element): Promise<any[]> {
                 if (src && src !== 'null') {
                     try {
                         item.image = await imageToDataURL(src);
-                        // Fit instead of fixed width/height for better responsiveness in PDF
-                        let w = parseFloat(style.maxWidth || style.width) || 80;
-                        let h = parseFloat(style.maxHeight || style.height) || 80;
-                        item.fit = [w, h];
+                        // Convert designer px to PDF points for image sizing
+                        let w = (parseFloat(style.width) || el.getAttribute('width') || 80) * scale;
+                        let h = (parseFloat(style.height) || el.getAttribute('height') || 80) * scale;
+                        item.width = w;
+                        item.height = h;
                         content.push(item);
                     } catch (e) {
                         console.error('Failed to load image for PDF:', src);

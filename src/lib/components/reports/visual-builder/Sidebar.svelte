@@ -1,6 +1,4 @@
 <script lang="ts">
-    import SchemaTree from '$lib/components/SchemaTree.svelte';
-
     let { 
         schema = [], 
         selectedTable = '',
@@ -8,6 +6,86 @@
         onUpdateNode = () => {},
         onInsertVariable = (detail: any) => {}
     } = $props();
+
+    // Flatten schema into variables with deep relationship support
+    let allVariables = $derived.by(() => {
+        const vars: { path: string, label: string }[] = [];
+        const processedPaths = new Set<string>();
+        
+        function processTable(table: any, pathPrefix = '', labelPrefix = '', depth = 0) {
+            if (!table || depth > 3) return; // Prevent infinite recursion
+            
+            // Add columns
+            table.columns?.forEach((col: any) => {
+                const path = pathPrefix ? `${pathPrefix}.${col.name}` : col.name;
+                const label = labelPrefix ? `${labelPrefix} > ${col.label}` : col.label;
+                
+                if (!processedPaths.has(path)) {
+                    vars.push({ path, label });
+                    processedPaths.add(path);
+                    
+                    // Add JSON keys if any
+                    if (col.jsonKeys) {
+                        col.jsonKeys.forEach((jk: any) => {
+                            const jPath = `${path}.${jk.key}`;
+                            if (!processedPaths.has(jPath)) {
+                                vars.push({ 
+                                    path: jPath, 
+                                    label: `${label} > ${jk.label}` 
+                                });
+                                processedPaths.add(jPath);
+                            }
+                        });
+                    }
+                }
+            });
+
+            // Relationships
+            table.relationships?.forEach((rel: any) => {
+                const targetTable = schema.find((t: any) => t.name === rel.targetTable);
+                if (!targetTable) return;
+
+                // Map foreign keys to friendly paths based on API flatData conventions
+                let relPathPart = '';
+                if (rel.foreignKey === 'student_id') relPathPart = 'student';
+                else if (rel.foreignKey === 'course_id') relPathPart = 'course';
+                else if (rel.foreignKey === 'college_id') relPathPart = 'college';
+                else if (rel.foreignKey === 'university_id') relPathPart = 'university';
+                else if (rel.foreignKey === 'branch_id') relPathPart = 'branch';
+                else if (rel.foreignKey === 'cycle_id') relPathPart = 'cycle';
+                else if (rel.foreignKey === 'academic_year_id') relPathPart = 'academic_year';
+                else if (rel.foreignKey === 'application_id' && rel.targetTable === 'account_admissions') relPathPart = 'application';
+                else if (rel.targetTable === 'student_profiles') relPathPart = 'student';
+                else relPathPart = rel.targetTable;
+
+                const isFirstLevel = depth === 0;
+                const fullRelPath = isFirstLevel ? relPathPart : `${pathPrefix}.${relPathPart}`;
+                const fullRelLabel = isFirstLevel ? rel.label : `${labelPrefix} > ${rel.label}`;
+
+                // Recursive call for relationships
+                processTable(targetTable, fullRelPath, fullRelLabel, depth + 1);
+            });
+        }
+
+        const baseTable = schema.find((t: any) => t.name === selectedTable);
+        if (baseTable) {
+            // If base table is applications, prefix top-level columns with 'application'
+            const prefix = selectedTable === 'applications' ? 'application' : '';
+            processTable(baseTable, prefix, prefix);
+        }
+        
+        return vars;
+    });
+
+    let varSearch = $state('');
+    let filteredVars = $derived(
+        varSearch.length > 1 
+            ? allVariables.filter(v => 
+                v.label.toLowerCase().includes(varSearch.toLowerCase()) || 
+                v.path.toLowerCase().includes(varSearch.toLowerCase())
+            ).slice(0, 10)
+            : []
+    );
 
     const components = [
         { type: 'row', label: 'Row', icon: 'bi-grid-1x2', description: 'Horizontal container' },
@@ -32,9 +110,33 @@
         target.classList.remove('dragging');
     }
 
-    function handleInsertVariable(event: CustomEvent) {
-        event.stopPropagation();
-        onInsertVariable(event.detail);
+    function insertVarIntoNode(path: string) {
+        if (!selectedNode) return;
+        const insertText = `{{${path}}}`;
+        
+        if (selectedNode.type === 'text') {
+            const textarea = document.getElementById('text-content-editor') as HTMLTextAreaElement;
+            if (textarea) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const currentContent = selectedNode.content || '';
+                const newContent = currentContent.substring(0, start) + insertText + currentContent.substring(end);
+                onUpdateNode({ content: newContent });
+                
+                setTimeout(() => {
+                    textarea.focus();
+                    textarea.setSelectionRange(start + insertText.length, start + insertText.length);
+                }, 0);
+            } else {
+                onUpdateNode({ content: (selectedNode.content || '') + insertText });
+            }
+        } else if (selectedNode.type === 'image') {
+            onUpdateNode({ src: insertText });
+        } else if (selectedNode.type === 'variable') {
+            const v = allVariables.find(v => v.path === path);
+            onUpdateNode({ variablePath: path, variableLabel: v?.label || path });
+        }
+        varSearch = '';
     }
 </script>
 
@@ -69,21 +171,12 @@
 
             <hr>
 
-            <h6 class="small fw-bold mb-2">Variables</h6>
-            <p class="x-small text-muted mb-2">Drag fields onto the canvas.</p>
-            
-            {#if selectedTable}
-                <div class="border rounded p-2 bg-white" style="max-height: 400px; overflow-y: auto;">
-                    <SchemaTree 
-                        tableName={selectedTable} 
-                        schema={schema} 
-                        insertMode={true}
-                        on:insert={handleInsertVariable}
-                    />
-                </div>
-            {:else}
-                <div class="alert alert-warning x-small">Select a Base Table to see variables.</div>
-            {/if}
+            <h6 class="small fw-bold mb-2">Instructions</h6>
+            <p class="x-small text-muted">
+                1. Drag components to the canvas.<br>
+                2. Select a component to edit properties.<br>
+                3. Use the search in <strong>Properties</strong> to bind database fields.
+            </p>
         </div>
 
         <div class="tab-pane fade" id="props-tab">
@@ -96,15 +189,70 @@
                         </button>
                     </div>
                     
+                    <!-- Variable Search Autocomplete -->
+                    {#if selectedNode.type === 'text' || selectedNode.type === 'image' || selectedNode.type === 'variable'}
+                        <div class="prop-group mb-3 position-relative">
+                            <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">Bind Variable</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    placeholder="Search variable..." 
+                                    bind:value={varSearch}
+                                >
+                            </div>
+                            {#if filteredVars.length > 0}
+                                <div class="autocomplete-list shadow-sm border rounded mt-1 position-absolute w-100 bg-white" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
+                                    {#each filteredVars as v}
+                                        <button 
+                                            type="button" 
+                                            class="list-group-item list-group-item-action p-2 x-small border-0 text-start"
+                                            onclick={() => insertVarIntoNode(v.path)}
+                                        >
+                                            <div class="fw-bold">{v.label}</div>
+                                            <div class="text-muted xx-small">{v.path}</div>
+                                        </button>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+
                     <!-- Content Group -->
-                    {#if selectedNode.type === 'text' || selectedNode.type === 'variable'}
+                    {#if selectedNode.type === 'text' || selectedNode.type === 'variable' || selectedNode.type === 'image'}
                         <div class="prop-group mb-3">
-                            <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">Content</label>
+                            <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">
+                                {selectedNode.type === 'image' ? 'Image Source' : 'Content'}
+                            </label>
+                            
                             {#if selectedNode.type === 'text'}
-                                <textarea class="form-control form-control-sm" rows="3" value={selectedNode.content} onchange={(e) => onUpdateNode({ content: e.currentTarget.value })}></textarea>
+                                <div class="mb-2">
+                                    <textarea 
+                                        id="text-content-editor"
+                                        class="form-control form-control-sm mb-1" 
+                                        rows="4" 
+                                        value={selectedNode.content} 
+                                        oninput={(e) => onUpdateNode({ content: e.currentTarget.value })}
+                                        placeholder="Enter text or use &#123;&#123;variable&#125;&#125;"></textarea>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="xx-small text-muted">Use &#123;&#123;variable&#125;&#125; for dynamic data</span>
+                                    </div>
+                                </div>
+                            {:else if selectedNode.type === 'image'}
+                                <div class="input-group input-group-sm mb-1">
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        placeholder="URL or &#123;&#123;variable&#125;&#125;" 
+                                        value={selectedNode.src} 
+                                        oninput={(e) => onUpdateNode({ src: e.currentTarget.value })}
+                                    >
+                                </div>
+                                <div class="xx-small text-muted">e.g. https://example.com/logo.png or &#123;&#123;college.logo_url&#125;&#125;</div>
                             {:else}
                                 <div class="p-2 border rounded bg-white x-small font-monospace">
-                                    {"{{"}{selectedNode.variablePath}{"}}"}
+                                    &#123;&#123;{selectedNode.variablePath}&#125;&#125;
                                 </div>
                             {/if}
                         </div>

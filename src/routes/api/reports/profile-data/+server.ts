@@ -20,14 +20,15 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
     }
 
     try {
+        console.log('[API] Fetching data for ID:', applicationId);
         // Fetch massive unified dataset
         const { data: appData, error: appError } = await supabaseAdmin
             .from('applications')
             .select(`
                 *,
-                courses(name, code, colleges(name, logo_url, universities(name))),
+                course:courses(name, code, college:colleges(name, logo_url, university:universities(name, logo_url, footer_text))),
                 admission_cycles(name, academic_years(name, short_code)),
-                student_user:users!applications_student_id_fkey(
+                student:users!applications_student_id_fkey(
                     id, full_name, email,
                     student_profiles(*)
                 ),
@@ -39,9 +40,11 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             .single();
 
         if (appError || !appData) {
-            console.error('Data fetch error:', appError);
+            console.error('[API] Data fetch error:', appError);
             return json({ error: 'Failed to fetch application data' }, { status: 500 });
         }
+
+        console.log('[API] App Data fetched successfully');
 
         // Extract relevant payment receipt
         const isProvType = (appData.form_type || '').toLowerCase().includes('provisional');
@@ -50,10 +53,10 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
         ) || (appData.payments || []).find((p: any) => p.receipt_number);
 
         // Structure the data for easy templating
-        // Handle student_profiles being an array (common in Supabase joins)
-        const profileObj = Array.isArray(appData.student_user?.student_profiles) 
-            ? appData.student_user.student_profiles[0] 
-            : appData.student_user?.student_profiles;
+        const studentUser = appData.student;
+        const profileObj = Array.isArray(studentUser?.student_profiles) 
+            ? studentUser.student_profiles[0] 
+            : studentUser?.student_profiles;
             
         const profileData = profileObj?.profile_data || {};
         const marksData = appData.marks || [];
@@ -64,7 +67,6 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
              const subject = (m.subject || '').toLowerCase();
              formattedMarks[subject] = m;
              
-             // Create aliases for common subjects to make templates easier
              if (subject.includes('math')) formattedMarks['math'] = m;
              if (subject.includes('physics')) formattedMarks['physics'] = m;
              if (subject.includes('chemistry')) formattedMarks['chemistry'] = m;
@@ -75,26 +77,30 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
 
         // Try to fetch photo url
         let photoUrl = '';
-        const { data: docs } = await supabaseAdmin
-            .from('documents')
-            .select('file_path')
-            .eq('user_id', appData.student_id)
-            .ilike('document_type', '%photo%')
-            .limit(1);
-            
-        if (docs && docs.length > 0) {
-            const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(docs[0].file_path, 3600);
-            if (urlData) photoUrl = urlData.signedUrl;
+        try {
+            const { data: docs } = await supabaseAdmin
+                .from('documents')
+                .select('file_path')
+                .eq('user_id', appData.student_id)
+                .ilike('document_type', '%photo%')
+                .limit(1);
+                
+            if (docs && docs.length > 0) {
+                const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(docs[0].file_path, 3600);
+                if (urlData) photoUrl = urlData.signedUrl;
+            }
+        } catch (e) {
+            console.error('[API] Photo fetch error:', e);
         }
 
         const flatData = {
             student: {
-                id: appData.student_user?.id,
-                full_name: appData.student_user?.full_name,
-                email: appData.student_user?.email,
-                enrollment_number: profileObj?.enrollment_number,
+                id: studentUser?.id || '',
+                full_name: studentUser?.full_name || 'N/A',
+                email: studentUser?.email || '',
+                enrollment_number: profileObj?.enrollment_number || '',
                 photo_url: photoUrl,
-                ...profileData // Spread profile attributes directly (dob, gender, etc.)
+                ...profileData
             },
             application: {
                 id: appData.id,
@@ -104,25 +110,25 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                 submitted_at: appData.submitted_at,
                 admission_number: appData.account_admissions?.admission_number,
                 receipt_number: payment?.receipt_number || 'N/A',
-                ...appData.form_data // Spread form_data directly for easy access (acpc_number, board, etc.)
+                ...appData.form_data
             },
+            // Maintain nesting for relations to match designer paths
             course: {
-                name: appData.courses?.name,
-                code: appData.courses?.code
-            },
-            college: {
-                name: appData.courses?.colleges?.name,
-                logo_url: appData.courses?.colleges?.logo_url,
-                trust_name: 'The New English School Trust', 
-                university_name: appData.courses?.colleges?.universities?.name
+                ...appData.course,
+                college: {
+                    ...appData.course?.college,
+                    trust_name: 'The New English School Trust',
+                    university: appData.course?.college?.university
+                }
             },
             marks: formattedMarks,
-            entrance_marks: appData.form_data?.entrance_marks || {},
-            "payments!application_id": {
-                receipt_number: payment?.receipt_number || 'N/A'
-            }
+            entrance_marks: appData.form_data?.entrance_marks || {}
         };
 
+        console.log('[API] Returning flatData. Sample paths:');
+        console.log(' - student.full_name:', flatData.student.full_name);
+        console.log(' - course.college.name:', flatData.course?.college?.name);
+        
         return json({ success: true, data: flatData });
     } catch (e: any) {
         return json({ error: e.message }, { status: 500 });
