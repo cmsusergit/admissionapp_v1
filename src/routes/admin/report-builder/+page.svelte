@@ -221,15 +221,12 @@
                             <label class="form-label fw-bold mb-0">Select what kind of template you want to build:</label>
                         </div>
                         <div class="col-md-6">
-                            <select class="form-select border-primary" bind:value={reportType} disabled={!!editingId}>
+                            <select class="form-select border-primary" bind:value={reportType}>
                                 <option value="tabular">Standard Tabular (CSV Export / Table View)</option>
                                 <option value="html_profile">Custom Profile Form (HTML Print Layout)</option>
                             </select>
                         </div>
                     </div>
-                    {#if editingId}
-                        <div class="form-text text-warning mt-2">Report type cannot be changed while editing an existing template.</div>
-                    {/if}
                 </div>
             </div>
         </div>

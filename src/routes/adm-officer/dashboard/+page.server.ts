@@ -110,7 +110,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     const searchQuery = url.searchParams.get('search');
     const courseFilter = url.searchParams.get('course');
     const branchFilter = url.searchParams.get('branch');
-    const formTypeFilter = url.searchParams.get('form_type');
+    const formTypeFilter = url.searchParams.get('form_type') ?? 'Provisional';
     const startDate = url.searchParams.get('start_date');
     const endDate = url.searchParams.get('end_date');
     

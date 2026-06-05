@@ -22,13 +22,53 @@
 
     // Dot-notation getter with case-insensitivity support and bracket stripping
     function getNestedValue(obj: any, path: string): any {
-        return path.split('.').reduce((acc, part) => {
-            if (!acc) return null;
+        if (!obj || !path) return null;
+        
+        const parts = path.split('.');
+        let current = obj;
+
+        for (const part of parts) {
+            if (current === null || current === undefined) return null;
+            
             // Strip brackets for array-like or subject-mapped access (e.g., [math] -> math)
-            const cleanPart = part.replace(/^\[|\]$/g, '');
-            const key = Object.keys(acc).find(k => k.toLowerCase() === cleanPart.toLowerCase());
-            return key && acc[key] !== undefined ? acc[key] : null;
-        }, obj);
+            const cleanPart = part.replace(/^\[|\]$/g, '').trim();
+            if (!cleanPart) continue;
+
+            // 1. Try exact match first (case-sensitive)
+            if (current[cleanPart] !== undefined) {
+                current = current[cleanPart];
+                continue;
+            }
+
+            // 2. Try case-insensitive match
+            const keys = Object.keys(current);
+            const key = keys.find(k => k.toLowerCase() === cleanPart.toLowerCase());
+            
+            if (key !== undefined) {
+                current = current[key];
+            } else {
+                // 3. Special fallback for flattened student/application data
+                // If we are looking for a field in 'student' but it's actually inside 'profile_data'
+                if ((current === obj.student || current === obj.student_profile) && current.profile_data) {
+                    const subKey = Object.keys(current.profile_data).find(k => k.toLowerCase() === cleanPart.toLowerCase());
+                    if (subKey) {
+                        current = current.profile_data[subKey];
+                        continue;
+                    }
+                }
+                if (current === obj.application && current.form_data) {
+                    const subKey = Object.keys(current.form_data).find(k => k.toLowerCase() === cleanPart.toLowerCase());
+                    if (subKey) {
+                        current = current.form_data[subKey];
+                        continue;
+                    }
+                }
+                
+                return null;
+            }
+        }
+        
+        return current;
     }
 
     async function generatePdf(action: 'print' | 'download' = 'print') {
@@ -42,6 +82,62 @@
         } else {
             pdfDocGenerator.print();
         }
+    }
+
+    // Recursive interpolation function
+    function interpolate(html: string, context: any): string {
+        if (!html) return '';
+        
+        // 1. Handle #each blocks - Supports {{#each}} and {#each}
+        let result = html.replace(/\{{1,2}\s*#each\s+([a-zA-Z0-9_.!\[\]\s-]+)\s*\}{1,2}([\s\S]*?)\{{1,2}\s*\/each\s*\}{1,2}/g, (match: string, listPath: string, template: string) => {
+            const list = getNestedValue(context, listPath.trim());
+            if (!Array.isArray(list)) return '';
+            
+            return list.map(item => interpolate(template, item)).join('');
+        });
+
+        // 2. Handle #if / else blocks - Supports {{#if}} and {#if}
+        result = result.replace(/\{{1,2}\s*#if\s+([a-zA-Z0-9_.!\[\]\s=><!-]+)\s*\}{1,2}([\s\S]*?)(?:\{{1,2}\s*else\s*\}{1,2}([\s\S]*?))?\{{1,2}\s*\/if\s*\}{1,2}/g, (match: string, conditionExpr: string, trueBlock: string, falseBlock?: string) => {
+            // Simple comparison support
+            let isTrue = false;
+            const expr = conditionExpr.trim();
+            
+            if (expr.includes(' == ')) {
+                const [path, val] = expr.split(' == ').map(s => s.trim());
+                const actual = getNestedValue(context, path);
+                isTrue = String(actual) === val.replace(/['"]/g, '');
+            } else if (expr.includes(' != ')) {
+                const [path, val] = expr.split(' != ').map(s => s.trim());
+                const actual = getNestedValue(context, path);
+                isTrue = String(actual) !== val.replace(/['"]/g, '');
+            } else {
+                const val = getNestedValue(context, expr);
+                isTrue = !!(val && val !== 'null' && val !== 'N/A' && val !== '');
+            }
+            
+            return isTrue ? interpolate(trueBlock, context) : interpolate(falseBlock || '', context);
+        });
+
+        // 3. Replace standard variables - Supports {{var}} and {var}
+        result = result.replace(/\{{1,2}\s*([a-zA-Z0-9_.!\[\]\s-]+)\s*\}{1,2}/g, (match: string, path: string) => {
+            // Skip if it looks like a block command already handled
+            if (path.startsWith('#') || path.startsWith('/') || path === 'else') return match;
+
+            const value = getNestedValue(context, path.trim());
+            if (value === null || value === undefined) return '';
+            
+            // If value is an object, check if it has a 'value' property (common for marks like {value: 50, max_score: 100})
+            if (typeof value === 'object') {
+                if (value !== null && 'value' in value) {
+                    return String(value.value);
+                }
+                return '';
+            }
+            
+            return String(value);
+        });
+
+        return result;
     }
 
     onMount(async () => {
@@ -64,25 +160,7 @@
             console.log('Profile Data received:', profileData);
 
             // 2. Interpolate HTML string
-            let rawHtml = data.rawHtml;
-            console.log('Raw HTML from template:', rawHtml);
-
-            // Handle #if / else logic
-            rawHtml = rawHtml.replace(/\{\{\s*#if\s+([a-zA-Z0-9_.!\[\]]+)\s*\}\}([\s\S]*?)(?:\{\{\s*else\s*\}\}([\s\S]*?))?\{\{\s*\/if\s*\}\}/g, (match: string, conditionPath: string, trueBlock: string, falseBlock?: string) => {
-                const condition = getNestedValue(profileData, conditionPath);
-                if (condition && condition !== 'null' && condition !== 'N/A' && condition !== '') {
-                    return trueBlock;
-                } else {
-                    return falseBlock || '';
-                }
-            });
-
-            // Replace standard variables - More robust regex
-            compiledHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_.!\[\]]+)\s*\}\}/g, (match: string, path: string) => {
-                const value = getNestedValue(profileData, path);
-                console.log(`Interpolating ${path} -> ${value}`);
-                return value !== null && value !== undefined && value !== '' ? String(value) : '';
-            });
+            compiledHtml = interpolate(data.rawHtml, profileData);
 
             console.log('Compiled HTML:', compiledHtml);
 
@@ -176,7 +254,7 @@
     .preview-paper {
         background: white;
         width: 210mm;
-        height: 297mm;
+        min-height: 297mm;
         padding: 0 !important; /* Zero padding to match designer origin */
         box-sizing: border-box;
         position: relative; /* REQUIRED for absolute elements */

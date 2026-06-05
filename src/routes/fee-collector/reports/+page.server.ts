@@ -46,6 +46,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                 account_admissions(admission_number)
             )
         `)
+        .eq('payment_type', 'tuition_fee')
         .order('payment_date', { ascending: false })
         .limit(10); // Preview limit
 
@@ -74,6 +75,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                     account_admissions(admission_number)
                 )
             `)
+            .eq('payment_type', 'tuition_fee')
             .limit(10);
             
         // Re-apply other filters to this new query object
@@ -98,6 +100,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                     account_admissions(admission_number)
                 )
             `)
+            .eq('payment_type', 'tuition_fee')
             .limit(10);
             if (statusFilter) query = query.eq('status', statusFilter);
             if (startDate) query = query.gte('payment_date', startDate);

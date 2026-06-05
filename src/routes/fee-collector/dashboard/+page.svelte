@@ -8,11 +8,29 @@
     export let data: PageData;
     export let form: ActionData;
     let selectedStatus = data.selectedStatus; // Initialize with status from page.server.ts
+    let selectedCourseId = data.selectedCourseId;
+
+    $: selectedStatus = data.selectedStatus;
+    $: selectedCourseId = data.selectedCourseId;
+
+    function handleFilterChange() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('status', selectedStatus);
+        url.searchParams.set('course_id', selectedCourseId);
+        url.searchParams.set('page', '1');
+        goto(url.toString());
+    }
 
     function handleStatusChange(event: Event) {
         const target = event.target as HTMLSelectElement;
-        const newStatus = target.value;
-        goto(`?status=${newStatus}&page=1`);
+        selectedStatus = target.value;
+        handleFilterChange();
+    }
+
+    function handleCourseChange(event: Event) {
+        const target = event.target as HTMLSelectElement;
+        selectedCourseId = target.value;
+        handleFilterChange();
     }
 
     function changePage(newPage: number) {
@@ -79,13 +97,24 @@
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h4>Admissions for Payment Tracking</h4>
-            <div class="d-flex align-items-center">
-                <label for="statusFilter" class="form-label mb-0 me-2">Filter by Status:</label>
-                <select id="statusFilter" class="form-select form-select-sm" bind:value={selectedStatus} on:change={handleStatusChange}>
-                    <option value="pending">Pending</option>
-                    <option value="partial">Partial</option>
-                    <option value="cleared">Cleared</option>
-                </select>
+            <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center">
+                    <label for="courseFilter" class="form-label mb-0 me-2">Course:</label>
+                    <select id="courseFilter" class="form-select form-select-sm" bind:value={selectedCourseId} on:change={handleCourseChange}>
+                        <option value="">All Courses</option>
+                        {#each data.courses as course}
+                            <option value={course.id}>{course.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="d-flex align-items-center">
+                    <label for="statusFilter" class="form-label mb-0 me-2">Status:</label>
+                    <select id="statusFilter" class="form-select form-select-sm" bind:value={selectedStatus} on:change={handleStatusChange}>
+                        <option value="pending">Pending</option>
+                        <option value="partial">Partial</option>
+                        <option value="cleared">Cleared</option>
+                    </select>
+                </div>
             </div>
         </div>
         <div class="card-body">
@@ -94,6 +123,7 @@
                     <table class="table table-striped table-hover">
                         <thead>
                             <tr>
+                                <th>#</th>
                                 <th>Admission No.</th>
                                 <th>Student Name</th>
                                 <th>Course</th>
@@ -105,12 +135,13 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {#each data.accountAdmissions as admission}
+                            {#each data.accountAdmissions as admission, i}
                                 {@const admAny = admission as any}
                                 {@const totalFee = getFeeStructure(admAny.application_id)?.total_fee || 0}
                                 {@const paidAmount = getPaidAmount(admAny.applications?.payments || [])}
                                 {@const outstanding = getOutstandingBalance(admAny)}
                                 <tr>
+                                    <td>{(data.pagination.page - 1) * data.pagination.limit + i + 1}</td>
                                     <td>{admAny.admission_number}</td>
                                     <td>{admAny.applications?.student_user?.full_name || admAny.applications?.student_user?.email}</td>
                                     <td>{admAny.applications?.courses?.name}</td>

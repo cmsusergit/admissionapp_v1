@@ -71,6 +71,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
                 account_admissions (admission_number)
             )
         `)
+        .eq('payment_type', 'tuition_fee')
         .order('payment_date', { ascending: false });
 
     if (statusFilter) query = query.eq('status', statusFilter);

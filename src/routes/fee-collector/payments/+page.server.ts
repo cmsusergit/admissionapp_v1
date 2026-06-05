@@ -19,11 +19,17 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     }
 
     const searchTerm = url.searchParams.get('search') || '';
+    const courseIdFilter = url.searchParams.get('course_id') || '';
     const activeTab = (url.searchParams.get('type') || 'tuition') as 'tuition' | 'application' | 'provisional';
     const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const limit = parseInt(url.searchParams.get('limit') || '25');
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+
+    // Fetch courses for the filter dropdown
+    let coursesQuery = supabase.from('courses').select('id, name');
+    coursesQuery = applyRoleBasedCollegeFilter(coursesQuery, userProfile, 'courses');
+    const { data: courses } = await coursesQuery.order('name');
 
     // Map frontend tab to DB payment type
     const tabToDbType = {
@@ -40,6 +46,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             *,
             applications!inner (
                 id,
+                course_id,
                 student_user:users!student_id (full_name, email, student_profiles(enrollment_number)),
                 courses!inner (
                     name, 
@@ -62,6 +69,10 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     // ALWAYS filter by the active tab's payment type to ensure pagination is consistent
     paymentsQuery = paymentsQuery.eq('payment_type', dbPaymentType);
+
+    if (courseIdFilter) {
+        paymentsQuery = paymentsQuery.eq('applications.course_id', courseIdFilter);
+    }
 
     if (searchTerm) {
         paymentsQuery = paymentsQuery.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`, { foreignTable: 'applications.student_user' });
@@ -208,6 +219,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         provisionalFeePayments,
         admissions: admissionsWithProvFees,
         feeStructures: feeStructures,
+        courses: courses || [],
         userProfile,
         pagination: {
             page,
@@ -216,6 +228,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             totalPages: Math.ceil((totalPaymentsCount || 0) / limit)
         },
         searchTerm,
+        selectedCourseId: courseIdFilter,
         activeTab
     };
 };

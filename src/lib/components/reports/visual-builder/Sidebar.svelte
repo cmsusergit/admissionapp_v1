@@ -3,6 +3,7 @@
         schema = [], 
         selectedTable = '',
         selectedNode = null,
+        layout = [],
         onUpdateNode = () => {},
         onInsertVariable = (detail: any) => {}
     } = $props();
@@ -27,13 +28,18 @@
                     // Add JSON keys if any
                     if (col.jsonKeys) {
                         col.jsonKeys.forEach((jk: any) => {
-                            const jPath = `${path}.${jk.key}`;
-                            if (!processedPaths.has(jPath)) {
+                            // If column is profile_data or form_data, don't include column name in path
+                            const isDataCol = col.name === 'profile_data' || col.name === 'form_data';
+                            const finalJPath = isDataCol 
+                                ? (pathPrefix ? `${pathPrefix}.${jk.key}` : jk.key)
+                                : `${path}.${jk.key}`;
+
+                            if (!processedPaths.has(finalJPath)) {
                                 vars.push({ 
-                                    path: jPath, 
+                                    path: finalJPath, 
                                     label: `${label} > ${jk.label}` 
                                 });
-                                processedPaths.add(jPath);
+                                processedPaths.add(finalJPath);
                             }
                         });
                     }
@@ -55,12 +61,20 @@
                 else if (rel.foreignKey === 'cycle_id') relPathPart = 'cycle';
                 else if (rel.foreignKey === 'academic_year_id') relPathPart = 'academic_year';
                 else if (rel.foreignKey === 'application_id' && rel.targetTable === 'account_admissions') relPathPart = 'application';
-                else if (rel.targetTable === 'student_profiles') relPathPart = 'student';
+                else if (rel.targetTable === 'student_profiles') {
+                    // If we are already in the student (users) scope, don't add another 'student' level
+                    relPathPart = pathPrefix.includes('student') ? '' : 'student';
+                    
+                    // Also add student_profile alias for discoverability if at top level
+                    if (depth === 0) {
+                        processTable(targetTable, 'student_profile', 'Student Profile', depth + 1);
+                    }
+                }
                 else relPathPart = rel.targetTable;
 
                 const isFirstLevel = depth === 0;
-                const fullRelPath = isFirstLevel ? relPathPart : `${pathPrefix}.${relPathPart}`;
-                const fullRelLabel = isFirstLevel ? rel.label : `${labelPrefix} > ${rel.label}`;
+                const fullRelPath = isFirstLevel ? relPathPart : (relPathPart ? `${pathPrefix}.${relPathPart}` : pathPrefix);
+                const fullRelLabel = isFirstLevel ? rel.label : (rel.label ? `${labelPrefix} > ${rel.label}` : labelPrefix);
 
                 // Recursive call for relationships
                 processTable(targetTable, fullRelPath, fullRelLabel, depth + 1);
@@ -78,6 +92,32 @@
     });
 
     let varSearch = $state('');
+    let gridRows = $state(2);
+    let gridCols = $state(2);
+
+    // Helper to find parent layoutTable of a node
+    function findParentTable(nodes: any[], targetId: string, parentTable: any = null): any {
+        for (const node of nodes) {
+            if (node.id === targetId) return parentTable;
+            if (node.children) {
+                const found = findParentTable(node.children, targetId, node.type === 'layoutTable' ? node : parentTable);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    let parentTable = $derived(selectedNode ? findParentTable(layout, selectedNode.id) : null);
+    let tableToEdit = $derived(selectedNode?.type === 'layoutTable' ? selectedNode : parentTable);
+
+    // Sync grid inputs when selection changes
+    $effect(() => {
+        if (tableToEdit) {
+            gridRows = tableToEdit.children.length;
+            gridCols = tableToEdit.children[0]?.children.length || 0;
+        }
+    });
+
     let filteredVars = $derived(
         varSearch.length > 1 
             ? allVariables.filter(v => 
@@ -93,6 +133,8 @@
         { type: 'text', label: 'Text', icon: 'bi-type', description: 'Paragraph or Label' },
         { type: 'variable', label: 'Variable', icon: 'bi-braces', description: 'Database field' },
         { type: 'image', label: 'Image', icon: 'bi-image', description: 'Logo or Photo' },
+        { type: 'table', label: 'Dynamic Table', icon: 'bi-table', description: 'Dynamic list' },
+        { type: 'layoutTable', label: 'Layout Table', icon: 'bi-grid-3x3', description: 'Structural grid' },
         { type: 'divider', label: 'Divider', icon: 'bi-dash-lg', description: 'Horizontal line' }
     ];
 
@@ -138,6 +180,99 @@
         }
         varSearch = '';
     }
+
+    function addRow() {
+        if (!tableToEdit) return;
+        const colCount = tableToEdit.children[0]?.children.length || 1;
+        const newRow = {
+            id: Math.random().toString(36).substr(2, 9),
+            type: 'tableRow',
+            children: Array(colCount).fill(0).map(() => ({
+                id: Math.random().toString(36).substr(2, 9),
+                type: 'tableCell',
+                children: [],
+                style: { padding: '5px', border: tableToEdit.style?.border || '1px dashed #eee' }
+            }))
+        };
+        onUpdateNode({ children: [...tableToEdit.children, newRow] }, tableToEdit.id);
+    }
+
+    function removeRow() {
+        if (!tableToEdit || tableToEdit.children.length <= 1) return;
+        onUpdateNode({ children: tableToEdit.children.slice(0, -1) }, tableToEdit.id);
+    }
+
+    function addColumn() {
+        if (!tableToEdit) return;
+        const newChildren = tableToEdit.children.map((row: any) => ({
+            ...row,
+            children: [...row.children, {
+                id: Math.random().toString(36).substr(2, 9),
+                type: 'tableCell',
+                children: [],
+                style: { padding: '5px', border: tableToEdit.style?.border || '1px dashed #eee' }
+            }]
+        }));
+        onUpdateNode({ children: newChildren }, tableToEdit.id);
+    }
+
+    function removeColumn() {
+        if (!tableToEdit || tableToEdit.children[0]?.children.length <= 1) return;
+        const newChildren = tableToEdit.children.map((row: any) => ({
+            ...row,
+            children: row.children.slice(0, -1)
+        }));
+        onUpdateNode({ children: newChildren }, tableToEdit.id);
+    }
+
+    function applyGrid() {
+        // This is now the non-destructive update function
+        if (!tableToEdit) return;
+        
+        let currentRows = [...tableToEdit.children];
+        const targetRows = gridRows;
+        const targetCols = gridCols;
+
+        // Adjust Rows
+        if (targetRows > currentRows.length) {
+            const rowsToAdd = targetRows - currentRows.length;
+            for (let i = 0; i < rowsToAdd; i++) {
+                currentRows.push({
+                    id: Math.random().toString(36).substr(2, 9),
+                    type: 'tableRow',
+                    children: Array(targetCols).fill(0).map(() => ({
+                        id: Math.random().toString(36).substr(2, 9),
+                        type: 'tableCell',
+                        children: [],
+                        style: { padding: '5px', border: tableToEdit.style?.border || '1px dashed #eee' }
+                    }))
+                });
+            }
+        } else if (targetRows < currentRows.length) {
+            currentRows = currentRows.slice(0, targetRows);
+        }
+
+        // Adjust Columns for all rows
+        currentRows = currentRows.map(row => {
+            let cells = [...row.children];
+            if (targetCols > cells.length) {
+                const cellsToAdd = targetCols - cells.length;
+                for (let i = 0; i < cellsToAdd; i++) {
+                    cells.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        type: 'tableCell',
+                        children: [],
+                        style: { padding: '5px', border: tableToEdit.style?.border || '1px dashed #eee' }
+                    });
+                }
+            } else if (targetCols < cells.length) {
+                cells = cells.slice(0, targetCols);
+            }
+            return { ...row, children: cells };
+        });
+
+        onUpdateNode({ children: currentRows }, tableToEdit.id);
+    }
 </script>
 
 <div class="sidebar-content">
@@ -172,7 +307,7 @@
             <hr>
 
             <h6 class="small fw-bold mb-2">Instructions</h6>
-            <p class="x-small text-muted">
+            <p class="x-small text-muted mb-2">
                 1. Drag components to the canvas.<br>
                 2. Select a component to edit properties.<br>
                 3. Use the search in <strong>Properties</strong> to bind database fields.
@@ -220,10 +355,10 @@
                     {/if}
 
                     <!-- Content Group -->
-                    {#if selectedNode.type === 'text' || selectedNode.type === 'variable' || selectedNode.type === 'image'}
+                    {#if selectedNode.type === 'text' || selectedNode.type === 'variable' || selectedNode.type === 'image' || selectedNode.type === 'table'}
                         <div class="prop-group mb-3">
                             <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">
-                                {selectedNode.type === 'image' ? 'Image Source' : 'Content'}
+                                {selectedNode.type === 'image' ? 'Image Source' : (selectedNode.type === 'table' ? 'Data Source (List Path)' : 'Content')}
                             </label>
                             
                             {#if selectedNode.type === 'text'}
@@ -250,11 +385,201 @@
                                     >
                                 </div>
                                 <div class="xx-small text-muted">e.g. https://example.com/logo.png or &#123;&#123;college.logo_url&#125;&#125;</div>
-                            {:else}
-                                <div class="p-2 border rounded bg-white x-small font-monospace">
-                                    &#123;&#123;{selectedNode.variablePath}&#125;&#125;
+                            {:else if selectedNode.type === 'table'}
+                                <div class="input-group input-group-sm mb-2">
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        placeholder="e.g. payments or marks_list" 
+                                        value={selectedNode.listPath} 
+                                        oninput={(e) => onUpdateNode({ listPath: e.currentTarget.value })}
+                                    >
+                                </div>
+                                
+                                <div class="border rounded p-2 bg-light">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="xx-small fw-bold uppercase">Columns</span>
+                                        <button type="button" class="btn btn-xs btn-primary" onclick={() => {
+                                            const cols = [...(selectedNode.columns || []), { label: 'New Col', path: '' }];
+                                            onUpdateNode({ columns: cols });
+                                        }}>+</button>
+                                    </div>
+                                    {#each (selectedNode.columns || []) as col, idx}
+                                        <div class="bg-white border rounded p-1 mb-2 shadow-xs">
+                                            <div class="d-flex gap-1 mb-1">
+                                                <input type="text" class="form-control form-control-xs xx-small" placeholder="Label" value={col.label} oninput={(e) => {
+                                                    const cols = [...selectedNode.columns];
+                                                    cols[idx].label = e.currentTarget.value;
+                                                    onUpdateNode({ columns: cols });
+                                                }}>
+                                                <button type="button" class="btn btn-xs btn-outline-danger" onclick={() => {
+                                                    const cols = selectedNode.columns.filter((_, i) => i !== idx);
+                                                    onUpdateNode({ columns: cols });
+                                                }}>&times;</button>
+                                            </div>
+                                            <input type="text" class="form-control form-control-xs xx-small" placeholder="Path (relative to item)" value={col.path} oninput={(e) => {
+                                                const cols = [...selectedNode.columns];
+                                                cols[idx].path = e.currentTarget.value;
+                                                onUpdateNode({ columns: cols });
+                                            }}>
+                                        </div>
+                                    {/each}
                                 </div>
                             {/if}
+                        </div>
+                    {/if}
+
+                    {#if selectedNode.type === 'variable'}
+                        <div class="p-2 border rounded bg-white x-small font-monospace mb-3">
+                            &#123;&#123;{selectedNode.variablePath}&#125;&#125;
+                        </div>
+                    {/if}
+
+                    <!-- Grid Management Group (Show always if part of a table) -->
+                    {#if tableToEdit}
+                        <div class="border rounded p-2 bg-light mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="xx-small fw-bold uppercase text-primary">
+                                    Grid Management {#if selectedNode.id !== tableToEdit.id}(Parent Table){/if}
+                                </span>
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="xx-small fw-bold text-muted d-block">Rows</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control" min="1" max="20" bind:value={gridRows}>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="xx-small fw-bold text-muted d-block">Cols</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control" min="1" max="10" bind:value={gridCols}>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <button type="button" class="btn btn-xs btn-primary w-100" onclick={applyGrid}>
+                                        Update Grid Structure
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center mb-2 border-top pt-2">
+                                <span class="xx-small fw-bold uppercase text-primary">Quick Adjust</span>
+                            </div>
+                            <div class="row g-2 mb-2">
+                                <div class="col-6">
+                                    <button type="button" class="btn btn-xs btn-outline-primary w-100" onclick={addRow}>
+                                        <i class="bi bi-plus-lg me-1"></i> Row
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button type="button" class="btn btn-xs btn-outline-danger w-100" onclick={removeRow}>
+                                        <i class="bi bi-dash-lg me-1"></i> Row
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <button type="button" class="btn btn-xs btn-outline-primary w-100" onclick={addColumn}>
+                                        <i class="bi bi-plus-lg me-1"></i> Column
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button type="button" class="btn btn-xs btn-outline-danger w-100" onclick={removeColumn}>
+                                        <i class="bi bi-dash-lg me-1"></i> Column
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between align-items-center mb-2 border-top pt-2 mt-2">
+                                <span class="xx-small fw-bold uppercase text-primary">Table Borders</span>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text xx-small">Border</span>
+                                        <input type="text" class="form-control" placeholder="1px solid #ccc" 
+                                            value={tableToEdit.style?.border || ''} 
+                                            onchange={(e) => {
+                                                const border = e.currentTarget.value;
+                                                const newChildren = tableToEdit.children.map((row: any) => ({
+                                                    ...row,
+                                                    children: row.children.map((cell: any) => ({
+                                                        ...cell,
+                                                        style: { ...cell.style, border }
+                                                    }))
+                                                }));
+                                                onUpdateNode({ 
+                                                    style: { ...tableToEdit.style, border },
+                                                    children: newChildren
+                                                }, tableToEdit.id);
+                                            }}>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <button type="button" class="btn btn-xs btn-outline-secondary w-100" onclick={() => {
+                                        const border = '1px solid #000';
+                                        const newChildren = tableToEdit.children.map((row: any) => ({
+                                            ...row,
+                                            children: row.children.map((cell: any) => ({
+                                                ...cell,
+                                                style: { ...cell.style, border }
+                                            }))
+                                        }));
+                                        onUpdateNode({ 
+                                            style: { ...tableToEdit.style, border },
+                                            children: newChildren
+                                        }, tableToEdit.id);
+                                    }}>Solid Black</button>
+                                </div>
+                                <div class="col-12">
+                                    <button type="button" class="btn btn-xs btn-outline-secondary w-100" onclick={() => {
+                                        const border = 'none';
+                                        const newChildren = tableToEdit.children.map((row: any) => ({
+                                            ...row,
+                                            children: row.children.map((cell: any) => ({
+                                                ...cell,
+                                                style: { ...cell.style, border }
+                                            }))
+                                        }));
+                                        onUpdateNode({ 
+                                            style: { ...tableToEdit.style, border },
+                                            children: newChildren
+                                        }, tableToEdit.id);
+                                    }}>No Borders</button>
+                                </div>
+                            </div>
+                            <div class="row g-2 mt-2">
+                                <div class="col-6">
+                                    <div class="form-check form-check-inline mt-1">
+                                        <input class="form-check-input" type="checkbox" id="border_collapse" 
+                                            checked={tableToEdit.style?.borderCollapse === 'collapse'}
+                                            onchange={(e) => onUpdateNode({ style: { ...tableToEdit.style, borderCollapse: e.currentTarget.checked ? 'collapse' : 'separate' } }, tableToEdit.id)}>
+                                        <label class="form-check-label xx-small" for="border_collapse">Collapse</label>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text xx-small">Pad</span>
+                                        <input type="text" class="form-control" placeholder="5px" 
+                                            value={tableToEdit.style?.cellPadding || '5px'} 
+                                            onchange={(e) => {
+                                                const padding = e.currentTarget.value;
+                                                const newChildren = tableToEdit.children.map((row: any) => ({
+                                                    ...row,
+                                                    children: row.children.map((cell: any) => ({
+                                                        ...cell,
+                                                        style: { ...cell.style, padding }
+                                                    }))
+                                                }));
+                                                onUpdateNode({ 
+                                                    style: { ...tableToEdit.style, cellPadding: padding },
+                                                    children: newChildren
+                                                }, tableToEdit.id);
+                                            }}>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     {/if}
 

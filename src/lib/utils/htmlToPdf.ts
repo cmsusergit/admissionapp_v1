@@ -58,8 +58,17 @@ async function parseElement(element: Element): Promise<any[]> {
                 item.absolutePosition = { x: x * scale, y: y * scale };
                 
                 // Fixed dimensions with scaling
-                if (style.width && style.width.endsWith('px')) item.width = parseFloat(style.width) * scale;
-                if (style.height && style.height.endsWith('px') && tagName !== 'text') item.height = parseFloat(style.height) * scale;
+                if (style.width && style.width.endsWith('px')) {
+                    item.width = parseFloat(style.width) * scale;
+                } else if (style.minWidth && style.minWidth.endsWith('px')) {
+                    item.width = parseFloat(style.minWidth) * scale;
+                }
+                
+                if (style.height && style.height.endsWith('px') && tagName !== 'text') {
+                    item.height = parseFloat(style.height) * scale;
+                } else if (style.minHeight && style.minHeight.endsWith('px') && tagName !== 'text') {
+                    item.height = parseFloat(style.minHeight) * scale;
+                }
             }
 
             // Tag specific handling

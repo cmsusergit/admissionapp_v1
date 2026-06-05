@@ -40,6 +40,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
             )
         `)
         .eq('status', 'completed')
+        .eq('payment_type', 'tuition_fee')
         .order('receipt_number', { ascending: true });
 
     if (startDate) query = query.gte('payment_date', `${startDate}T00:00:00.000Z`);

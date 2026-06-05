@@ -14,13 +14,25 @@
     let showRecordModal = $state(false);
     let showReceiptModal = $state(false);
     let searchTerm = $state(data.searchTerm || '');
+    let selectedCourseId = $state(data.selectedCourseId || '');
     let activeTab: 'tuition' | 'application' | 'provisional' = $state(data.activeTab || 'tuition');
+
+    $effect(() => {
+        searchTerm = data.searchTerm || '';
+        selectedCourseId = data.selectedCourseId || '';
+        activeTab = (data.activeTab as any) || 'tuition';
+    });
 
     function handleSearch() {
         const url = new URL(window.location.href);
         url.searchParams.set('search', searchTerm);
+        url.searchParams.set('course_id', selectedCourseId);
         url.searchParams.set('page', '1');
         goto(url.toString());
+    }
+
+    function handleCourseChange() {
+        handleSearch();
     }
 
     function handleTabChange(tab: typeof activeTab) {
@@ -322,8 +334,23 @@
                 >
                 <button class="btn btn-primary" onclick={handleSearch}>Search</button>
             </div>
-            {#if data.searchTerm}
-                <button class="btn btn-link btn-sm text-danger" onclick={() => { searchTerm = ''; handleSearch(); }}>Clear</button>
+            
+            <div class="input-group" style="max-width: 300px;">
+                <span class="input-group-text"><i class="bi bi-book"></i></span>
+                <select 
+                    class="form-select" 
+                    bind:value={selectedCourseId}
+                    onchange={handleCourseChange}
+                >
+                    <option value="">All Courses</option>
+                    {#each data.courses as course}
+                        <option value={course.id}>{course.name}</option>
+                    {/each}
+                </select>
+            </div>
+
+            {#if data.searchTerm || data.selectedCourseId}
+                <button class="btn btn-link btn-sm text-danger" onclick={() => { searchTerm = ''; selectedCourseId = ''; handleSearch(); }}>Clear</button>
             {/if}
         </div>
         
@@ -364,6 +391,7 @@
                 <table class="table table-striped table-hover mb-0">
                     <thead>
                         <tr>
+                            <th>#</th>
                             <th>Date</th>
                             <th>Admission No.</th>
                             <th>College ID</th>
@@ -376,8 +404,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each filteredPayments as payment}
+                        {#each filteredPayments as payment, i}
                             <tr>
+                                <td>{(data.pagination.page - 1) * data.pagination.limit + i + 1}</td>
                                 <td>{new Date(payment.payment_date).toLocaleDateString()}</td>
                                 <td>{Array.isArray(payment.applications?.account_admissions) ? payment.applications?.account_admissions[0]?.admission_number : payment.applications?.account_admissions?.admission_number || '-'}</td>
                                 <td>

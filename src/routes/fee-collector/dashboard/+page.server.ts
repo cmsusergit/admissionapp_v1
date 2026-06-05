@@ -14,10 +14,16 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     }
 
     const statusFilter = url.searchParams.get('status') || 'pending'; // Default to 'pending'
+    const courseIdFilter = url.searchParams.get('course_id') || '';
     const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const limit = parseInt(url.searchParams.get('limit') || '25');
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+
+    // Fetch courses for the filter dropdown
+    let coursesQuery = supabase.from('courses').select('id, name');
+    coursesQuery = applyRoleBasedCollegeFilter(coursesQuery, userProfile, 'courses');
+    const { data: courses } = await coursesQuery.order('name');
 
     // Fetch account_admissions records with pagination
     let aaQuery = supabase
@@ -39,6 +45,10 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         .neq('enrollment_status', 'provisional') // Exclude provisional admissions from this view
         .range(from, to);
 
+    if (courseIdFilter) {
+        aaQuery = aaQuery.eq('applications.course_id', courseIdFilter);
+    }
+
     aaQuery = applyRoleBasedCollegeFilter(aaQuery, userProfile, 'admissions');
 
     const { data: accountAdmissions, count: totalCount, error: aaError } = await aaQuery;
@@ -48,7 +58,9 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         return { 
             accountAdmissions: [], 
             feeStructures: [], 
+            courses: courses || [],
             selectedStatus: statusFilter,
+            selectedCourseId: courseIdFilter,
             pagination: { page, limit, total: 0, totalPages: 0 }
         };
     }
@@ -82,7 +94,9 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     return {
         accountAdmissions: accountAdmissions || [],
         feeStructures: feeStructures,
+        courses: courses || [],
         selectedStatus: statusFilter,
+        selectedCourseId: courseIdFilter,
         pagination: {
             page,
             limit,

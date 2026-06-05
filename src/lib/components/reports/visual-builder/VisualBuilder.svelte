@@ -23,7 +23,7 @@
     function findAndAdd(nodes: any[], targetId: string, newNode: any): boolean {
         for (let node of nodes) {
             if (node.id === targetId) {
-                if (node.type === 'row' || node.type === 'column') {
+                if (node.type === 'row' || node.type === 'column' || node.type === 'tableCell') {
                     node.children = [...node.children, newNode];
                     return true;
                 }
@@ -77,9 +77,30 @@
             newNode.variablePath = data.variablePath;
             newNode.variableLabel = data.variableLabel;
         } else if (type === 'text') {
-            newNode.content = 'New Text Block';
+            newNode.content = 'Hello There';
         } else if (type === 'image') {
             newNode.src = '{{college.logo_url}}';
+        } else if (type === 'table') {
+            newNode.listPath = 'payments';
+            newNode.columns = [
+                { label: 'Date', path: 'created_at' },
+                { label: 'Amount', path: 'amount' },
+                { label: 'Status', path: 'status' }
+            ];
+            newNode.style.width = '100%';
+        } else if (type === 'layoutTable') {
+            newNode.children = [0, 1].map(() => ({
+                id: generateId(),
+                type: 'tableRow',
+                children: [0, 1].map(() => ({
+                    id: generateId(),
+                    type: 'tableCell',
+                    children: [],
+                    style: { padding: '5px', border: '1px dashed #ccc' }
+                }))
+            }));
+            newNode.style.width = '100%';
+            newNode.style.borderCollapse = 'collapse';
         }
 
         if (isRoot) {
@@ -141,6 +162,27 @@
                 newNode.content = 'New Text Block';
             } else if (type === 'image') {
                 newNode.src = '{{college.logo_url}}';
+            } else if (type === 'table') {
+                newNode.listPath = 'payments';
+                newNode.columns = [
+                    { label: 'Date', path: 'created_at' },
+                    { label: 'Amount', path: 'amount' },
+                    { label: 'Status', path: 'status' }
+                ];
+                newNode.style.width = '100%';
+            } else if (type === 'layoutTable') {
+                newNode.children = [0, 1].map(() => ({
+                    id: generateId(),
+                    type: 'tableRow',
+                    children: [0, 1].map(() => ({
+                        id: generateId(),
+                        type: 'tableCell',
+                        children: [],
+                        style: { padding: '5px', border: '1px dashed #ccc' }
+                    }))
+                }));
+                newNode.style.width = '100%';
+                newNode.style.borderCollapse = 'collapse';
             }
             
             layout = [...layout, newNode];
@@ -150,7 +192,28 @@
     }
 
     function handleSelect(id: string) {
+        const node = findNode(layout, id);
+        // Only redirect to parent if we clicked an EMPTY cell or row
+        // If it has children, the user probably wants to interact with the children
+        if (node && (node.type === 'tableRow' || node.type === 'tableCell') && (!node.children || node.children.length === 0)) {
+            const parentTable = findParentTable(layout, id);
+            if (parentTable) {
+                selectedId = parentTable.id;
+                return;
+            }
+        }
         selectedId = id;
+    }
+
+    function findParentTable(nodes: any[], targetId: string, parentTable: any = null): any {
+        for (const node of nodes) {
+            if (node.id === targetId) return parentTable;
+            if (node.children) {
+                const found = findParentTable(node.children, targetId, node.type === 'layoutTable' ? node : parentTable);
+                if (found) return found;
+            }
+        }
+        return null;
     }
 
     function compileNode(node: any): string {
@@ -162,12 +225,28 @@
             combinedStyle.position = 'absolute';
             combinedStyle.left = `${node.x}px`;
             combinedStyle.top = `${node.y}px`;
-            if (node.w) combinedStyle.width = `${node.w}px`;
-            if (node.h && node.type !== 'text') combinedStyle.height = `${node.h}px`;
+            if (node.w) {
+                if (node.type === 'layoutTable') {
+                    combinedStyle.minWidth = `${node.w}px`;
+                    combinedStyle.width = 'fit-content';
+                } else {
+                    combinedStyle.width = `${node.w}px`;
+                }
+            }
+            if (node.h && node.type !== 'text') {
+                if (node.type === 'layoutTable') {
+                    combinedStyle.minHeight = `${node.h}px`;
+                    combinedStyle.height = 'auto';
+                } else {
+                    combinedStyle.height = `${node.h}px`;
+                }
+            }
         } else {
             // Nested elements
             combinedStyle.position = 'relative';
-            combinedStyle.width = combinedStyle.width || '100%';
+            if (node.type !== 'tableCell' && node.type !== 'tableRow' && node.type !== 'layoutTable') {
+                combinedStyle.width = combinedStyle.width || '100%';
+            }
         }
 
         if (combinedStyle) {
@@ -188,7 +267,25 @@
             case 'variable':
                 return `<span style="${styleStr}">{{${node.variablePath}}}</span>`;
             case 'image':
-                return `<div style="text-align:center; ${styleStr}"><img src="${node.src || '{{college.logo_url}}'}" style="width:100%; height:100%; object-fit:contain;"></div>`;
+                return `<img src="${node.src || '{{college.logo_url}}'}" style="${styleStr} object-fit:contain;">`;
+            case 'table':
+                const headers = (node.columns || []).map((c: any) => `<th style="border:1px solid #dee2e6; padding:8px; background-color:#f8f9fa;">${c.label}</th>`).join('');
+                const cells = (node.columns || []).map((c: any) => `<td style="border:1px solid #dee2e6; padding:8px;">{{${c.path}}}</td>`).join('');
+                return `
+                    <table style="width:100%; border-collapse:collapse; ${styleStr}">
+                        <thead><tr>${headers}</tr></thead>
+                        <tbody>
+                            {{#each ${node.listPath}}}
+                            <tr>${cells}</tr>
+                            {{/each}}
+                        </tbody>
+                    </table>`;
+            case 'layoutTable':
+                return `<table style="width:100%; table-layout:fixed; border-collapse:${node.style?.borderCollapse || 'collapse'}; ${styleStr}">${node.children.map(compileNode).join('')}</table>`;
+            case 'tableRow':
+                return `<tr>${node.children.map(compileNode).join('')}</tr>`;
+            case 'tableCell':
+                return `<td style="${styleStr}">${node.children.map(compileNode).join('')}</td>`;
             case 'divider':
                 return `<hr style="${styleStr}">`;
             default:
@@ -200,19 +297,20 @@
         htmlContent = layout.map(compileNode).join('');
     }
 
-    function deleteNode() {
-        if (!selectedId) return;
+    function deleteNode(targetId?: string) {
+        const id = targetId || selectedId;
+        if (!id) return;
         
         function filterNodes(nodes: any[]) {
             return nodes.filter(n => {
-                if (n.id === selectedId) return false;
+                if (n.id === id) return false;
                 if (n.children) n.children = filterNodes(n.children);
                 return true;
             });
         }
         
         layout = filterNodes(JSON.parse(JSON.stringify(layout)));
-        selectedId = '';
+        if (id === selectedId) selectedId = '';
         compile();
     }
 
@@ -282,7 +380,6 @@
 
         if (dragState.type === 'move') {
             // SNAP LOGIC
-            const snapPointsX = [0, 210 * 3.78 / 2, 210 * 3.78]; // Left, Center, Right of A4 (approx px)
             // Better: use real mm to px conversion
             const canvasWidth = 210 * 3.7795275591; // mm to px
             const canvasHeight = 297 * 3.7795275591;
@@ -344,8 +441,8 @@
             }
 
             // Grid fallback if not snapped
-            if (!snappedX) newX = Math.round(newX / 5) * 5;
-            if (!snappedY) newY = Math.round(newY / 5) * 5;
+            newX = Math.round(newX);
+            newY = Math.round(newY);
 
             updateSelectedNode({ x: newX, y: newY });
 
@@ -356,8 +453,9 @@
             let finalW = dragState.initialW;
             let finalH = dragState.initialH;
 
-            if (dir.includes('e')) finalW = Math.max(20, dragState.initialW + dx);
-            if (dir.includes('s')) finalH = Math.max(20, dragState.initialH + dy);
+            // Apply delta
+            if (dir.includes('e')) finalW = dragState.initialW + dx;
+            if (dir.includes('s')) finalH = dragState.initialH + dy;
             if (dir.includes('w')) {
                 const deltaW = Math.min(dragState.initialW - 20, dx);
                 finalW = dragState.initialW - deltaW;
@@ -369,25 +467,80 @@
                 finalY = dragState.initialY + deltaH;
             }
 
+            // SNAPPING FOR RESIZE
+            const canvasWidth = 210 * 3.7795275591;
+            const canvasHeight = 297 * 3.7795275591;
+            const targetsX = [0, canvasWidth / 2, canvasWidth];
+            const targetsY = [0, canvasHeight / 2, canvasHeight];
+
+            layout.forEach(n => {
+                if (n.id === dragState.activeId || n.x === undefined) return;
+                targetsX.push(n.x, n.x + (n.w || 0), n.x + (n.w || 0) / 2);
+                targetsY.push(n.y, n.y + (n.h || 0), n.y + (n.h || 0) / 2);
+            });
+
+            // Snap edges based on direction
+            if (dir.includes('e')) {
+                for (const tx of targetsX) {
+                    if (Math.abs((finalX + finalW) - tx) < SNAP_THRESHOLD) {
+                        finalW = tx - finalX;
+                        guidelines.push({ x: tx });
+                        break;
+                    }
+                }
+            }
+            if (dir.includes('w')) {
+                for (const tx of targetsX) {
+                    if (Math.abs(finalX - tx) < SNAP_THRESHOLD) {
+                        const delta = tx - finalX;
+                        finalX = tx;
+                        finalW -= delta;
+                        guidelines.push({ x: tx });
+                        break;
+                    }
+                }
+            }
+            if (dir.includes('s')) {
+                for (const ty of targetsY) {
+                    if (Math.abs((finalY + finalH) - ty) < SNAP_THRESHOLD) {
+                        finalH = ty - finalY;
+                        guidelines.push({ y: ty });
+                        break;
+                    }
+                }
+            }
+            if (dir.includes('n')) {
+                for (const ty of targetsY) {
+                    if (Math.abs(finalY - ty) < SNAP_THRESHOLD) {
+                        const delta = ty - finalY;
+                        finalY = ty;
+                        finalH -= delta;
+                        guidelines.push({ y: ty });
+                        break;
+                    }
+                }
+            }
+
             updateSelectedNode({
-                x: Math.round(finalX / 5) * 5,
-                y: Math.round(finalY / 5) * 5,
-                w: Math.round(finalW / 5) * 5,
-                h: Math.round(finalH / 5) * 5
+                x: Math.round(finalX),
+                y: Math.round(finalY),
+                w: Math.round(finalW),
+                h: Math.round(finalH)
             });
         }
     }
 
-    function updateSelectedNode(updates: any) {
-        if (!selectedId) return;
+    function updateSelectedNode(updates: any, targetId?: string) {
+        const id = targetId || selectedId;
+        if (!id) return;
         
         if (updates.delete) {
-            deleteNode();
+            deleteNode(id);
             return;
         }
 
         if (updates.duplicate) {
-            const nodeToDuplicate = findNode(layout, selectedId);
+            const nodeToDuplicate = findNode(layout, id);
             if (nodeToDuplicate) {
                 const newNode = JSON.parse(JSON.stringify(nodeToDuplicate));
                 newNode.id = generateId();
@@ -400,7 +553,7 @@
         
         function updateNodes(nodes: any[]) {
             return nodes.map(n => {
-                if (n.id === selectedId) {
+                if (n.id === id) {
                     return { ...n, ...updates };
                 }
                 if (n.children) {
@@ -422,6 +575,10 @@
     }
 
     let selectedNode = $derived(findNode(layout, selectedId));
+    
+    // Multi-page indicators
+    const A4_HEIGHT_PX = 297 * 3.7795275591;
+    let pageCount = $derived(Math.max(1, Math.ceil((layout.reduce((max, n) => Math.max(max, (n.y || 0) + (n.h || 0)), 0) + 50) / A4_HEIGHT_PX)));
 </script>
 
 <div class="visual-builder-container border rounded bg-white" style="min-height: 800px;">
@@ -461,6 +618,7 @@
                 <Sidebar 
                     {schema} 
                     {selectedTable} 
+                    {layout}
                     selectedNode={selectedNode} 
                     onUpdateNode={updateSelectedNode}
                     onInsertVariable={(detail: any) => onDrop('root', 'variable', detail)}
@@ -471,19 +629,19 @@
         <!-- Main Workspace -->
         <div class="workspace-viewport" style="height: 800px; width: 100%;">
             {#if previewMode}
-                <div class="canvas-paper shadow p-5" style="overflow-x: hidden; height: 297mm; position: relative;">
+                <div class="canvas-paper shadow p-5" style="overflow-x: hidden; min-height: 297mm; position: relative;">
                     {@html htmlContent}
-                    <div class="page-boundary-indicator"></div>
-                    <div class="page-boundary-label">End of A4 Page (297mm)</div>
+                    <div class="page-boundary-indicator" style:top="{A4_HEIGHT_PX}px"></div>
+                    <div class="page-boundary-label" style:top="{A4_HEIGHT_PX - 20}px">End of A4 Page (297mm)</div>
                 </div>
             {:else}
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div 
-                    class="canvas-paper shadow" 
+                    class="canvas-paper shadow show-grid" 
                     class:drag-over={rootIsOver}
                     style:transform="scale({zoom})"
                     style:transform-origin="top center"
-                    style:height="297mm"
+                    style:height="{pageCount * A4_HEIGHT_PX}px"
                     style:padding="0"
                     ondragover={handleRootDragOver}
                     ondragleave={() => rootIsOver = false}
@@ -507,7 +665,14 @@
                                     {zoom} 
                                     onUpdateNode={updateSelectedNode}
                                     onStartAction={startAction}
+                                    isDragging={dragState.activeId === node.id}
                                 />
+                            {/each}
+
+                            <!-- Page Boundaries -->
+                            {#each Array(pageCount) as _, i}
+                                <div class="page-boundary-indicator" style:top="{(i + 1) * A4_HEIGHT_PX}px"></div>
+                                <div class="page-boundary-label" style:top="{(i + 1) * A4_HEIGHT_PX - 20}px">Page {i + 1} End</div>
                             {/each}
 
                             <!-- Alignment Guidelines -->
@@ -519,10 +684,9 @@
                                     <div class="guideline horizontal" style:top="{guide.y}px"></div>
                                 {/if}
                             {/each}
+
                         </div>
                     {/if}
-                    <div class="page-boundary-indicator"></div>
-                    <div class="page-boundary-label">End of A4 Page (297mm)</div>
                 </div>
             {/if}
         </div>
@@ -586,16 +750,17 @@
     .canvas-paper {
         background-color: white;
         width: 210mm;
-        /* Fixed A4 height */
-        height: 297mm; 
+        min-height: 297mm;
         box-shadow: 0 0 20px rgba(0,0,0,0.15);
         position: relative;
         transition: transform 0.2s ease;
-        /* Grid Pattern */
-        background-image: radial-gradient(#d1d1d1 1px, transparent 1px);
-        background-size: 20px 20px;
-        overflow: hidden; /* Enforce single page */
         padding: 0 !important;
+    }
+    .canvas-paper.show-grid {
+        /* Grid Pattern */
+        background-image: linear-gradient(to right, #f0f0f0 1px, transparent 1px),
+                          linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
+        background-size: 10px 10px;
     }
     .print-margin-guide {
         position: absolute;

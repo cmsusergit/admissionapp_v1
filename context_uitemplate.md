@@ -40,6 +40,7 @@ The **Visual Drag-and-Drop Template Builder** is fully implemented and verified.
 - `src/lib/utils/htmlToPdf.ts`: The scaling logic.
 - `src/routes/api/reports/profile-data/+server.ts`: The data mapping.
 - `src/lib/components/reports/visual-builder/VisualBuilder.svelte`: The layout engine.
-
 ---
 *Created on June 4, 2026, for session resumption.*
+
+

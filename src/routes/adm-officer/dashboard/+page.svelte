@@ -139,6 +139,37 @@
         }
     }
 
+    // --- Configurable Columns Logic ---
+    const allColumns = [
+        { id: 'sr_no', label: 'Sr. No', default: true },
+        { id: 'app_id', label: 'App ID', default: false },
+        { id: 'college_id', label: 'College ID', default: true },
+        { id: 'student', label: 'Student', default: true },
+        { id: 'course', label: 'Course', default: true },
+        { id: 'branch', label: 'Branch', default: true },
+        { id: 'form_type', label: 'Form Type', default: true },
+        { id: 'status', label: 'Status', default: true },
+        { id: 'receipt', label: 'Receipt', default: true },
+        { id: 'comment', label: 'Approval Comment', default: true },
+        { id: 'date', label: 'Date', default: false },
+        { id: 'fee_status', label: 'Fee Status', default: false },
+        { id: 'actions', label: 'Actions', default: true }
+    ];
+
+    let visibleColumns = allColumns.filter(c => c.default).map(c => c.id);
+    let showColumnDrawer = false;
+
+    function toggleColumn(id: string) {
+        if (visibleColumns.includes(id)) {
+            // Prevent removing all columns
+            if (visibleColumns.length > 1) {
+                visibleColumns = visibleColumns.filter(c => c !== id);
+            }
+        } else {
+            visibleColumns = [...visibleColumns, id];
+        }
+    }
+
 </script>
 
 <div class="container-fluid">
@@ -317,6 +348,9 @@
                         </div>
                         
                         <div class="d-flex align-items-center gap-3">
+                            <button class="btn btn-sm btn-outline-secondary" on:click={() => showColumnDrawer = true}>
+                                <i class="bi bi-layout-three-columns me-1"></i> Columns
+                            </button>
                             <div class="d-flex align-items-center gap-2">
                                 <small class="text-muted">Per Page:</small>
                                 <select class="form-select form-select-sm" style="width: auto;" value={data.pagination.limit} on:change={(e) => handleLimitChange(parseInt(e.currentTarget.value))}>
@@ -377,25 +411,31 @@
                 <table class="table table-striped table-hover mb-0">
                     <thead>
                         <tr>
-                            <th>Sr. No</th>
-                            <th>App ID</th>
-                            <th>College ID</th>
-                            <th>Student</th>
-                            <th>Course</th>
-                            <th>Branch</th>
-                            <th>Form Type</th>
-                            <th style="cursor: pointer;" on:click={() => handleSort('status')}>
-                                Status {data.filters.sort === 'status' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
-                            </th>
-                            <th style="cursor: pointer;" on:click={() => handleSort('receipt_number')}>
-                                Receipt {data.filters.sort === 'receipt_number' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
-                            </th>
-                            <th>Approval Comment</th>
-                            <th style="cursor: pointer;" on:click={() => handleSort('updated_at')}>
-                                Date {data.filters.sort === 'updated_at' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
-                            </th>
-                            <th>Fee Status</th>
-                            <th>Actions</th>
+                            {#if visibleColumns.includes('sr_no')} <th>Sr. No</th> {/if}
+                            {#if visibleColumns.includes('app_id')} <th>App ID</th> {/if}
+                            {#if visibleColumns.includes('college_id')} <th>College ID</th> {/if}
+                            {#if visibleColumns.includes('student')} <th>Student</th> {/if}
+                            {#if visibleColumns.includes('course')} <th>Course</th> {/if}
+                            {#if visibleColumns.includes('branch')} <th>Branch</th> {/if}
+                            {#if visibleColumns.includes('form_type')} <th>Form Type</th> {/if}
+                            {#if visibleColumns.includes('status')}
+                                <th style="cursor: pointer;" on:click={() => handleSort('status')}>
+                                    Status {data.filters.sort === 'status' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                                </th>
+                            {/if}
+                            {#if visibleColumns.includes('receipt')}
+                                <th style="cursor: pointer;" on:click={() => handleSort('receipt_number')}>
+                                    Receipt {data.filters.sort === 'receipt_number' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                                </th>
+                            {/if}
+                            {#if visibleColumns.includes('comment')} <th>Approval Comment</th> {/if}
+                            {#if visibleColumns.includes('date')}
+                                <th style="cursor: pointer;" on:click={() => handleSort('updated_at')}>
+                                    Date {data.filters.sort === 'updated_at' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                                </th>
+                            {/if}
+                            {#if visibleColumns.includes('fee_status')} <th>Fee Status</th> {/if}
+                            {#if visibleColumns.includes('actions')} <th>Actions</th> {/if}
                         </tr>
                     </thead>
                     <tbody>
@@ -405,82 +445,99 @@
                                 {@const isProvType = data.formTypesMap?.[app.form_type] === true}
                                 {@const appReceiptPayment = (appAny.payments || []).find(p => p.payment_type === (isProvType ? 'provisional_fee' : 'application_fee') && p.receipt_number) || (appAny.payments || []).find(p => p.receipt_number)}
                                 <tr>
-                                    <td>{(data.pagination.page - 1) * data.pagination.limit + index + 1}</td>
-                                    <td><small>{app.id.slice(0, 8)}...</small></td>
-                                    <td>
-                                        {#if appAny.users?.student_profiles?.enrollment_number}
-                                            <span class="badge bg-light text-dark border font-monospace">{appAny.users.student_profiles.enrollment_number}</span>
-                                        {:else if appAny.users?.student_profiles?.[0]?.enrollment_number}
-                                            <span class="badge bg-light text-dark border font-monospace">{appAny.users.student_profiles[0].enrollment_number}</span>
-                                        {:else}
-                                            <small class="text-muted">-</small>
-                                        {/if}
-                                    </td>
-                                    <td>
-                                        <div>{appAny.users?.full_name || 'N/A'}</div>
-                                        <small class="text-muted">{appAny.users?.email || 'N/A'}</small>
-                                    </td>
-                                    <td>
-                                        <div>{appAny.courses?.name || 'N/A'}</div>
-                                        <small class="text-muted">{appAny.courses?.colleges?.name || ''}</small>
-                                    </td>
-                                    <td>{appAny.branches?.name || '-'}</td>
-                                    <td>
-                                        <span class="badge bg-light text-dark border">{app.form_type || 'N/A'}</span>
-                                    </td>
-                                    <td>
-                                        <span class="badge 
-                                            {app.status === 'approved' ? 'bg-success' : ''}
-                                            {app.status === 'rejected' ? 'bg-danger' : ''}
-                                            {app.status === 'verified' ? 'bg-info' : ''}
-                                            {app.status === 'submitted' ? 'bg-primary' : ''}
-                                            {app.status === 'needs_correction' ? 'bg-warning' : ''}
-                                            {app.status === 'draft' ? 'bg-secondary' : ''}
-                                        ">
-                                            {app.status}
-                                        </span>
-                                    </td>
-                                    <td class="text-nowrap">
-                                        {#if appReceiptPayment?.receipt_number}
-                                            <small class="fw-bold">{appReceiptPayment.receipt_number}</small>
-                                        {:else}
-                                            <small class="text-muted">-</small>
-                                        {/if}
-                                    </td>
-                                    <td>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <small class="text-muted">{app.approval_comment || '-'}</small>
-                                            <button 
-                                                class="btn btn-sm btn-outline-secondary p-1" 
-                                                on:click={() => openCommentDialog(app)}
-                                                title="Edit approval comment"
-                                            >
-                                                <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
-                                                    <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5H9v-.5a.5.5 0 0 1 .5-.5h.5V9a.5.5 0 0 1 .5-.5h.5v-.5a.5.5 0 0 1 .5-.5zM10 6.207V7h1v1h1v1H9V9H8V8H7V7h1V6.207l.146-.146z"/>
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    </td>
-                                    <td>{new Date(app.updated_at).toLocaleDateString()}</td>
-                                    <td>
-                                        <span class="badge 
-                                            {app.application_fee_status === 'paid' ? 'bg-success' : ''}
-                                            {app.application_fee_status === 'pending' ? 'bg-danger' : ''}
-                                            {app.application_fee_status === 'not_applicable' ? 'bg-secondary' : ''}
-                                            {app.application_fee_status === 'waived' ? 'bg-info' : ''}
-                                        ">
-                                            {app.application_fee_status === 'not_applicable' ? 'N/A' : app.application_fee_status}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <!-- Actions depend on context, maybe link to details view -->
-                                        <a href="/adm-officer/applications/{app.id}" class="btn btn-sm btn-outline-primary">View</a>
-                                    </td>
+                                    {#if visibleColumns.includes('sr_no')} <td>{(data.pagination.page - 1) * data.pagination.limit + index + 1}</td> {/if}
+                                    {#if visibleColumns.includes('app_id')} <td><small>{app.id.slice(0, 8)}...</small></td> {/if}
+                                    {#if visibleColumns.includes('college_id')}
+                                        <td>
+                                            {#if appAny.users?.student_profiles?.enrollment_number}
+                                                <span class="badge bg-light text-dark border font-monospace">{appAny.users.student_profiles.enrollment_number}</span>
+                                            {:else if appAny.users?.student_profiles?.[0]?.enrollment_number}
+                                                <span class="badge bg-light text-dark border font-monospace">{appAny.users.student_profiles[0].enrollment_number}</span>
+                                            {:else}
+                                                <small class="text-muted">-</small>
+                                            {/if}
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('student')}
+                                        <td>
+                                            <div>{appAny.users?.full_name || 'N/A'}</div>
+                                            <small class="text-muted">{appAny.users?.email || 'N/A'}</small>
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('course')}
+                                        <td>
+                                            <div>{appAny.courses?.name || 'N/A'}</div>
+                                            <small class="text-muted">{appAny.courses?.colleges?.name || ''}</small>
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('branch')} <td>{appAny.branches?.name || '-'}</td> {/if}
+                                    {#if visibleColumns.includes('form_type')}
+                                        <td>
+                                            <span class="badge bg-light text-dark border">{app.form_type || 'N/A'}</span>
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('status')}
+                                        <td>
+                                            <span class="badge 
+                                                {app.status === 'approved' ? 'bg-success' : ''}
+                                                {app.status === 'rejected' ? 'bg-danger' : ''}
+                                                {app.status === 'verified' ? 'bg-info' : ''}
+                                                {app.status === 'submitted' ? 'bg-primary' : ''}
+                                                {app.status === 'needs_correction' ? 'bg-warning' : ''}
+                                                {app.status === 'draft' ? 'bg-secondary' : ''}
+                                            ">
+                                                {app.status}
+                                            </span>
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('receipt')}
+                                        <td class="text-nowrap">
+                                            {#if appReceiptPayment?.receipt_number}
+                                                <small class="fw-bold">{appReceiptPayment.receipt_number}</small>
+                                            {:else}
+                                                <small class="text-muted">-</small>
+                                            {/if}
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('comment')}
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <small class="text-muted">{app.approval_comment || '-'}</small>
+                                                <button 
+                                                    class="btn btn-sm btn-outline-secondary p-1" 
+                                                    on:click={() => openCommentDialog(app)}
+                                                    title="Edit approval comment"
+                                                >
+                                                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5H9v-.5a.5.5 0 0 1 .5-.5h.5V9a.5.5 0 0 1 .5-.5h.5v-.5a.5.5 0 0 1 .5-.5zM10 6.207V7h1v1h1v1H9V9H8V8H7V7h1V6.207l.146-.146z"/>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('date')} <td>{new Date(app.updated_at).toLocaleDateString()}</td> {/if}
+                                    {#if visibleColumns.includes('fee_status')}
+                                        <td>
+                                            <span class="badge 
+                                                {app.application_fee_status === 'paid' ? 'bg-success' : ''}
+                                                {app.application_fee_status === 'pending' ? 'bg-danger' : ''}
+                                                {app.application_fee_status === 'not_applicable' ? 'bg-secondary' : ''}
+                                                {app.application_fee_status === 'waived' ? 'bg-info' : ''}
+                                            ">
+                                                {app.application_fee_status === 'not_applicable' ? 'N/A' : app.application_fee_status}
+                                            </span>
+                                        </td>
+                                    {/if}
+                                    {#if visibleColumns.includes('actions')}
+                                        <td>
+                                            <a href="/adm-officer/applications/{app.id}" class="btn btn-sm btn-outline-primary">View</a>
+                                        </td>
+                                    {/if}
                                 </tr>
                             {/each}
                         {:else}
                             <tr>
-                                <td colspan="13" class="text-center py-4">No applications found matching your filters.</td>
+                                <td colspan={visibleColumns.length} class="text-center py-4">No applications found matching your filters.</td>
                             </tr>
                         {/if}
                     </tbody>
@@ -537,6 +594,38 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" on:click={closeCommentDialog}>Cancel</button>
                         <button type="button" class="btn btn-primary" on:click={saveComment}>Save Comment</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Column Selection Modal -->
+    {#if showColumnDrawer}
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+            <div class="modal-dialog modal-sm modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Configure Columns</h5>
+                        <button type="button" class="btn-close" on:click={() => showColumnDrawer = false}></button>
+                    </div>
+                    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+                        <div class="list-group list-group-flush">
+                            {#each allColumns as col}
+                                <label class="list-group-item d-flex gap-2 align-items-center" style="cursor: pointer;">
+                                    <input 
+                                        type="checkbox" 
+                                        class="form-check-input mt-0" 
+                                        checked={visibleColumns.includes(col.id)}
+                                        on:change={() => toggleColumn(col.id)}
+                                    >
+                                    <span>{col.label}</span>
+                                </label>
+                            {/each}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary w-100" on:click={() => showColumnDrawer = false}>Done</button>
                     </div>
                 </div>
             </div>
