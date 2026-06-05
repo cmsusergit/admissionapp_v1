@@ -77,12 +77,12 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         console.error('Capacity Report - applications fetch error:', appError.message);
     }
 
-    // Map course_id to its first branch for apps with null branch_id
-    const courseToFirstBranchMap: Record<string, string> = {};
-    (courses || []).forEach(course => {
-        if (course.branches && course.branches.length > 0) {
-            courseToFirstBranchMap[course.id] = course.branches[0].id;
-        }
+    // Ensure unique applications to avoid duplication from joins
+    const seenAppIds = new Set<string>();
+    const uniqueApps = (allApps || []).filter(app => {
+        if (seenAppIds.has(app.id)) return false;
+        seenAppIds.add(app.id);
+        return true;
     });
 
     // New Structure: branch_id -> { [metric]: { total: number, formTypes: { [type]: count } }, students: Set }
@@ -105,12 +105,12 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         return branchStats[branchId];
     };
 
-    allApps?.forEach((app) => {
+    uniqueApps.forEach((app) => {
         let bId = app.branch_id;
         
-        // Fallback: If branch_id is null, attribute to first branch of course
+        // If branch_id is null, use a course-specific "unassigned" ID
         if (!bId && app.course_id) {
-            bId = courseToFirstBranchMap[app.course_id];
+            bId = `unassigned_${app.course_id}`;
         }
 
         if (!bId) return;
@@ -126,7 +126,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
         const isCancelledOrRemoved = app.status === 'cancelled' || app.status === 'removed';
 
-        // 1. All Applications: Everything fetched
+        // 1. All Applications
         increment('all');
 
         // 2. Submitted Apps: Anything that is not a draft (submitted, verified, approved, etc.)
@@ -134,18 +134,26 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             increment('submitted');
         }
 
-        // 3. Approved Apps: Specifically approved
+        // 3. Approved Apps
         if (app.status === 'approved') {
             increment('approved');
         }
         
         // 4. Paid: Application/Provisional fee paid
         const isProv = provFormTypes.has(app.form_type || '');
-        const targetPaymentType = isProv ? 'provisional_fee' : 'application_fee';
-
-        const hasPaidTargetFee = (app.payments as any || []).some(
-            (p: any) => p.payment_type === targetPaymentType && p.status === 'completed'
-        ) || (!isProv && app.application_fee_status === 'paid');
+        const payments = app.payments as any || [];
+        
+        let hasPaidTargetFee = false;
+        if (isProv) {
+            // For provisional form types, we strictly check provisional_fee
+            hasPaidTargetFee = payments.some((p: any) => p.payment_type === 'provisional_fee' && p.status === 'completed');
+        } else {
+            // For non-provisional (MQ/NRI, GCAS, ACPC), check for application_fee OR tuition_fee
+            // GCAS/ACPC usually have no application fee, so tuition_fee is the primary "paid" indicator
+            hasPaidTargetFee = payments.some((p: any) => 
+                (p.payment_type === 'application_fee' || p.payment_type === 'tuition_fee') && p.status === 'completed'
+            ) || app.application_fee_status === 'paid';
+        }
 
         if (hasPaidTargetFee && !isCancelledOrRemoved) {
             increment('paid');
@@ -158,7 +166,6 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
         if (hasAdmissionNumber && !isCancelledOrRemoved) {
             increment('admitted_id');
-            // Legacy field for compatibility
             increment('admitted');
         }
 
@@ -186,25 +193,23 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             acc[collegeName] = { courses: [], formTypesSet: new Set<string>() };
         }
 
+        // Add regular branches
         const mappedBranches = (course.branches || []).map((branch: any) => {
             const stats = branchStats[branch.id];
             let uniqueCount = 0;
             let commonCount = 0;
             
             if (stats) {
-                // Populate form types for this college
                 ['all', 'submitted', 'approved', 'paid', 'admitted', 'admitted_id', 'admitted_paid'].forEach(metric => {
                     Object.keys(stats[metric].formTypes).forEach(ft => {
                         acc[collegeName].formTypesSet.add(ft);
                         globalFormTypesSet.add(ft);
                     });
                 });
-                
                 uniqueCount = Object.keys(stats.students).length;
                 commonCount = Object.values(stats.students).filter((s: any) => s.size > 1).length;
             }
 
-            // Backwards compatibility for Detailed View: formType -> { total, approved }
             const legacyFormTypes: Record<string, { total: number, approved: number }> = {};
             if (stats) {
                 Object.keys(stats.all.formTypes).forEach(ft => {
@@ -219,11 +224,9 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                 id: branch.id,
                 name: branch.name,
                 capacity: branch.intake_capacity || 0,
-                // Detailed View backwards compatibility
                 approved: stats?.approved?.total || 0,
                 admissions: stats?.admitted?.total || 0,
                 formTypes: legacyFormTypes,
-                // Full metrics for Simple View
                 metrics: stats || {
                     all: { total: 0, formTypes: {} },
                     submitted: { total: 0, formTypes: {} },
@@ -235,12 +238,40 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                 },
                 uniqueCount,
                 commonCount,
-                // Keep these for now to avoid breaking other logic if it uses them
                 paidApps: stats?.paid?.total || 0,
                 paidFormTypes: stats?.paid?.formTypes || {},
                 admissionsFormTypes: stats?.admitted?.formTypes || {}
             };
         });
+
+        // Add "Unassigned" branch if there are applications
+        const unassignedStats = branchStats[`unassigned_${course.id}`];
+        if (unassignedStats) {
+            const legacyFormTypes: Record<string, { total: number, approved: number }> = {};
+            Object.keys(unassignedStats.all.formTypes).forEach(ft => {
+                legacyFormTypes[ft] = {
+                    total: unassignedStats.all.formTypes[ft] || 0,
+                    approved: unassignedStats.approved.formTypes[ft] || 0
+                };
+                acc[collegeName].formTypesSet.add(ft);
+                globalFormTypesSet.add(ft);
+            });
+
+            mappedBranches.push({
+                id: `unassigned_${course.id}`,
+                name: 'Unassigned/Other',
+                capacity: 0,
+                approved: unassignedStats.approved.total,
+                admissions: unassignedStats.admitted.total,
+                formTypes: legacyFormTypes,
+                metrics: unassignedStats,
+                uniqueCount: Object.keys(unassignedStats.students).length,
+                commonCount: Object.values(unassignedStats.students).filter((s: any) => s.size > 1).length,
+                paidApps: unassignedStats.paid.total,
+                paidFormTypes: unassignedStats.paid.formTypes,
+                admissionsFormTypes: unassignedStats.admitted.formTypes
+            });
+        }
 
         acc[collegeName].courses.push({
             courseName: course.name,
