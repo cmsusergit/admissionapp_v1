@@ -1,11 +1,20 @@
 <script lang="ts">
     import type { PageData } from './$types';
     import * as XLSX from 'xlsx';
+    import { goto } from '$app/navigation';
+    import { page } from '$app/stores';
 
     export let data: PageData;
 
     let viewMode: 'detailed' | 'simple' = 'simple';
     let selectedMetric: 'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid' = 'paid';
+
+    function handleYearChange(event: Event) {
+        const target = event.target as HTMLSelectElement;
+        const params = new URLSearchParams($page.url.searchParams);
+        params.set('academic_year_id', target.value);
+        goto(`?${params.toString()}`);
+    }
 
     const metrics = [
         { id: 'paid', label: 'Paid Students', icon: 'bi-currency-dollar' },
@@ -269,6 +278,19 @@
             </p>
         </div>
         <div class="d-flex gap-2">
+            <div class="me-2">
+                <select 
+                    class="form-select shadow-sm" 
+                    value={data.selectedYearId} 
+                    on:change={handleYearChange}
+                >
+                    {#each data.academicYears as year}
+                        <option value={year.id}>
+                            {year.name} {year.id === data.activeYearId ? '(Active)' : ''}
+                        </option>
+                    {/each}
+                </select>
+            </div>
             {#if viewMode === 'simple'}
                 <div class="dropdown me-2">
                     <button class="btn btn-outline-dark dropdown-toggle shadow-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">

@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
-export const load: PageServerLoad = async ({ locals: { getSession, userProfile } }) => {
+export const load: PageServerLoad = async ({ url, locals: { getSession, userProfile } }) => {
     const session = await getSession();
     if (!session) {
         throw redirect(303, '/login');
@@ -16,6 +16,17 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
 
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // 1. Fetch Metadata
+    const [{ data: academicYears }, { data: activeYear }, { data: formTypes }] = await Promise.all([
+        supabaseAdmin.from('academic_years').select('id, name').order('name', { ascending: false }),
+        supabaseAdmin.from('academic_years').select('id').eq('is_active', true).maybeSingle(),
+        supabaseAdmin.from('form_types').select('name, is_prov')
+    ]);
+
+    const selectedYearId = url.searchParams.get('academic_year_id') || activeYear?.id || (academicYears && academicYears[0]?.id);
+    const provFormTypes = new Set((formTypes || []).filter(ft => ft.is_prov).map(ft => ft.name));
+
+    // 2. Fetch Courses
     let coursesQuery = supabaseAdmin
         .from('courses')
         .select('id, name, college_id, intake_capacity, branches(id, name, intake_capacity), colleges(name)');
@@ -29,7 +40,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         console.error('Capacity Report - courses fetch error:', coursesError.message);
     }
 
-    const { data: allApps, error: appError } = await supabaseAdmin
+    // 3. Fetch Applications with Filtering
+    let appQuery = supabaseAdmin
         .from('applications')
         .select(`
             branch_id, 
@@ -39,6 +51,12 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             form_type, 
             student_id,
             application_fee_status,
+            admission_cycles!inner (
+                academic_year_id
+            ),
+            courses!inner (
+                college_id
+            ),
             payments (
                 payment_type,
                 status
@@ -47,7 +65,13 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 admission_number
             )
         `)
-        .limit(10000); // Increase limit to ensure all records are processed
+        .eq('admission_cycles.academic_year_id', selectedYearId);
+
+    if (userProfile.role === 'adm_officer' && userProfile.college_id) {
+        appQuery = appQuery.eq('courses.college_id', userProfile.college_id);
+    }
+
+    const { data: allApps, error: appError } = await appQuery.limit(20000); 
 
     if (appError) {
         console.error('Capacity Report - applications fetch error:', appError.message);
@@ -116,11 +140,14 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         }
         
         // 4. Paid: Application/Provisional fee paid
-        const hasPaidAppFee = (app.payments as any || []).some(
-            (p: any) => (p.payment_type === 'application_fee' || p.payment_type === 'provisional_fee') && p.status === 'completed'
-        ) || app.application_fee_status === 'paid';
+        const isProv = provFormTypes.has(app.form_type || '');
+        const targetPaymentType = isProv ? 'provisional_fee' : 'application_fee';
 
-        if (hasPaidAppFee && !isCancelledOrRemoved) {
+        const hasPaidTargetFee = (app.payments as any || []).some(
+            (p: any) => p.payment_type === targetPaymentType && p.status === 'completed'
+        ) || (!isProv && app.application_fee_status === 'paid');
+
+        if (hasPaidTargetFee && !isCancelledOrRemoved) {
             increment('paid');
         }
 
@@ -233,6 +260,9 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
 
     return {
         capacityData,
-        globalUniqueFormTypes
+        globalUniqueFormTypes,
+        academicYears: academicYears || [],
+        selectedYearId,
+        activeYearId: activeYear?.id
     };
 };
