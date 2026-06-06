@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ params, url, locals: { getAuthentic
     // Fetch Template
     const { data: template, error: tmplError } = await supabaseAdmin
         .from('report_templates')
-        .select('html_content, name')
+        .select('html_content, name, report_type, configuration')
         .eq('id', templateId)
         .single();
 
@@ -35,6 +35,8 @@ export const load: PageServerLoad = async ({ params, url, locals: { getAuthentic
         applicationId,
         templateId,
         templateName: template.name,
+        reportType: template.report_type,
+        configuration: template.configuration,
         rawHtml: template.html_content || '<div>No HTML content defined in template.</div>'
     };
 };

@@ -13,6 +13,11 @@ export const load: PageServerLoad = async ({
     throw redirect(303, "/login");
   }
 
+  // Check if student has submitted any form (passed from root layout)
+  if (!parentData.hasSubmittedForm) {
+    throw redirect(303, "/student?error=apply_first");
+  }
+
   // 1. Fetch Schema Definition
   const { data: schemaFields } = await supabase
     .from("student_profile_fields")

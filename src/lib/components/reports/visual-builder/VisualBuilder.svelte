@@ -48,72 +48,114 @@
 
     function onDrop(targetId: string, type: string, data: any) {
         const isRoot = targetId === 'root';
-        const newNode: any = {
-            id: generateId(),
-            type,
-            children: (type === 'row' || type === 'column') ? [] : undefined,
-            style: isRoot ? { 
-                position: 'absolute',
-                left: '20px',
-                top: '20px',
-                width: type === 'image' ? '150px' : (type === 'divider' ? '100%' : '200px'),
-                height: type === 'image' ? '150px' : 'auto',
-                padding: '0px',
-                margin: '0px'
-            } : {
-                width: '100%',
-                height: 'auto',
-                padding: '5px',
-                margin: '0px'
-            },
-            x: isRoot ? 20 : undefined,
-            y: isRoot ? 20 : undefined,
-            w: isRoot ? (type === 'image' ? 150 : 200) : undefined,
-            h: isRoot ? (type === 'image' ? 150 : 40) : undefined,
-            width: type === 'column' ? 6 : undefined
-        };
-
-        if (type === 'variable') {
-            newNode.variablePath = data.variablePath;
-            newNode.variableLabel = data.variableLabel;
-        } else if (type === 'text') {
-            newNode.content = 'Hello There';
-        } else if (type === 'image') {
-            newNode.src = '{{college.logo_url}}';
-        } else if (type === 'table') {
-            newNode.listPath = 'payments';
-            newNode.columns = [
-                { label: 'Date', path: 'created_at' },
-                { label: 'Amount', path: 'amount' },
-                { label: 'Status', path: 'status' }
-            ];
-            newNode.style.width = '100%';
-        } else if (type === 'layoutTable') {
-            newNode.children = [0, 1].map(() => ({
+        const isReparent = type === 'reparent';
+        
+        let nodeToProcess: any;
+        
+        if (isReparent) {
+            const originalNode = findNode(layout, data.nodeId);
+            if (!originalNode) return;
+            
+            // Prevent dropping a parent into its own child
+            if (isDescendant(originalNode, targetId)) {
+                return;
+            }
+            
+            nodeToProcess = JSON.parse(JSON.stringify(originalNode));
+            // Remove from old parent first
+            layout = removeNodeFromLayout(layout, data.nodeId);
+        } else {
+            nodeToProcess = {
                 id: generateId(),
-                type: 'tableRow',
-                children: [0, 1].map(() => ({
+                type,
+                children: (type === 'row' || type === 'column') ? [] : undefined,
+                style: {
+                    width: '100%',
+                    height: 'auto',
+                    padding: '5px',
+                    margin: '0px',
+                    fontSize: '12px'
+                }
+            };
+
+            if (type === 'variable') {
+                nodeToProcess.variablePath = data.variablePath;
+                nodeToProcess.variableLabel = data.variableLabel;
+            } else if (type === 'text') {
+                nodeToProcess.content = 'Hello There';
+            } else if (type === 'image') {
+                nodeToProcess.src = '{{college.logo_url}}';
+            } else if (type === 'table') {
+                nodeToProcess.listPath = 'payments';
+                nodeToProcess.columns = [
+                    { label: 'Date', path: 'created_at' },
+                    { label: 'Amount', path: 'amount' },
+                    { label: 'Status', path: 'status' }
+                ];
+                nodeToProcess.style.width = '100%';
+            } else if (type === 'layoutTable') {
+                nodeToProcess.children = [0, 1].map(() => ({
                     id: generateId(),
-                    type: 'tableCell',
-                    children: [],
-                    style: { padding: '5px', border: '1px dashed #ccc' }
-                }))
-            }));
-            newNode.style.width = '100%';
-            newNode.style.borderCollapse = 'collapse';
+                    type: 'tableRow',
+                    children: [0, 1].map(() => ({
+                        id: generateId(),
+                        type: 'tableCell',
+                        children: [],
+                        style: { padding: '5px', border: '1px dashed #ccc' }
+                    }))
+                }));
+                nodeToProcess.style.width = '100%';
+                nodeToProcess.style.borderCollapse = 'collapse';
+            }
         }
 
+        // Apply placement-specific adjustments
         if (isRoot) {
-            layout = [...layout, newNode];
+            nodeToProcess.x = data.x || 20;
+            nodeToProcess.y = data.y || 20;
+            nodeToProcess.w = nodeToProcess.w || (type === 'image' ? 150 : 200);
+            nodeToProcess.h = nodeToProcess.h || (type === 'image' ? 150 : 40);
+            nodeToProcess.style.position = 'absolute';
+            nodeToProcess.style.left = `${nodeToProcess.x}px`;
+            nodeToProcess.style.top = `${nodeToProcess.y}px`;
+            
+            layout = [...layout, nodeToProcess];
         } else {
+            // Nested: Strip absolute positioning
+            delete nodeToProcess.x;
+            delete nodeToProcess.y;
+            nodeToProcess.style.position = 'relative';
+            nodeToProcess.style.left = undefined;
+            nodeToProcess.style.top = undefined;
+            nodeToProcess.style.width = nodeToProcess.style.width || '100%';
+
             const newLayout = JSON.parse(JSON.stringify(layout));
-            if (findAndAdd(newLayout, targetId, newNode)) {
+            if (findAndAdd(newLayout, targetId, nodeToProcess)) {
                 layout = newLayout;
             }
         }
         
-        selectedId = newNode.id;
+        selectedId = nodeToProcess.id;
         compile();
+    }
+
+    function isDescendant(parent: any, childId: string): boolean {
+        if (!parent.children) return false;
+        for (const child of parent.children) {
+            if (child.id === childId) return true;
+            if (isDescendant(child, childId)) return true;
+        }
+        return false;
+    }
+
+    function removeNodeFromLayout(nodes: any[], nodeId: string): any[] {
+        return nodes.filter(n => {
+            if (n.id === nodeId) return false;
+            if (n.children) {
+                n.children = removeNodeFromLayout(n.children, nodeId);
+            }
+            return true;
+        });
     }
 
     function handleRootDragOver(e: DragEvent) {
@@ -126,6 +168,7 @@
         rootIsOver = false;
         
         const type = e.dataTransfer?.getData('componentType');
+        const nodeId = e.dataTransfer?.getData('nodeId');
         const variablePath = e.dataTransfer?.getData('variablePath');
         const variableLabel = e.dataTransfer?.getData('variableLabel');
         
@@ -135,73 +178,16 @@
         const x = (e.clientX - rect.left) / zoom;
         const y = (e.clientY - rect.top) / zoom;
 
-        if (type) {
-            const newNode: any = {
-                id: generateId(),
-                type,
-                children: (type === 'row' || type === 'column') ? [] : undefined,
-                style: { 
-                    position: 'absolute',
-                    left: `${Math.round(x / 10) * 10}px`,
-                    top: `${Math.round(y / 10) * 10}px`,
-                    width: type === 'image' ? '150px' : (type === 'divider' ? '100%' : 'auto'),
-                    height: type === 'image' ? '150px' : 'auto',
-                    padding: '0px',
-                    margin: '0px'
-                },
-                x: Math.round(x / 10) * 10,
-                y: Math.round(y / 10) * 10,
-                w: type === 'image' ? 150 : 200,
-                h: type === 'image' ? 150 : 40
-            };
-            
-            if (type === 'variable') {
-                newNode.variablePath = variablePath;
-                newNode.variableLabel = variableLabel;
-            } else if (type === 'text') {
-                newNode.content = 'New Text Block';
-            } else if (type === 'image') {
-                newNode.src = '{{college.logo_url}}';
-            } else if (type === 'table') {
-                newNode.listPath = 'payments';
-                newNode.columns = [
-                    { label: 'Date', path: 'created_at' },
-                    { label: 'Amount', path: 'amount' },
-                    { label: 'Status', path: 'status' }
-                ];
-                newNode.style.width = '100%';
-            } else if (type === 'layoutTable') {
-                newNode.children = [0, 1].map(() => ({
-                    id: generateId(),
-                    type: 'tableRow',
-                    children: [0, 1].map(() => ({
-                        id: generateId(),
-                        type: 'tableCell',
-                        children: [],
-                        style: { padding: '5px', border: '1px dashed #ccc' }
-                    }))
-                }));
-                newNode.style.width = '100%';
-                newNode.style.borderCollapse = 'collapse';
-            }
-            
-            layout = [...layout, newNode];
-            selectedId = newNode.id;
-            compile();
+        if (nodeId) {
+            onDrop('root', 'reparent', { nodeId, x: Math.round(x), y: Math.round(y) });
+        } else if (type) {
+            onDrop('root', type, { variablePath, variableLabel, x: Math.round(x), y: Math.round(y) });
         }
     }
 
     function handleSelect(id: string) {
-        const node = findNode(layout, id);
-        // Only redirect to parent if we clicked an EMPTY cell or row
-        // If it has children, the user probably wants to interact with the children
-        if (node && (node.type === 'tableRow' || node.type === 'tableCell') && (!node.children || node.children.length === 0)) {
-            const parentTable = findParentTable(layout, id);
-            if (parentTable) {
-                selectedId = parentTable.id;
-                return;
-            }
-        }
+        // Just select the node. The new move handles in CanvasNode.svelte
+        // handle the parent selection/moving for layoutTables.
         selectedId = id;
     }
 
@@ -226,20 +212,10 @@
             combinedStyle.left = `${node.x}px`;
             combinedStyle.top = `${node.y}px`;
             if (node.w) {
-                if (node.type === 'layoutTable') {
-                    combinedStyle.minWidth = `${node.w}px`;
-                    combinedStyle.width = 'fit-content';
-                } else {
-                    combinedStyle.width = `${node.w}px`;
-                }
+                combinedStyle.width = `${node.w}px`;
             }
             if (node.h && node.type !== 'text') {
-                if (node.type === 'layoutTable') {
-                    combinedStyle.minHeight = `${node.h}px`;
-                    combinedStyle.height = 'auto';
-                } else {
-                    combinedStyle.height = `${node.h}px`;
-                }
+                combinedStyle.height = `${node.h}px`;
             }
         } else {
             // Nested elements
@@ -257,21 +233,27 @@
             });
         }
 
+        let innerHtml = '';
         switch (node.type) {
             case 'row':
-                return `<div class="row g-0" style="min-height:20px; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
+                innerHtml = `<div class="row g-0" style="min-height:20px; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
+                break;
             case 'column':
-                return `<div class="col-md-${node.width || 12}" style="min-height:10px; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
+                innerHtml = `<div class="col-md-${node.width || 12}" style="min-height:10px; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
+                break;
             case 'text':
-                return `<div style="${styleStr}">${node.content || ''}</div>`;
+                innerHtml = `<div style="${styleStr}">${node.content || ''}</div>`;
+                break;
             case 'variable':
-                return `<span style="${styleStr}">{{${node.variablePath}}}</span>`;
+                innerHtml = `<span style="${styleStr}">{{${node.variablePath}}}</span>`;
+                break;
             case 'image':
-                return `<img src="${node.src || '{{college.logo_url}}'}" style="${styleStr} object-fit:contain;">`;
+                innerHtml = `<img src="${node.src || '{{college.logo_url}}'}" style="${styleStr} object-fit:contain;">`;
+                break;
             case 'table':
                 const headers = (node.columns || []).map((c: any) => `<th style="border:1px solid #dee2e6; padding:8px; background-color:#f8f9fa;">${c.label}</th>`).join('');
                 const cells = (node.columns || []).map((c: any) => `<td style="border:1px solid #dee2e6; padding:8px;">{{${c.path}}}</td>`).join('');
-                return `
+                innerHtml = `
                     <table style="width:100%; border-collapse:collapse; ${styleStr}">
                         <thead><tr>${headers}</tr></thead>
                         <tbody>
@@ -280,17 +262,31 @@
                             {{/each}}
                         </tbody>
                     </table>`;
+                break;
             case 'layoutTable':
-                return `<table style="width:100%; table-layout:fixed; border-collapse:${node.style?.borderCollapse || 'collapse'}; ${styleStr}">${node.children.map(compileNode).join('')}</table>`;
+                innerHtml = `<table style="width:100%; table-layout:fixed; border-collapse:${node.style?.borderCollapse || 'collapse'}; ${styleStr}">${node.children.map(compileNode).join('')}</table>`;
+                break;
             case 'tableRow':
-                return `<tr>${node.children.map(compileNode).join('')}</tr>`;
+                innerHtml = `<tr>${node.children.map(compileNode).join('')}</tr>`;
+                break;
             case 'tableCell':
-                return `<td style="${styleStr}">${node.children.map(compileNode).join('')}</td>`;
+                const cellWidth = node.width ? `${((node.width / 12) * 100).toFixed(2)}%` : '';
+                const widthStyle = cellWidth ? `width:${cellWidth};` : '';
+                innerHtml = `<td style="position:relative; ${widthStyle} ${styleStr}">${node.children.map(compileNode).join('')}</td>`;
+                break;
             case 'divider':
-                return `<hr style="${styleStr}">`;
+                innerHtml = `<hr style="${styleStr}">`;
+                break;
             default:
-                return '';
+                innerHtml = '';
         }
+
+        // Apply conditional rendering wrapper if condition is defined
+        if (node.condition && node.condition.trim()) {
+            return `{{#if ${node.condition.trim()}}}${innerHtml}{{/if}}`;
+        }
+        
+        return innerHtml;
     }
 
     function compile() {
@@ -379,9 +375,7 @@
         guidelines = [];
 
         if (dragState.type === 'move') {
-            // SNAP LOGIC
-            // Better: use real mm to px conversion
-            const canvasWidth = 210 * 3.7795275591; // mm to px
+            const canvasWidth = 210 * 3.7795275591;
             const canvasHeight = 297 * 3.7795275591;
             
             const targetsX = [0, canvasWidth / 2, canvasWidth]; 
@@ -395,56 +389,38 @@
             });
 
             // Check X snapping
-            let snappedX = false;
             for (const tx of targetsX) {
-                // Snap Left
                 if (Math.abs(newX - tx) < SNAP_THRESHOLD) {
                     newX = tx;
                     guidelines.push({ x: tx });
-                    snappedX = true;
                 }
-                // Snap Center
                 else if (Math.abs((newX + currentW / 2) - tx) < SNAP_THRESHOLD) {
                     newX = tx - currentW / 2;
                     guidelines.push({ x: tx });
-                    snappedX = true;
                 }
-                // Snap Right
                 else if (Math.abs((newX + currentW) - tx) < SNAP_THRESHOLD) {
                     newX = tx - currentW;
                     guidelines.push({ x: tx });
-                    snappedX = true;
                 }
             }
 
             // Check Y snapping
-            let snappedY = false;
             for (const ty of targetsY) {
-                // Snap Top
                 if (Math.abs(newY - ty) < SNAP_THRESHOLD) {
                     newY = ty;
                     guidelines.push({ y: ty });
-                    snappedY = true;
                 }
-                // Snap Middle
                 else if (Math.abs((newY + currentH / 2) - ty) < SNAP_THRESHOLD) {
                     newY = ty - currentH / 2;
                     guidelines.push({ y: ty });
-                    snappedY = true;
                 }
-                // Snap Bottom
                 else if (Math.abs((newY + currentH) - ty) < SNAP_THRESHOLD) {
                     newY = ty - currentH;
                     guidelines.push({ y: ty });
-                    snappedY = true;
                 }
             }
 
-            // Grid fallback if not snapped
-            newX = Math.round(newX);
-            newY = Math.round(newY);
-
-            updateSelectedNode({ x: newX, y: newY });
+            updateSelectedNode({ x: Math.round(newX), y: Math.round(newY) });
 
         } else if (dragState.type === 'resize') {
             const dir = dragState.resizeDir;
@@ -468,10 +444,8 @@
             }
 
             // SNAPPING FOR RESIZE
-            const canvasWidth = 210 * 3.7795275591;
-            const canvasHeight = 297 * 3.7795275591;
-            const targetsX = [0, canvasWidth / 2, canvasWidth];
-            const targetsY = [0, canvasHeight / 2, canvasHeight];
+            const targetsX = [0, (210 * 3.7795275591) / 2, 210 * 3.7795275591];
+            const targetsY = [0, (297 * 3.7795275591) / 2, 297 * 3.7795275591];
 
             layout.forEach(n => {
                 if (n.id === dragState.activeId || n.x === undefined) return;
@@ -479,13 +453,11 @@
                 targetsY.push(n.y, n.y + (n.h || 0), n.y + (n.h || 0) / 2);
             });
 
-            // Snap edges based on direction
             if (dir.includes('e')) {
                 for (const tx of targetsX) {
                     if (Math.abs((finalX + finalW) - tx) < SNAP_THRESHOLD) {
                         finalW = tx - finalX;
                         guidelines.push({ x: tx });
-                        break;
                     }
                 }
             }
@@ -496,7 +468,6 @@
                         finalX = tx;
                         finalW -= delta;
                         guidelines.push({ x: tx });
-                        break;
                     }
                 }
             }
@@ -505,7 +476,6 @@
                     if (Math.abs((finalY + finalH) - ty) < SNAP_THRESHOLD) {
                         finalH = ty - finalY;
                         guidelines.push({ y: ty });
-                        break;
                     }
                 }
             }
@@ -516,7 +486,6 @@
                         finalY = ty;
                         finalH -= delta;
                         guidelines.push({ y: ty });
-                        break;
                     }
                 }
             }
@@ -533,6 +502,14 @@
     function updateSelectedNode(updates: any, targetId?: string) {
         const id = targetId || selectedId;
         if (!id) return;
+
+        const targetNode = findNode(layout, id);
+        // If node is nested (x,y are undefined), don't allow updates to add x,y
+        // This prevents relative components from suddenly becoming absolute during resize
+        if (targetNode && targetNode.x === undefined) {
+            delete updates.x;
+            delete updates.y;
+        }
         
         if (updates.delete) {
             deleteNode(id);
@@ -665,6 +642,7 @@
                                     {zoom} 
                                     onUpdateNode={updateSelectedNode}
                                     onStartAction={startAction}
+                                    onCancelAction={handleGlobalMouseUp}
                                     isDragging={dragState.activeId === node.id}
                                 />
                             {/each}
@@ -755,6 +733,7 @@
         position: relative;
         transition: transform 0.2s ease;
         padding: 0 !important;
+        font-size: 12px;
     }
     .canvas-paper.show-grid {
         /* Grid Pattern */

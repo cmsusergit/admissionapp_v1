@@ -148,15 +148,25 @@
   let navConfig = $derived.by(() => {
     if (!$userProfile) return null;
     const role = $userProfile.role;
+    let config = null;
+
     // Check exact match first
-    if (NAVIGATION_CONFIG[role]) return NAVIGATION_CONFIG[role];
+    if (NAVIGATION_CONFIG[role]) {
+      config = { ...NAVIGATION_CONFIG[role] };
+    } else if (role === "university_auth" || role === "univ_auth") {
+      config = { ...NAVIGATION_CONFIG["university_auth"] };
+    } else {
+      config = { ...NAVIGATION_CONFIG["authenticated"] };
+    }
 
-    // Handle variations (like university_auth vs univ_auth) if not strictly mapped in config
-    if (role === "university_auth" || role === "univ_auth")
-      return NAVIGATION_CONFIG["university_auth"];
+    // Filter for students who haven't submitted a form
+    if (role === "student" && !data.hasSubmittedForm) {
+      config.items = config.items.filter(
+        (item) => item.href !== "/student/profile",
+      );
+    }
 
-    // Default authenticated fallback if role exists but no specific config
-    return NAVIGATION_CONFIG["authenticated"];
+    return config;
   });
 </script>
 

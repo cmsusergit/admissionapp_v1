@@ -8,6 +8,48 @@
 
     let viewMode: 'detailed' | 'simple' = 'simple';
     let selectedMetric: 'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid' = 'paid';
+    let includeUnassigned = false;
+
+    $: filteredCapacityData = data.capacityData.map(college => ({
+        ...college,
+        courses: college.courses.map((course: any) => ({
+            ...course,
+            filteredBranches: includeUnassigned 
+                ? course.branches 
+                : (course.branches || []).filter((b: any) => b.name !== 'Unassigned/Other')
+        }))
+    }));
+
+    function branchTotal(branches: any[], field: string): number {
+        // Branches passed here are usually course.filteredBranches or course.branches
+        // If they are course.branches, we still need to filter based on includeUnassigned
+        const filtered = includeUnassigned ? branches : (branches || []).filter(b => b.name !== 'Unassigned/Other');
+        
+        if (field === 'capacity') return filtered.reduce((sum, branch) => sum + (branch.capacity || 0), 0);
+        if (field === 'metric_total') {
+            return filtered.reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.total || 0), 0);
+        }
+        return filtered.reduce((sum, branch) => sum + (branch?.[field] || 0), 0);
+    }
+
+    function courseMetricTotal(branches: any[], fType: string): number {
+        const filtered = includeUnassigned ? branches : (branches || []).filter(b => b.name !== 'Unassigned/Other');
+        return filtered.reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0), 0);
+    }
+
+    $: grandTotalCapacity = filteredCapacityData.reduce((acc, college) => {
+        return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'capacity'), 0);
+    }, 0);
+
+    $: grandTotalMetricTotal = filteredCapacityData.reduce((acc, college) => {
+        return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'metric_total'), 0);
+    }, 0);
+
+    $: grandMetricTotals = (data.globalUniqueFormTypes || []).map(fType => {
+        return filteredCapacityData.reduce((acc, college) => {
+            return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + courseMetricTotal(course.filteredBranches, fType), 0);
+        }, 0);
+    });
 
     function handleYearChange(event: Event) {
         const target = event.target as HTMLSelectElement;
@@ -28,38 +70,6 @@
 
     function calculateVacancy(capacity: number, admissions: number): number {
         return Math.max(0, capacity - admissions);
-    }
-
-    function branchTotal(branches: any[], field: string): number {
-        if (field === 'capacity') return (branches || []).reduce((sum, branch) => sum + (branch.capacity || 0), 0);
-        if (field === 'metric_total') {
-            return (branches || []).reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.total || 0), 0);
-        }
-        return (branches || []).reduce((sum, branch) => sum + (branch?.[field] || 0), 0);
-    }
-
-    function courseMetricTotal(branches: any[], fType: string): number {
-        return (branches || []).reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0), 0);
-    }
-
-    function grandTotal(field: string): number {
-        let total = 0;
-        data.capacityData.forEach(college => {
-            college.courses.forEach((course: any) => {
-                total += branchTotal(course.branches, field);
-            });
-        });
-        return total;
-    }
-
-    function grandMetricTotal(fType: string): number {
-        let total = 0;
-        data.capacityData.forEach(college => {
-            college.courses.forEach((course: any) => {
-                total += courseMetricTotal(course.branches, fType);
-            });
-        });
-        return total;
     }
 
     async function downloadPDF() {
@@ -88,7 +98,7 @@
             tableBody.push(headerRow.map(text => ({ text, style: 'tableHeader' })));
 
             // Data Rows
-            data.capacityData.forEach(college => {
+            filteredCapacityData.forEach(college => {
                 college.courses.forEach((course: any) => {
                     // Course Header Row
                     tableBody.push([
@@ -97,7 +107,7 @@
                     ]);
 
                     // Branches
-                    course.branches.forEach((branch: any) => {
+                    course.filteredBranches.forEach((branch: any) => {
                         const row = [branch.name, branch.capacity.toString()];
                         data.globalUniqueFormTypes.forEach((fType: string) => {
                             row.push((branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0).toString());
@@ -125,11 +135,11 @@
             });
 
             // Grand Total
-            const grandTotalRow = [{ text: 'GRAND Total :-', alignment: 'right', bold: true, fontSize: 12 }, grandTotal('capacity').toString()];
-            data.globalUniqueFormTypes.forEach((fType: string) => {
-                grandTotalRow.push(grandMetricTotal(fType).toString());
+            const grandTotalRow = [{ text: 'GRAND Total :-', alignment: 'right', bold: true, fontSize: 12 }, grandTotalCapacity.toString()];
+            grandMetricTotals.forEach((total: number) => {
+                grandTotalRow.push(total.toString());
             });
-            grandTotalRow.push(grandTotal('metric_total').toString());
+            grandTotalRow.push(grandTotalMetricTotal.toString());
             
             tableBody.push(grandTotalRow.map((cell: any, idx) => {
                 const cellObj = typeof cell === 'string' ? { text: cell } : cell;
@@ -203,10 +213,11 @@
         const workbook = XLSX.utils.book_new();
         const metricLabel = metrics.find(m => m.id === selectedMetric)?.label || 'Metric';
 
-        data.capacityData.forEach((collegeGroup: any) => {
+        filteredCapacityData.forEach((collegeGroup: any) => {
             collegeGroup.courses.forEach((course: any) => {
-                if (course.branches && course.branches.length > 0) {
-                    const sheetData = course.branches.map((branch: any) => {
+                const branchesToExport = course.filteredBranches;
+                if (branchesToExport && branchesToExport.length > 0) {
+                    const sheetData = branchesToExport.map((branch: any) => {
                         if (viewMode === 'simple') {
                             const row: any = {
                                 'Branch Name': branch.name,
@@ -325,6 +336,14 @@
                     Simple View
                 </button>
             </div>
+            <div class="d-flex align-items-center bg-white border rounded px-3 shadow-sm">
+                <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" id="includeUnassigned" bind:checked={includeUnassigned}>
+                    <label class="form-check-label small fw-bold" for="includeUnassigned">
+                        Include Unassigned
+                    </label>
+                </div>
+            </div>
             <div class="btn-group shadow-sm">
                 <button class="btn btn-success" on:click={downloadCapacityReport}>
                     <i class="bi bi-file-earmark-excel"></i> Export Excel
@@ -340,7 +359,7 @@
 
     {#if data.capacityData && data.capacityData.length > 0}
         {#if viewMode === 'detailed'}
-            {#each data.capacityData as collegeGroup (collegeGroup.collegeName)}
+            {#each filteredCapacityData as collegeGroup (collegeGroup.collegeName)}
                 <div class="college-group mb-5">
                     <div class="d-flex align-items-center mb-3">
                         <h3 class="mb-0 text-dark border-bottom border-primary border-3 pb-1">{collegeGroup.collegeName}</h3>
@@ -354,7 +373,7 @@
                                     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                                         <h5 class="mb-0">{course.courseName}</h5>
                                         <span class="badge bg-light text-primary fs-6">
-                                            Total Intake: {branchTotal(course.branches, 'capacity')}
+                                            Total Intake: {branchTotal(course.filteredBranches, 'capacity')}
                                         </span>
                                     </div>
                                     <div class="card-body p-0">
@@ -381,7 +400,7 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {#each course.branches as branch (branch.id)}
+                                                    {#each course.filteredBranches as branch (branch.id)}
                                                         <tr class="text-center">
                                                             <td class="fw-bold text-start">{branch.name}</td>
                                                             <td>{branch.capacity}</td>
@@ -428,31 +447,31 @@
                                                     {/each}
                                                     <tr class="table-secondary fw-bold text-center align-middle">
                                                         <td class="text-start">Total</td>
-                                                        <td>{branchTotal(course.branches, 'capacity')}</td>
-                                                        <td>{branchTotal(course.branches, 'uniqueCount')}</td>
-                                                        <td>{branchTotal(course.branches, 'commonCount')}</td>
+                                                        <td>{branchTotal(course.filteredBranches, 'capacity')}</td>
+                                                        <td>{branchTotal(course.filteredBranches, 'uniqueCount')}</td>
+                                                        <td>{branchTotal(course.filteredBranches, 'commonCount')}</td>
                                                         
                                                         {#each collegeGroup.uniqueFormTypes as fType}
                                                             <td>
-                                                                {course.branches.reduce((sum, b) => sum + (b.formTypes[fType]?.approved || 0), 0)}
+                                                                {course.filteredBranches.reduce((sum, b) => sum + (b.formTypes[fType]?.approved || 0), 0)}
                                                             </td>
                                                         {/each}
 
                                                         <td>
                                                             <div class="d-flex flex-column align-items-center">
-                                                                <span>{branchTotal(course.branches, 'approved')}</span>
-                                                                <span class="text-secondary" style="font-size: 0.75rem;">(ID: {course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)})</span>
+                                                                <span>{branchTotal(course.filteredBranches, 'approved')}</span>
+                                                                <span class="text-secondary" style="font-size: 0.75rem;">(ID: {course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)})</span>
                                                             </div>
                                                         </td>
                                                         <td>
                                                             <div class="d-flex flex-column align-items-center">
-                                                                <span>{course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)}</span>
-                                                                <span class="text-primary" style="font-size: 0.75rem;">(Paid: {course.branches.reduce((sum, b) => sum + (b.metrics.admitted_paid.total || 0), 0)})</span>
+                                                                <span>{course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)}</span>
+                                                                <span class="text-primary" style="font-size: 0.75rem;">(Paid: {course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_paid.total || 0), 0)})</span>
                                                             </div>
                                                         </td>
                                                         <td>
-                                                            <span class="badge {calculateVacancy(branchTotal(course.branches, 'capacity'), course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
-                                                                {calculateVacancy(branchTotal(course.branches, 'capacity'), course.branches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0))}
+                                                            <span class="badge {calculateVacancy(branchTotal(course.filteredBranches, 'capacity'), course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
+                                                                {calculateVacancy(branchTotal(course.filteredBranches, 'capacity'), course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0))}
                                                             </span>
                                                         </td>
                                                     </tr>
@@ -489,14 +508,14 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {#each data.capacityData as college}
+                                {#each filteredCapacityData as college}
                                     {#each college.courses as course}
                                         <tr class="bg-light fw-bold text-uppercase border-dark border-top-2 border-bottom-1">
                                             <td colspan={(data.globalUniqueFormTypes?.length || 0) + 3} class="py-2 px-3">
                                                 {course.courseName}
                                             </td>
                                         </tr>
-                                        {#each course.branches as branch}
+                                        {#each course.filteredBranches as branch}
                                             <tr class="text-center align-middle">
                                                 <td class="text-start px-3">{branch.name}</td>
                                                 <td>{branch.capacity}</td>
@@ -511,11 +530,11 @@
                                         <!-- Course Subtotal -->
                                         <tr class="fw-bold text-center bg-light border-dark border-top-1 border-bottom-2">
                                             <td class="text-end px-3 py-2">Total :-</td>
-                                            <td>{branchTotal(course.branches, 'capacity')}</td>
+                                            <td>{branchTotal(course.filteredBranches, 'capacity')}</td>
                                             {#each data.globalUniqueFormTypes || [] as fType}
-                                                <td>{courseMetricTotal(course.branches, fType)}</td>
+                                                <td>{courseMetricTotal(course.filteredBranches, fType)}</td>
                                             {/each}
-                                            <td>{branchTotal(course.branches, 'metric_total')}</td>
+                                            <td>{branchTotal(course.filteredBranches, 'metric_total')}</td>
                                         </tr>
                                     {/each}
                                 {/each}
@@ -523,11 +542,11 @@
                             <tfoot class="fw-bold text-center align-middle bg-light">
                                 <tr class="border-dark border-top-3">
                                     <td class="text-end px-3 py-3 fs-5">GRAND Total :-</td>
-                                    <td class="fs-5">{grandTotal('capacity')}</td>
-                                    {#each data.globalUniqueFormTypes || [] as fType}
-                                        <td class="fs-5">{grandMetricTotal(fType)}</td>
+                                    <td class="fs-5">{grandTotalCapacity}</td>
+                                    {#each grandMetricTotals as total}
+                                        <td class="fs-5">{total}</td>
                                     {/each}
-                                    <td class="fs-4 bg-dark text-white">{grandTotal('metric_total')}</td>
+                                    <td class="fs-4 bg-dark text-white">{grandTotalMetricTotal}</td>
                                 </tr>
                             </tfoot>
                         </table>

@@ -87,6 +87,11 @@
             const prefix = selectedTable === 'applications' ? 'application' : '';
             processTable(baseTable, prefix, prefix);
         }
+
+        // Add virtual fields for discoverability
+        if (!processedPaths.has('student.photo_url')) {
+            vars.push({ path: 'student.photo_url', label: 'Student > Profile Photo URL' });
+        }
         
         return vars;
     });
@@ -324,6 +329,29 @@
                         </button>
                     </div>
                     
+                    <!-- Sizing Group -->
+                    {#if selectedNode.type === 'column' || selectedNode.type === 'tableCell'}
+                        <div class="prop-group mb-3">
+                            <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">
+                                Column Width (1-12)
+                            </label>
+                            <div class="input-group input-group-sm">
+                                <input 
+                                    type="range" 
+                                    class="form-range flex-grow-1 me-2" 
+                                    min="1" 
+                                    max="12" 
+                                    value={selectedNode.width || 12}
+                                    oninput={(e) => onUpdateNode({ width: parseInt(e.currentTarget.value) })}
+                                >
+                                <span class="badge bg-secondary" style="width: 30px;">{selectedNode.width || 12}</span>
+                            </div>
+                            <div class="xx-small text-muted mt-1">
+                                Controls relative width within the row/table.
+                            </div>
+                        </div>
+                    {/if}
+
                     <!-- Variable Search Autocomplete -->
                     {#if selectedNode.type === 'text' || selectedNode.type === 'image' || selectedNode.type === 'variable'}
                         <div class="prop-group mb-3 position-relative">
@@ -434,6 +462,26 @@
                             &#123;&#123;{selectedNode.variablePath}&#125;&#125;
                         </div>
                     {/if}
+
+                    <!-- Conditional Rendering -->
+                    <div class="prop-group mb-3 pt-3 border-top">
+                        <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">
+                            Render Condition
+                        </label>
+                        <div class="input-group input-group-sm mb-1">
+                            <span class="input-group-text xx-small bg-light">If</span>
+                            <input
+                                type="text"
+                                class="form-control xx-small"
+                                placeholder="e.g. student.photo_url"
+                                value={selectedNode.condition || ''}
+                                oninput={(e) => onUpdateNode({ condition: e.currentTarget.value })}
+                            >
+                        </div>
+                        <div class="xx-small text-muted">
+                            Component only shows if this variable exists/is true.
+                        </div>
+                    </div>
 
                     <!-- Grid Management Group (Show always if part of a table) -->
                     {#if tableToEdit}

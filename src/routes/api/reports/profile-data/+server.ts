@@ -126,18 +126,27 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
         let photoUrl = '';
         try {
             const userId = appData.student_id || studentUser?.id;
-            if (userId) {
+            
+            // 1. Check documents table first
+            if (userId || applicationId) {
                 const { data: docs } = await supabaseAdmin
                     .from('documents')
-                    .select('file_path')
-                    .eq('user_id', userId)
+                    .select('file_path, document_type')
+                    .or(`application_id.eq.${applicationId}${userId ? `,user_id.eq.${userId}` : ''}`)
                     .ilike('document_type', '%photo%')
-                    .limit(1);
+                    .order('created_at', { ascending: false });
                     
                 if (docs && docs.length > 0) {
                     const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(docs[0].file_path, 3600);
                     if (urlData) photoUrl = urlData.signedUrl;
                 }
+            }
+            
+            // 2. Fallback to profile_data.photo if still no URL
+            if (!photoUrl && profileData?.photo) {
+                console.log('[API] Falling back to profile_data.photo path:', profileData.photo);
+                const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(profileData.photo, 3600);
+                if (urlData) photoUrl = urlData.signedUrl;
             }
         } catch (e) {
             console.error('[API] Photo fetch error:', e);
@@ -149,6 +158,7 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             email: studentUser?.email || '',
             enrollment_number: profileObj?.enrollment_number || '',
             photo_url: photoUrl,
+            student_photo_url: photoUrl, // Alias for template compatibility
             profile_data: profileData,
             ...profileData
         };
@@ -157,6 +167,8 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             student: studentObj,
             students: studentObj, // Alias
             student_profile: studentObj, // Alias
+            photo_url: photoUrl, // Root level alias
+            student_photo_url: photoUrl, // Root level alias
             course: {
                 ...appData.course,
                 college: {

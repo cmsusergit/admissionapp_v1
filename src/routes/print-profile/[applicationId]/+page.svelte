@@ -72,6 +72,11 @@
     }
 
     async function generatePdf(action: 'print' | 'download' = 'print') {
+        if (action === 'print' && (data.configuration?.visualLayout || data.reportType === 'html_profile')) {
+            window.print();
+            return;
+        }
+
         if (!pdfDocGenerator) {
             toastStore.error('PDF not ready yet.');
             return;
@@ -219,11 +224,17 @@
                     <i class="bi bi-x-lg me-1"></i> Close
                 </button>
                 <button class="btn btn-primary px-4" on:click={() => generatePdf('print')} disabled={!isPdfReady}>
-                    <i class="bi bi-printer me-1"></i> Print / Save
+                    <i class="bi bi-printer me-1"></i> {data.configuration?.visualLayout ? 'Print / Save as PDF' : 'Print / Save'}
                 </button>
-                <button class="btn btn-success" on:click={() => generatePdf('download')} disabled={!isPdfReady}>
-                    <i class="bi bi-download me-1"></i> Download
-                </button>
+                {#if !data.configuration?.visualLayout}
+                    <button class="btn btn-success" on:click={() => generatePdf('download')} disabled={!isPdfReady}>
+                        <i class="bi bi-download me-1"></i> Download
+                    </button>
+                {:else}
+                    <div class="text-muted d-flex align-items-center x-small ms-2">
+                        <i class="bi bi-info-circle me-1"></i> Use 'Print' to Save as PDF
+                    </div>
+                {/if}
             </div>
         </div>
 
@@ -269,14 +280,35 @@
     }
 
     @media print {
+        @page {
+            size: A4;
+            margin: 0;
+        }
+        :global(body) {
+            background-color: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
         .no-print { display: none !important; }
-        .preview-wrapper { padding: 0 !important; background: none !important; }
+        .preview-wrapper { 
+            padding: 0 !important; 
+            margin: 0 !important;
+            background: none !important; 
+            display: block !important;
+        }
         .preview-paper {
             box-shadow: none !important;
             width: 210mm !important;
-            height: 297mm !important;
-            padding: 1.5rem !important;
-            margin: 0 auto;
+            min-height: 297mm !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            overflow: visible !important;
+        }
+        /* Ensure absolute elements are visible */
+        :global(.preview-paper *) {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
         }
     }
 </style>

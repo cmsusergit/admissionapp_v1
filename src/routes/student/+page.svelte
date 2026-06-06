@@ -1,7 +1,16 @@
 <script lang="ts">
     import type { PageData } from './$types';
+    import { page } from '$app/stores';
+    import { toastStore } from '$lib/stores/toastStore';
+    import { onMount } from 'svelte';
 
     export let data: PageData;
+
+    onMount(() => {
+        if ($page.url.searchParams.get('error') === 'apply_first') {
+            toastStore.error('Please submit an admission form before accessing your profile.');
+        }
+    });
 
     // Extract all active admission cycle IDs to check against existing applications
     $: activeCycleIds = (data.activeYears || []).flatMap((year: any) => 

@@ -15,16 +15,19 @@ export const load: LayoutServerLoad = async ({ locals: { getAuthenticatedUser, s
         ? Promise.resolve(userProfile.university_id)
         : supabase.from('universities').select('id').limit(1).maybeSingle().then(({ data }) => data?.id);
 
-    // 3. Fetch Avatar if student
-    const avatarPromise = userProfile?.role === 'student' && userProfile?.id
-        ? supabase.from('student_profiles').select('profile_data').eq('user_id', userProfile.id).maybeSingle().then(({ data }) => data?.profile_data?.photo || null)
-        : Promise.resolve(null);
+    // 3. Fetch Avatar and Application count if student
+    const studentDataPromise = userProfile?.role === 'student' && userProfile?.id
+        ? Promise.all([
+            supabase.from('student_profiles').select('profile_data').eq('user_id', userProfile.id).maybeSingle().then(({ data }) => data?.profile_data?.photo || null),
+            supabase.from('applications').select('*', { count: 'exact', head: true }).eq('student_id', userProfile.id).neq('status', 'draft').then(({ count }) => (count || 0) > 0)
+          ])
+        : Promise.resolve([null, false]);
 
     // Execute concurrently
-    const [session, universityIdToFetch, avatarUrl] = await Promise.all([
+    const [session, universityIdToFetch, [avatarUrl, hasSubmittedForm]] = await Promise.all([
         sessionPromise,
         universityIdPromise,
-        avatarPromise
+        studentDataPromise
     ]);
 
     // 4. Fetch Branding using resolved ID
@@ -42,6 +45,7 @@ export const load: LayoutServerLoad = async ({ locals: { getAuthenticatedUser, s
 		session,
 		userProfile, // userProfile is already populated in hooks.server.ts and available here
         universityBranding,
-        avatarUrl
+        avatarUrl,
+        hasSubmittedForm
 	};
 };
