@@ -47,6 +47,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             applications!inner (
                 id,
                 course_id,
+                form_type,
                 student_user:users!student_id (full_name, email, student_profiles(enrollment_number)),
                 courses!inner (
                     name, 
@@ -212,6 +213,18 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         return { admissionId: adm.id, feeStructure };
     }).filter(Boolean);
 
+    // Fetch available profile templates for the fee_collector role
+    const { data: profileTemplates } = await supabase
+        .from('report_templates')
+        .select('id, name, target_form_type_id')
+        .eq('report_type', 'html_profile')
+        .contains('allowed_roles', ['fee_collector']);
+
+    // Fetch form types for name-to-id mapping
+    const { data: allFormTypes } = await supabase
+        .from('form_types')
+        .select('id, name');
+
     return {
         payments: allPayments || [],
         tuitionPayments,
@@ -221,6 +234,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         feeStructures: feeStructures,
         courses: courses || [],
         userProfile,
+        profileTemplates: profileTemplates || [],
+        formTypesMap: allFormTypes || [],
         pagination: {
             page,
             limit,

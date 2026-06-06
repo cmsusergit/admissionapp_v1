@@ -163,12 +163,24 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             ...profileData
         };
 
+        const cycleObj = appData.admission_cycles ? {
+            ...appData.admission_cycles,
+            academic_year: appData.admission_cycles.academic_years
+        } : null;
+
         const flatData: any = {
             student: studentObj,
             students: studentObj, // Alias
             student_profile: studentObj, // Alias
             photo_url: photoUrl, // Root level alias
             student_photo_url: photoUrl, // Root level alias
+            cycle: cycleObj,
+            admission_cycle: cycleObj,
+            university: appData.course?.college?.university,
+            college: {
+                ...appData.course?.college,
+                trust_name: 'The New English School Trust'
+            },
             course: {
                 ...appData.course,
                 college: {
@@ -187,6 +199,7 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                 admission_number: appData.account_admissions?.admission_number,
                 receipt_number: payment?.receipt_number || 'N/A',
                 academic_year: appData.admission_cycles?.academic_years?.name,
+                cycle: cycleObj,
                 form_data: formData,
                 ...formData,
                 student: studentObj,

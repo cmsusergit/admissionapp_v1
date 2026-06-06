@@ -438,6 +438,23 @@
                                 </td>
                                 <td>
                                     <div class="btn-group">
+                                        {#if data.profileTemplates && data.profileTemplates.length > 0}
+                                            {@const studentFormTypeId = data.formTypesMap.find(ft => ft.name === payment.applications?.form_type)?.id}
+                                            {@const template = data.profileTemplates.find(t => t.target_form_type_id === studentFormTypeId) || 
+                                                              data.profileTemplates.find(t => !t.target_form_type_id) || 
+                                                              data.profileTemplates[0]}
+                                            
+                                            {#if template}
+                                                <a 
+                                                    href="/print-profile/{payment.application_id}?templateId={template.id}" 
+                                                    target="_blank" 
+                                                    class="btn btn-sm btn-outline-info" 
+                                                    title="View Student Profile"
+                                                >
+                                                    <i class="bi bi-person-badge"></i>
+                                                </a>
+                                            {/if}
+                                        {/if}
                                         <button class="btn btn-sm btn-secondary" title="Print" onclick={() => printReceipt(payment)}>
                                             <i class="bi bi-printer"></i>
                                         </button>

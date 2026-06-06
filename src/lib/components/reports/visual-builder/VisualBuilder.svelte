@@ -7,7 +7,8 @@
         layout = $bindable([]), 
         htmlContent = $bindable(''), 
         schema = [], 
-        selectedTable = '' 
+        selectedTable = '',
+        live = false
     } = $props();
 
     // Internal state
@@ -15,6 +16,8 @@
     let selectedId = $state('');
     let rootIsOver = $state(false);
     let zoom = $state(1);
+    let showSidebar = $state(true);
+    let lastCompiledHtml = $state('');
 
     function generateId() {
         return Math.random().toString(36).substr(2, 9);
@@ -290,8 +293,13 @@
     }
 
     function compile() {
-        htmlContent = layout.map(compileNode).join('');
+        const compiled = layout.map(compileNode).join('');
+        lastCompiledHtml = compiled;
+        htmlContent = compiled;
     }
+
+    // Detect if htmlContent was changed externally (e.g. from the Code tab)
+    let isExternalChange = $derived(htmlContent !== lastCompiledHtml && layout.length > 0);
 
     function deleteNode(targetId?: string) {
         const id = targetId || selectedId;
@@ -315,6 +323,24 @@
             layout = [];
             selectedId = '';
             compile();
+        }
+    }
+
+    function importLayout() {
+        const json = prompt('Paste your Visual Layout JSON here:');
+        if (json) {
+            try {
+                const parsed = JSON.parse(json);
+                if (Array.isArray(parsed)) {
+                    layout = parsed;
+                    compile();
+                    alert('Layout imported successfully!');
+                } else {
+                    alert('Invalid format: Expected a JSON array.');
+                }
+            } catch (e) {
+                alert('Invalid JSON: ' + (e as Error).message);
+            }
         }
     }
 
@@ -561,7 +587,23 @@
 <div class="visual-builder-container border rounded bg-white" style="min-height: 800px;">
     <div class="toolbar p-2 border-bottom bg-dark d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center gap-3">
-            <span class="badge bg-primary text-white">Visual Mode</span>
+            <button 
+                type="button" 
+                class="btn btn-xs {showSidebar ? 'btn-primary' : 'btn-outline-light'} py-0" 
+                onclick={() => showSidebar = !showSidebar}
+                title="Toggle Sidebar"
+            >
+                <i class="bi {showSidebar ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'}"></i>
+            </button>
+            {#if layout.length === 0 && htmlContent}
+                <span class="badge bg-warning text-dark"><i class="bi bi-eye-fill me-1"></i> Live Code Preview</span>
+            {:else if isExternalChange}
+                <span class="badge bg-info text-white" title="The HTML code has been modified manually. Click Preview to see changes.">
+                    <i class="bi bi-pencil-square me-1"></i> Code Modified
+                </span>
+            {:else}
+                <span class="badge bg-primary text-white">Visual Mode</span>
+            {/if}
             {#if selectedId}
                 <button type="button" class="btn btn-xs btn-outline-danger py-0" onclick={(e) => { e.stopPropagation(); deleteNode(); }} title="Delete Selected">
                     <i class="bi bi-trash"></i> Delete
@@ -572,6 +614,9 @@
                     <i class="bi bi-arrow-counterclockwise"></i> Reset
                 </button>
             {/if}
+            <button type="button" class="btn btn-xs btn-outline-info py-0 ms-1" onclick={(e) => { e.stopPropagation(); importLayout(); }} title="Import Visual Layout">
+                <i class="bi bi-box-arrow-in-down"></i> Import
+            </button>
             <div class="d-flex align-items-center ms-3">
                 <i class="bi bi-zoom-out text-light me-2 x-small"></i>
                 <input type="range" class="form-range" min="0.5" max="1.5" step="0.1" bind:value={zoom} oninput={(e) => e.stopPropagation()} style="width: 100px;">
@@ -581,33 +626,52 @@
         </div>
         <div class="btn-group btn-group-sm">
             <button type="button" class="btn btn-outline-light" class:active={!previewMode} onclick={() => previewMode = false}>Design</button>
-            <button type="button" class="btn btn-outline-light" class:active={previewMode} onclick={() => previewMode = true}>Preview</button>
+            <button type="button" class="btn btn-outline-light position-relative" class:active={previewMode} onclick={() => previewMode = true}>
+                Preview
+                {#if isExternalChange && !previewMode}
+                    <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle">
+                        <span class="visually-hidden">New changes</span>
+                    </span>
+                {/if}
+            </button>
         </div>
     </div>
 
     <div class="builder-body position-relative">
         <!-- Sidebar Drawer -->
-        <div class="sidebar-drawer border-end bg-light">
-            <div class="drawer-handle d-flex align-items-center justify-content-center text-muted">
-                <i class="bi {selectedId ? 'bi-gear-fill text-primary' : 'bi-chevron-right'}"></i>
+        <div class="sidebar-drawer border-end bg-light" class:active={showSidebar}>
+            <div class="drawer-handle d-flex align-items-center justify-content-center text-muted" onclick={() => showSidebar = !showSidebar}>
+                <i class="bi {selectedId ? 'bi-gear-fill text-primary' : (showSidebar ? 'bi-chevron-left' : 'bi-chevron-right')}"></i>
             </div>
             <div class="drawer-content p-3">
-                <Sidebar 
-                    {schema} 
-                    {selectedTable} 
-                    {layout}
-                    selectedNode={selectedNode} 
-                    onUpdateNode={updateSelectedNode}
-                    onInsertVariable={(detail: any) => onDrop('root', 'variable', detail)}
-                />
+                {#if layout.length > 0 || (layout.length === 0 && !htmlContent)}
+                    <Sidebar 
+                        {schema} 
+                        {selectedTable} 
+                        {layout}
+                        selectedNode={selectedNode} 
+                        onUpdateNode={updateSelectedNode}
+                        onInsertVariable={(detail: any) => onDrop('root', 'variable', detail)}
+                    />
+                {:else}
+                    <div class="text-center text-muted mt-5">
+                        <i class="bi bi-code-square display-6 mb-3"></i>
+                        <p class="small px-3">Visual tools are disabled while viewing raw HTML. Use <strong>Design</strong> mode with a layout to enable drag-and-drop.</p>
+                    </div>
+                {/if}
             </div>
         </div>
 
         <!-- Main Workspace -->
         <div class="workspace-viewport" style="height: 800px; width: 100%;">
-            {#if previewMode}
-                <div class="canvas-paper shadow p-5" style="overflow-x: hidden; min-height: 297mm; position: relative;">
-                    {@html htmlContent}
+            {#if previewMode || live || (layout.length === 0 && htmlContent)}
+                <div 
+                    class="canvas-paper shadow" 
+                    style="overflow-x: hidden; min-height: 297mm; position: relative; transform: scale({zoom}); transform-origin: top center;"
+                >
+                    <div class="p-0">
+                        {@html htmlContent}
+                    </div>
                     <div class="page-boundary-indicator" style:top="{A4_HEIGHT_PX}px"></div>
                     <div class="page-boundary-label" style:top="{A4_HEIGHT_PX - 20}px">End of A4 Page (297mm)</div>
                 </div>
@@ -696,7 +760,7 @@
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         transform: translateX(-300px);
     }
-    .sidebar-drawer:hover, .sidebar-drawer.active {
+    .sidebar-drawer.active {
         transform: translateX(0);
     }
     .drawer-handle {
@@ -709,6 +773,10 @@
         cursor: pointer;
         border-left: 1px solid #dee2e6;
         font-size: 12px;
+        transition: background-color 0.2s;
+    }
+    .drawer-handle:hover {
+        background-color: #e9ecef;
     }
     .drawer-content {
         height: 100%;

@@ -96,6 +96,7 @@
   );
 
   let isSidebarCollapsed = $state(data.userProfile?.role === "student");
+  let isSidebarHidden = $state(false);
   // let lastSeenRole = $state(data.userProfile?.role); // Removed duplicate declaration
 
   $effect(() => {
@@ -105,6 +106,7 @@
       lastSeenRole = currentRole;
       // Default: Collapsed for students, Expanded for others
       isSidebarCollapsed = currentRole === "student";
+      isSidebarHidden = false; // Reset hidden state on role change
     }
   });
 
@@ -113,6 +115,10 @@
   function toggleSidebar() {
     isSidebarCollapsed = !isSidebarCollapsed;
     tooltipData.visible = false; // Hide tooltip immediately on toggle
+  }
+
+  function handleHeaderToggle() {
+    isSidebarHidden = !isSidebarHidden;
   }
 
   function handleSidebarMouseOver(event: MouseEvent) {
@@ -189,6 +195,7 @@
     hidden={!showHeader}
     userProfile={data.userProfile}
     avatarUrl={data.avatarUrl}
+    onToggleSidebar={handleHeaderToggle}
   />
 {/if}
 
@@ -197,7 +204,7 @@
   style="min-height: 100vh;"
 >
   {#if !isHomePage && !isPrintRoute}
-    <div class="sidebar-container {isSidebarCollapsed ? 'collapsed' : ''}">
+    <div class="sidebar-container {isSidebarCollapsed ? 'collapsed' : ''} {isSidebarHidden ? 'hidden' : ''}">
       <div
         class="sidebar-content"
         role="navigation"
@@ -211,7 +218,7 @@
 
       <!-- Toggle Button attached to sidebar -->
       <button
-        class="sidebar-toggle-btn"
+        class="sidebar-toggle"
         onclick={toggleSidebar}
         aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
@@ -250,7 +257,7 @@
     ); // Full viewport height minus fixed header height
     position: sticky; // Make sidebar sticky within its parent
     top: 60px; // Stick it below the header
-    transition: width 0.3s ease;
+    transition: width 0.3s ease, transform 0.3s ease;
     z-index: 100; // Ensure sidebar is above content if needed
 
     &.collapsed {
@@ -278,6 +285,16 @@
           margin-right: 0 !important;
           font-size: 1.5rem;
         }
+      }
+    }
+
+    &.hidden {
+      width: 0 !important;
+      overflow: hidden;
+      transform: translateX(-100%);
+      
+      .sidebar-toggle {
+        display: none;
       }
     }
   }

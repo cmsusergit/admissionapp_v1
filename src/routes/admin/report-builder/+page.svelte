@@ -233,144 +233,146 @@
     </div>
     
     <div class="row">
-        <div class="col-md-3">
-            <div class="card mb-3 shadow-sm border-0">
-                <div class="card-header bg-dark text-white fw-bold">
-                    <i class="bi bi-gear-fill me-2"></i> 1. Setup & Guide
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small">Base Table</label>
-                        <select class="form-select form-select-sm" bind:value={selectedTable} disabled={!!editingId && reportType === 'tabular'}>
-                            <option value="">Select Table</option>
-                            {#each data.schema as table}
-                                <option value={table.name}>{table.label}</option>
-                            {/each}
-                        </select>
+        {#if !(reportType === 'html_profile' && (editorMode === 'visual' || sideBySide))}
+            <div class="col-md-3">
+                <div class="card mb-3 shadow-sm border-0">
+                    <div class="card-header bg-dark text-white fw-bold">
+                        <i class="bi bi-gear-fill me-2"></i> 1. Setup & Guide
                     </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Base Table</label>
+                            <select class="form-select form-select-sm" bind:value={selectedTable} disabled={!!editingId && reportType === 'tabular'}>
+                                <option value="">Select Table</option>
+                                {#each data.schema as table}
+                                    <option value={table.name}>{table.label}</option>
+                                {/each}
+                            </select>
+                        </div>
 
-                    {#if reportType === 'tabular'}
-                        {#if selectedTable}
-                            <hr>
-                            <h6 class="small fw-bold mb-2">Schema Explorer</h6>
-                            <div class="border rounded p-2 bg-light mb-3" style="max-height: 400px; overflow-y: auto;">
-                                <SchemaTree 
-                                    tableName={selectedTable} 
-                                    schema={data.schema} 
-                                    {selectedColumns}
-                                    on:toggle={(e: any) => toggleColumn(e.detail.path, e.detail.label)}
-                                />
-                            </div>
-
-                            <hr>
-                            <h6 class="small fw-bold mb-2">User Parameters</h6>
-                            <div class="bg-light p-2 rounded mb-3 border">
-                                <div class="mb-2">
-                                    <label class="x-small form-label fw-bold">Column</label>
-                                    <select class="form-select form-select-sm" bind:value={newParam.column}>
-                                        <option value="">Select Column...</option>
-                                        {#each availableColumns as col}
-                                            <option value={col.path}>{col.label}</option>
-                                        {/each}
-                                    </select>
-                                </div>
-                                <div class="row g-2 mb-2">
-                                    <div class="col-6">
-                                        <label class="x-small form-label fw-bold">Label</label>
-                                        <input type="text" class="form-control form-control-sm" bind:value={newParam.label} placeholder="Label">
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="x-small form-label fw-bold">Type</label>
-                                        <select class="form-select form-select-sm" bind:value={newParam.type}>
-                                            <option value="text">Text</option>
-                                            <option value="number">Number</option>
-                                            <option value="date">Date</option>
-                                            <option value="select">Dropdown</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="row g-2 mb-2">
-                                    <div class="col-12">
-                                        <label class="x-small form-label fw-bold">Operator</label>
-                                        <select class="form-select form-select-sm" bind:value={newParam.operator}>
-                                            <option value="eq">Equals (=)</option>
-                                            <option value="ilike">Contains</option>
-                                            <option value="match">Regex (match)</option>
-                                            <option value="gt">Greater (&gt;)</option>
-                                            <option value="lt">Less (&lt;)</option>
-                                            <option value="gte">GTE (&ge;)</option>
-                                            <option value="lte">LTE (&le;)</option>
-                                            <option value="in">In List</option>
-                                        </select>
-                                    </div>
-                                    {#if newParam.type === 'select'}
-                                       <div class="col-12">
-                                           <label class="x-small form-label fw-bold">Options (csv)</label>
-                                           <div class="input-group input-group-sm">
-                                               <textarea class="form-control" bind:value={newParam.options} placeholder="A,B,C" rows="3"></textarea>
-                                               <form method="POST" action="?/suggest_options" use:enhance={() => {
-                                                   suggesting = true;
-                                                   return async ({ update }) => {
-                                                       await update();
-                                                       suggesting = false;
-                                                   };
-                                               }}>
-                                                   <input type="hidden" name="table" value={selectedTable}>
-                                                   <input type="hidden" name="column" value={newParam.column}>
-                                                   <button class="btn btn-outline-secondary h-100" title="Auto-detect from DB" disabled={!newParam.column || suggesting}>
-                                                       {#if suggesting}
-                                                           <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                                       {:else}
-                                                           <i class="bi bi-magic"></i>
-                                                       {/if}
-                                                   </button>
-                                               </form>
-                                           </div>
-                                       </div>
-                                    {/if}
-                                </div>
-                                <button type="button" class="btn btn-sm btn-primary w-100" onclick={addParameter} disabled={!newParam.column || !newParam.label}>Add Parameter</button>
-                            </div>
-
-                            {#if selectedParameters.length > 0}
-                                <ul class="list-group list-group-flush border rounded overflow-hidden">
-                                    {#each selectedParameters as p, idx}
-                                        <li class="list-group-item d-flex justify-content-between align-items-center p-2 x-small">
-                                            <div>
-                                                <strong>{p.label}</strong> <span class="text-muted">({p.column})</span>
-                                                <br>
-                                                <span class="badge bg-secondary">{p.operator}</span>
-                                            </div>
-                                            <button type="button" class="btn btn-xs btn-outline-danger border-0" onclick={() => removeParameter(idx)}>&times;</button>
-                                        </li>
-                                    {/each}
-                                </ul>
-                            {/if}
-                        {/if}
-                    {:else}
-                        <div class="mt-2">
-                            <h6 class="small fw-bold mb-2">Variable Picker</h6>
-                            <p class="x-small text-muted mb-3">Explore tables and click <span class="badge bg-primary">+</span> to insert into editor.</p>
+                        {#if reportType === 'tabular'}
                             {#if selectedTable}
-                                <div class="border rounded p-2 bg-light mb-3" style="max-height: 600px; overflow-y: auto;">
+                                <hr>
+                                <h6 class="small fw-bold mb-2">Schema Explorer</h6>
+                                <div class="border rounded p-2 bg-light mb-3" style="max-height: 400px; overflow-y: auto;">
                                     <SchemaTree 
                                         tableName={selectedTable} 
                                         schema={data.schema} 
-                                        insertMode={true}
-                                        on:insert={handleInsertVariable}
+                                        {selectedColumns}
+                                        on:toggle={(e: any) => toggleColumn(e.detail.path, e.detail.label)}
                                     />
                                 </div>
 
-                            {:else}
-                                <div class="alert alert-warning x-small">Please select a <strong>Base Table</strong> (usually Applications) to start picking variables.</div>
+                                <hr>
+                                <h6 class="small fw-bold mb-2">User Parameters</h6>
+                                <div class="bg-light p-2 rounded mb-3 border">
+                                    <div class="mb-2">
+                                        <label class="x-small form-label fw-bold">Column</label>
+                                        <select class="form-select form-select-sm" bind:value={newParam.column}>
+                                            <option value="">Select Column...</option>
+                                            {#each availableColumns as col}
+                                                <option value={col.path}>{col.label}</option>
+                                            {/each}
+                                        </select>
+                                    </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-6">
+                                            <label class="x-small form-label fw-bold">Label</label>
+                                            <input type="text" class="form-control form-control-sm" bind:value={newParam.label} placeholder="Label">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="x-small form-label fw-bold">Type</label>
+                                            <select class="form-select form-select-sm" bind:value={newParam.type}>
+                                                <option value="text">Text</option>
+                                                <option value="number">Number</option>
+                                                <option value="date">Date</option>
+                                                <option value="select">Dropdown</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-12">
+                                            <label class="x-small form-label fw-bold">Operator</label>
+                                            <select class="form-select form-select-sm" bind:value={newParam.operator}>
+                                                <option value="eq">Equals (=)</option>
+                                                <option value="ilike">Contains</option>
+                                                <option value="match">Regex (match)</option>
+                                                <option value="gt">Greater (&gt;)</option>
+                                                <option value="lt">Less (&lt;)</option>
+                                                <option value="gte">GTE (&ge;)</option>
+                                                <option value="lte">LTE (&le;)</option>
+                                                <option value="in">In List</option>
+                                            </select>
+                                        </div>
+                                        {#if newParam.type === 'select'}
+                                           <div class="col-12">
+                                               <label class="x-small form-label fw-bold">Options (csv)</label>
+                                               <div class="input-group input-group-sm">
+                                                   <textarea class="form-control" bind:value={newParam.options} placeholder="A,B,C" rows="3"></textarea>
+                                                   <form method="POST" action="?/suggest_options" use:enhance={() => {
+                                                       suggesting = true;
+                                                       return async ({ update }) => {
+                                                           await update();
+                                                           suggesting = false;
+                                                       };
+                                                   }}>
+                                                       <input type="hidden" name="table" value={selectedTable}>
+                                                       <input type="hidden" name="column" value={newParam.column}>
+                                                       <button class="btn btn-outline-secondary h-100" title="Auto-detect from DB" disabled={!newParam.column || suggesting}>
+                                                           {#if suggesting}
+                                                               <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                                           {:else}
+                                                               <i class="bi bi-magic"></i>
+                                                           {/if}
+                                                       </button>
+                                                   </form>
+                                               </div>
+                                           </div>
+                                        {/if}
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-primary w-100" onclick={addParameter} disabled={!newParam.column || !newParam.label}>Add Parameter</button>
+                                </div>
+
+                                {#if selectedParameters.length > 0}
+                                    <ul class="list-group list-group-flush border rounded overflow-hidden">
+                                        {#each selectedParameters as p, idx}
+                                            <li class="list-group-item d-flex justify-content-between align-items-center p-2 x-small">
+                                                <div>
+                                                    <strong>{p.label}</strong> <span class="text-muted">({p.column})</span>
+                                                    <br>
+                                                    <span class="badge bg-secondary">{p.operator}</span>
+                                                </div>
+                                                <button type="button" class="btn btn-xs btn-outline-danger border-0" onclick={() => removeParameter(idx)}>&times;</button>
+                                            </li>
+                                        {/each}
+                                    </ul>
+                                {/if}
                             {/if}
-                        </div>
-                    {/if}
+                        {:else}
+                            <div class="mt-2">
+                                <h6 class="small fw-bold mb-2">Variable Picker</h6>
+                                <p class="x-small text-muted mb-3">Explore tables and click <span class="badge bg-primary">+</span> to insert into editor.</p>
+                                {#if selectedTable}
+                                    <div class="border rounded p-2 bg-light mb-3" style="max-height: 600px; overflow-y: auto;">
+                                        <SchemaTree 
+                                            tableName={selectedTable} 
+                                            schema={data.schema} 
+                                            insertMode={true}
+                                            on:insert={handleInsertVariable}
+                                        />
+                                    </div>
+
+                                {:else}
+                                    <div class="alert alert-warning x-small">Please select a <strong>Base Table</strong> (usually Applications) to start picking variables.</div>
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
                 </div>
             </div>
-        </div>
+        {/if}
 
-        <div class="col-md-9">
+        <div class={(reportType === 'html_profile' && (editorMode === 'visual' || sideBySide)) ? 'col-md-12' : 'col-md-9'}>
             <div class="card mb-4 shadow-sm border-0">
                 <div class="card-header d-flex justify-content-between align-items-center bg-white border-bottom-0 pt-3">
                     <h5 class="mb-0 fw-bold">{editingId ? 'Edit Template' : '2. Define Template'}</h5>
@@ -446,10 +448,13 @@
                                         </div>
                                         <div class="col-md-7 text-end">
                                             <div class="btn-group btn-group-sm me-2">
-                                                <button type="button" class="btn btn-outline-primary" class:active={editorMode === 'visual'} onclick={() => editorMode = 'visual'}>
+                                                <button type="button" class="btn btn-outline-secondary" class:active={sideBySide} onclick={() => sideBySide = !sideBySide} title="Split View">
+                                                    <i class="bi bi-layout-split me-1"></i> Side by Side
+                                                </button>
+                                                <button type="button" class="btn btn-outline-primary" class:active={editorMode === 'visual'} onclick={() => { editorMode = 'visual'; sideBySide = false; }}>
                                                     <i class="bi bi-grid-3x3-gap-fill me-1"></i> Visual
                                                 </button>
-                                                <button type="button" class="btn btn-outline-primary" class:active={editorMode === 'code'} onclick={() => editorMode = 'code'}>
+                                                <button type="button" class="btn btn-outline-primary" class:active={editorMode === 'code'} onclick={() => { editorMode = 'code'; sideBySide = false; }}>
                                                     <i class="bi bi-code-slash me-1"></i> Code
                                                 </button>
                                             </div>
@@ -459,30 +464,41 @@
                                         </div>
                                     </div>
                                 </div>
-                                {#if editorMode === 'visual'}
-                                    <div class="col-12 mb-3">
-                                        <VisualBuilder 
-                                            bind:layout={visualLayout} 
-                                            bind:htmlContent={htmlContent}
-                                            schema={data.schema}
-                                            selectedTable={selectedTable}
-                                        />
-                                        <input type="hidden" name="html_content" value={htmlContent}>
+
+                                <div class="col-12 mb-3">
+                                    <div class="row g-3">
+                                        {#if sideBySide || editorMode === 'code'}
+                                            <div class={sideBySide ? "col-md-5" : "col-12"}>
+                                                <label class="form-label fw-bold small">HTML Content (Code View)</label>
+                                                <textarea 
+                                                    bind:this={textareaRef}
+                                                    class="form-control font-monospace" 
+                                                    name="html_content" 
+                                                    rows={sideBySide ? "35" : "25"} 
+                                                    bind:value={htmlContent} 
+                                                    placeholder="&lt;div&gt;Hello &lbrace;&lbrace;student.full_name&rbrace;&rbrace;&lt;/div&gt;" 
+                                                    style="font-size: 0.85rem; background-color: #fcfcfc;"></textarea>
+                                                <div class="form-text x-small">Click variables in the sidebar to insert. Use standard HTML/CSS.</div>
+                                            </div>
+                                        {/if}
+
+                                        {#if sideBySide || editorMode === 'visual'}
+                                            <div class={sideBySide ? "col-md-7" : "col-12"}>
+                                                {#if sideBySide}
+                                                    <label class="form-label fw-bold small">Visual Preview (Live)</label>
+                                                {/if}
+                                                <VisualBuilder 
+                                                    bind:layout={visualLayout} 
+                                                    bind:htmlContent={htmlContent}
+                                                    schema={data.schema}
+                                                    selectedTable={selectedTable}
+                                                    live={sideBySide}
+                                                />
+                                                <input type="hidden" name="html_content" value={htmlContent}>
+                                            </div>
+                                        {/if}
                                     </div>
-                                {:else}
-                                    <div class="col-12 mb-3">
-                                        <label class="form-label fw-bold small">HTML Content (Code View)</label>
-                                        <textarea 
-                                            bind:this={textareaRef}
-                                            class="form-control font-monospace" 
-                                            name="html_content" 
-                                            rows="25" 
-                                            bind:value={htmlContent} 
-                                            placeholder="&lt;div&gt;Hello &lbrace;&lbrace;student.full_name&rbrace;&rbrace;&lt;/div&gt;" 
-                                            style="font-size: 0.85rem; background-color: #fcfcfc;"></textarea>
-                                        <div class="form-text x-small">Click variables in the sidebar to insert. Use standard HTML/CSS.</div>
-                                    </div>
-                                {/if}
+                                </div>
                             {/if}
                         </div>
 

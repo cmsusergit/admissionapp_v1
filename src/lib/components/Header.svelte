@@ -6,6 +6,7 @@
     export let hidden: boolean = false;
     export let userProfile: any = null;
     export let avatarUrl: string | null = null;
+    export let onToggleSidebar: () => void = () => {};
 
     function handleLogout() {
         goto('/logout', { method: 'POST' });
@@ -17,6 +18,16 @@
         <div class="row h-100 align-items-center">
             <!-- Column 1 & 2: Logo and University Name combined for alignment -->
             <div class="col-md-5 d-flex align-items-center">
+                {#if userProfile}
+                    <button 
+                        class="btn btn-link text-dark me-3 p-0 border-0" 
+                        on:click={onToggleSidebar}
+                        aria-label="Toggle Sidebar"
+                    >
+                        <i class="bi bi-list fs-4"></i>
+                    </button>
+                {/if}
+
                 {#if university && university.logo_url}
                     <img src={university.logo_url} alt="University Logo" class="university-logo me-2">
                 {:else}
