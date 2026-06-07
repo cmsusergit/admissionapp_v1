@@ -1,15 +1,17 @@
 <script lang="ts">
     let { 
         node = $bindable(), 
-        onSelect = () => {},
+        onSelect = (id: string, e?: MouseEvent) => {},
         onDrop = () => {},
-        selectedId = '',
+        selectedIds = [] as string[],
         zoom = 1,
         onUpdateNode = () => {},
         onStartAction = (id: string, type: 'move' | 'resize', e: MouseEvent, dir?: string) => {},
         onCancelAction = () => {},
         isDragging = false
     } = $props();
+
+    let isSelected = $derived(selectedIds.includes(node.id));
 
     let isOver = $state(false);
 
@@ -30,7 +32,7 @@
         // Stop propagation immediately to prevent parent containers from catching this
         e.stopPropagation();
         (e as any)._selectionHandled = true;
-        onSelect(node.id);
+        onSelect(node.id, e);
 
         // If it's a resize handle, start resize and stop
         if (target.classList.contains('resize-handle')) {
@@ -100,11 +102,11 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <svelte:element
     this={tag}
-    class="node-{node.type} {node.x !== undefined ? 'canvas-node' : ''}" 
-    class:selected={selectedId === node.id}
+    class="node-{node.type} {node.x !== undefined ? 'canvas-node' : 'nested-node'}" 
+    class:selected={isSelected}
     class:drag-over={isOver}
     class:is-dragging={isDragging}
-    draggable={(!isDragging && selectedId !== node.id) && (node.x !== undefined || tag === 'div')}
+    draggable={(!isDragging && !isSelected) && (node.x !== undefined || tag === 'div')}
     ondragstart={handleDragStart}
     ondragend={handleDragEnd}
     onmousedown={handleMouseDown}
@@ -120,7 +122,7 @@
     style:min-height={node.type === 'layoutTable' && node.h !== undefined ? `${node.h}px` : undefined}
     style:padding={node.style?.padding || (node.type === 'tableCell' ? '5px' : '0px')}
     style:margin={node.style?.margin || '0'}
-    style:border={node.style?.border || (node.type === 'tableCell' ? '1px dashed #eee' : (selectedId === node.id ? '1px solid #0d6efd' : (node.type === 'row' || node.type === 'column' ? '1px dashed #ccc' : 'none')))}
+    style:border={node.style?.border || (node.type === 'tableCell' ? '1px dashed #eee' : (node.type === 'row' || node.type === 'column' ? '1px dashed #ccc' : 'none'))}
     style:text-align={node.style?.textAlign || 'left'}
     style:color={node.style?.color}
     style:background-color={isOver ? 'rgba(13, 110, 253, 0.05)' : (node.style?.backgroundColor || 'transparent')}
@@ -129,8 +131,8 @@
     style:z-index={node.style?.zIndex || 'auto'}
     style:position={node.x !== undefined ? 'absolute' : (tag === 'div' || tag === 'td' ? 'relative' : undefined)}
     style:border-collapse={node.type === 'layoutTable' ? (node.style?.borderCollapse || 'collapse') : undefined}
-    style:outline={tag === 'td' && selectedId === node.id ? '2px solid #0d6efd' : undefined}
-    style:outline-offset={tag === 'td' ? '-2px' : undefined}
+    style:outline={isSelected ? '2px solid #0d6efd' : undefined}
+    style:outline-offset={isSelected ? '-2px' : undefined}
 >
     <!-- Handle for layoutTable selection/move -->
     {#if node.type === 'layoutTable' && node.x !== undefined}
@@ -139,7 +141,7 @@
             draggable="false"
             onmousedown={(e) => {
                 e.preventDefault();
-                onSelect(node.id);
+                onSelect(node.id, e);
                 onStartAction(node.id, 'move', e);
                 e.stopPropagation();
             }}
@@ -161,7 +163,7 @@
         <div 
             class="node-label" 
             onmousedown={(e) => {
-                onSelect(node.id);
+                onSelect(node.id, e);
                 e.stopPropagation();
                 (e as any)._selectionHandled = true;
             }}
@@ -170,7 +172,7 @@
         </div>
     {/if}
     
-    {#if selectedId === node.id && (node.x !== undefined || ['text', 'image', 'variable', 'table', 'layoutTable'].includes(node.type))}
+    {#if isSelected && (node.x !== undefined || ['text', 'image', 'variable', 'table', 'layoutTable'].includes(node.type))}
         <div class="resize-handle nw" data-dir="nw" draggable="false"></div>
         <div class="resize-handle ne" data-dir="ne" draggable="false"></div>
         <div class="resize-handle sw" data-dir="sw" draggable="false"></div>
@@ -188,7 +190,7 @@
             {:else}
                 {#each node.children as child (child.id)}
                     <div class="col-{child.width || 12}">
-                        <svelte:self node={child} {onSelect} {onDrop} {selectedId} {zoom} {onUpdateNode} {onStartAction} isDragging={selectedId === child.id && isDragging}></svelte:self>
+                        <svelte:self node={child} {onSelect} {onDrop} {selectedIds} {zoom} {onUpdateNode} {onStartAction} isDragging={selectedIds.includes(child.id) && isDragging}></svelte:self>
                     </div>
                 {/each}
             {/if}
@@ -200,7 +202,7 @@
             {:else}
                 {#each node.children as child (child.id)}
                     <div style:width="100%">
-                        <svelte:self node={child} {onSelect} {onDrop} {selectedId} {zoom} {onUpdateNode} {onStartAction} isDragging={selectedId === child.id && isDragging}></svelte:self>
+                        <svelte:self node={child} {onSelect} {onDrop} {selectedIds} {zoom} {onUpdateNode} {onStartAction} isDragging={selectedIds.includes(child.id) && isDragging}></svelte:self>
                     </div>
                 {/each}
             {/if}
@@ -209,13 +211,13 @@
         <table style="width:100%; height: 100%; border-collapse: inherit; table-layout: fixed; border: none;">
             <tbody>
                 {#each node.children as row (row.id)}
-                    <svelte:self node={row} {onSelect} {onDrop} {selectedId} {zoom} {onUpdateNode} {onStartAction} {isDragging}></svelte:self>
+                    <svelte:self node={row} {onSelect} {onDrop} {selectedIds} {zoom} {onUpdateNode} {onStartAction} {isDragging}></svelte:self>
                 {/each}
             </tbody>
         </table>
     {:else if node.type === 'tableRow'}
         {#each node.children as cell (cell.id)}
-            <svelte:self node={cell} {onSelect} {onDrop} {selectedId} {zoom} {onUpdateNode} {onStartAction} {isDragging}></svelte:self>
+            <svelte:self node={cell} {onSelect} {onDrop} {selectedIds} {zoom} {onUpdateNode} {onStartAction} {isDragging}></svelte:self>
         {/each}
     {:else if node.type === 'tableCell'}
         {#if node.children.length === 0}
@@ -223,7 +225,7 @@
         {:else}
             {#each node.children as child (child.id)}
                 <div style:width="100%" style="pointer-events: auto;">
-                    <svelte:self node={child} {onSelect} {onDrop} {selectedId} {zoom} {onUpdateNode} {onStartAction} isDragging={selectedId === child.id && isDragging}></svelte:self>
+                    <svelte:self node={child} {onSelect} {onDrop} {selectedIds} {zoom} {onUpdateNode} {onStartAction} isDragging={selectedIds.includes(child.id) && isDragging}></svelte:self>
                 </div>
             {/each}
         {/if}

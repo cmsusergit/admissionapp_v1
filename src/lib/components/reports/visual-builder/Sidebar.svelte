@@ -3,6 +3,7 @@
         schema = [], 
         selectedTable = '',
         selectedNode = null,
+        selectedNodes = [] as any[],
         layout = [],
         onUpdateNode = () => {},
         onInsertVariable = (detail: any) => {}
@@ -99,6 +100,14 @@
     let varSearch = $state('');
     let gridRows = $state(2);
     let gridCols = $state(2);
+    let activeTab = $state('palette'); // 'palette' or 'props'
+
+    // Auto-switch to Properties tab when a node is selected
+    $effect(() => {
+        if (selectedNode) {
+            activeTab = 'props';
+        }
+    });
 
     // Helper to find parent layoutTable of a node
     function findParentTable(nodes: any[], targetId: string, parentTable: any = null): any {
@@ -142,6 +151,43 @@
         { type: 'layoutTable', label: 'Layout Table', icon: 'bi-grid-3x3', description: 'Structural grid' },
         { type: 'divider', label: 'Divider', icon: 'bi-dash-lg', description: 'Horizontal line' }
     ];
+
+    // Suggestions for common list paths and their child fields
+    const listSuggestions: Record<string, { label: string, path: string }[]> = {
+        'marks_list': [
+            { label: 'Subject', path: 'subject' },
+            { label: 'Marks Obtained', path: 'score' },
+            { label: 'Total Marks', path: 'max_score' },
+            { label: 'Grade', path: 'grade' },
+            { label: 'Status', path: 'status' }
+        ],
+        'payments': [
+            { label: 'Type', path: 'payment_type' },
+            { label: 'Amount', path: 'amount' },
+            { label: 'Receipt No', path: 'receipt_number' },
+            { label: 'Status', path: 'status' },
+            { label: 'Date', path: 'payment_date' }
+        ],
+        'merit_marks': [
+            { label: 'Section', path: 'section' },
+            { label: 'Obtained', path: 'marks_obtained' },
+            { label: 'Total', path: 'total_marks' },
+            { label: 'Weightage', path: 'weightage' }
+        ]
+    };
+
+    const commonListPaths = Object.keys(listSuggestions);
+
+    function applyListSuggestion(suggestionKey: string) {
+        if (!selectedNode || selectedNode.type !== 'table') return;
+        const suggestion = listSuggestions[suggestionKey];
+        if (suggestion) {
+            onUpdateNode({ 
+                listPath: suggestionKey,
+                columns: suggestion.map(s => ({ ...s }))
+            });
+        }
+    }
 
     function handleDragStart(event: DragEvent, type: string) {
         if (!event.dataTransfer) return;
@@ -283,15 +329,29 @@
 <div class="sidebar-content">
     <ul class="nav nav-tabs nav-fill mb-3" role="tablist">
         <li class="nav-item">
-            <button type="button" class="nav-link active py-2 small" data-bs-toggle="tab" data-bs-target="#palette-tab" onclick={(e) => e.stopPropagation()}>Palette</button>
+            <button 
+                type="button" 
+                class="nav-link {activeTab === 'palette' ? 'active' : ''} py-2 small" 
+                onclick={(e) => { e.stopPropagation(); activeTab = 'palette'; }}
+            >
+                Palette
+            </button>
         </li>
         <li class="nav-item">
-            <button type="button" class="nav-link py-2 small" data-bs-toggle="tab" data-bs-target="#props-tab" disabled={!selectedNode} onclick={(e) => e.stopPropagation()}>Properties</button>
+            <button 
+                type="button" 
+                class="nav-link {activeTab === 'props' ? 'active' : ''} py-2 small" 
+                disabled={!selectedNode} 
+                onclick={(e) => { e.stopPropagation(); activeTab = 'props'; }}
+            >
+                Properties
+            </button>
         </li>
     </ul>
 
     <div class="tab-content">
-        <div class="tab-pane fade show active" id="palette-tab">
+        <!-- Palette Tab -->
+        <div class="tab-pane fade {activeTab === 'palette' ? 'show active' : ''}" id="palette-tab">
             <h6 class="small fw-bold mb-3">Layout & Basic</h6>
             <div class="row g-2 mb-4">
                 {#each components.filter(c => c.type !== 'variable') as comp}
@@ -319,8 +379,31 @@
             </p>
         </div>
 
-        <div class="tab-pane fade" id="props-tab">
-            {#if selectedNode}
+        <!-- Properties Tab -->
+        <div class="tab-pane fade {activeTab === 'props' ? 'show active' : ''}" id="props-tab">
+            {#if selectedNodes.length > 1}
+                <div class="property-editor p-1">
+                    <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                        <h6 class="small fw-bold mb-0 text-primary">
+                            <i class="bi bi-layers-fill me-1"></i> {selectedNodes.length} Items Selected
+                        </h6>
+                        <button type="button" class="btn btn-xs btn-outline-danger border-0" onclick={(e) => { e.stopPropagation(); onUpdateNode({ delete: true }); }} title="Delete All Selected">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="alert alert-info py-2 px-3 mb-3">
+                        <p class="xx-small mb-0">
+                            <strong>Group Mode:</strong> You can move these {selectedNodes.length} items together on the canvas. 
+                            Individual property editing is disabled for multiple selections.
+                        </p>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100 mb-2" onclick={(e) => { e.stopPropagation(); onUpdateNode({ duplicate: true }); }}>
+                        <i class="bi bi-layers me-1"></i> Duplicate All
+                    </button>
+                </div>
+            {:else if selectedNode}
                 <div class="property-editor p-1">
                     <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
                         <h6 class="small fw-bold mb-0">Editing: {selectedNode.type}</h6>
@@ -414,14 +497,32 @@
                                 </div>
                                 <div class="xx-small text-muted">e.g. https://example.com/logo.png or &#123;&#123;college.logo_url&#125;&#125;</div>
                             {:else if selectedNode.type === 'table'}
-                                <div class="input-group input-group-sm mb-2">
-                                    <input 
-                                        type="text" 
-                                        class="form-control" 
-                                        placeholder="e.g. payments or marks_list" 
-                                        value={selectedNode.listPath} 
-                                        oninput={(e) => onUpdateNode({ listPath: e.currentTarget.value })}
-                                    >
+                                <div class="mb-3">
+                                    <label class="xx-small fw-bold text-muted text-uppercase d-block mb-1">List Path</label>
+                                    <div class="input-group input-group-sm mb-2">
+                                        <input 
+                                            type="text" 
+                                            class="form-control" 
+                                            placeholder="e.g. payments or marks_list" 
+                                            value={selectedNode.listPath} 
+                                            oninput={(e) => onUpdateNode({ listPath: e.currentTarget.value })}
+                                        >
+                                    </div>
+                                    
+                                    <div class="prop-group mb-3">
+                                        <label class="xx-small fw-bold text-muted text-uppercase d-block mb-1">Quick Setup</label>
+                                        <div class="d-flex flex-wrap gap-1">
+                                            {#each commonListPaths as path}
+                                                <button 
+                                                    type="button" 
+                                                    class="btn btn-xs {selectedNode.listPath === path ? 'btn-primary' : 'btn-outline-primary'}"
+                                                    onclick={() => applyListSuggestion(path)}
+                                                >
+                                                    {path}
+                                                </button>
+                                            {/each}
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 <div class="border rounded p-2 bg-light">
@@ -635,11 +736,11 @@
                     <div class="prop-group mb-3">
                         <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">Layout</label>
                         <div class="row g-2">
-                            {#if selectedNode.type === 'column'}
+                            {#if selectedNode.type === 'column' || selectedNode.type === 'tableCell'}
                                 <div class="col-6">
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text x-small">W</span>
-                                        <input type="number" class="form-control" min="1" max="12" value={selectedNode.width} onchange={(e) => onUpdateNode({ width: parseInt(e.currentTarget.value) })}>
+                                        <input type="number" class="form-control" min="1" max="12" value={selectedNode.width || 12} onchange={(e) => onUpdateNode({ width: parseInt(e.currentTarget.value) })}>
                                     </div>
                                 </div>
                             {/if}

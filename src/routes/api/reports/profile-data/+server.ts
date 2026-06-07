@@ -34,6 +34,7 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                         university:universities(*)
                     )
                 ),
+                branch:branches(*),
                 admission_cycles(*, academic_years(*)),
                 student:users!applications_student_id_fkey(
                     id, full_name, email,
@@ -77,6 +78,16 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                     .eq('id', appData.course_id)
                     .single();
                 if (course) appData.course = course;
+            }
+
+            // Branch Fallback
+            if (!appData.branch && appData.branch_id) {
+                const { data: branch } = await supabaseAdmin
+                    .from('branches')
+                    .select('*')
+                    .eq('id', appData.branch_id)
+                    .single();
+                if (branch) appData.branch = branch;
             }
 
             // Admission Cycle Fallback
@@ -174,6 +185,8 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             student_profile: studentObj, // Alias
             photo_url: photoUrl, // Root level alias
             student_photo_url: photoUrl, // Root level alias
+            branch_name: appData.branch?.name || '',
+            branch_code: appData.branch?.code || '',
             cycle: cycleObj,
             admission_cycle: cycleObj,
             university: appData.course?.college?.university,
@@ -190,6 +203,8 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
                 }
             },
             courses: appData.course, // Alias
+            branch: appData.branch,
+            branches: appData.branch, // Alias
             marks: formattedMarks,
             marks_list: marksData,
             payments: appData.payments || [],
