@@ -65,6 +65,21 @@
     let isSchemaAvailable = $state(true);
     let schemaErrorMessage = $state('');
 
+    // Sync selections into applicationFormData for DynamicForm visibility rules
+    $effect(() => {
+        if (applicationFormData) {
+            applicationFormData.course_id = selectedCourseId;
+            applicationFormData.branch_id = selectedBranchId;
+            applicationFormData.admission_type = selectedAdmissionType;
+            applicationFormData.cycle_id = selectedCycleId;
+            applicationFormData.form_type = selectedFormType;
+
+            // Sync names for visibility logic (requested by user)
+            applicationFormData.course_name = data.courses.find((c: any) => c.id === selectedCourseId)?.name || '';
+            applicationFormData.branch_name = branchesForSelectedCourse.find((b: any) => b.id === selectedBranchId)?.name || '';
+        }
+    });
+
     // Derived allowed admission types
     let allowedAdmissionTypes = $derived(
         currentAdmissionFormSchema?.allowedAdmissionTypes

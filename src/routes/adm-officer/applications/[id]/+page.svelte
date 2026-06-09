@@ -174,7 +174,16 @@
                 <div class="p-3">
                     <DynamicForm 
                         schema={data.formSchema} 
-                        formData={application.form_data} 
+                        formData={{
+                            ...application.form_data,
+                            course_name: application.courses?.name || '',
+                            branch_name: application.branches?.name || '',
+                            course_id: application.course_id,
+                            branch_id: application.branch_id,
+                            admission_type: application.admission_type,
+                            cycle_id: application.cycle_id,
+                            form_type: application.form_type
+                        }} 
                         readonly={true} 
                     />
                 </div>

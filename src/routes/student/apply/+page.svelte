@@ -139,6 +139,19 @@
         console.log('--- Reactive Block Triggered ---');
         console.log('Current Selections:', { selectedCollegeId, selectedCourseId, selectedCycleId, selectedFormType, selectedBranchId });
         
+        // Sync selections into applicationFormData for DynamicForm visibility rules
+        if (applicationFormData) {
+            applicationFormData.course_id = selectedCourseId;
+            applicationFormData.branch_id = selectedBranchId;
+            applicationFormData.admission_type = selectedAdmissionType;
+            applicationFormData.cycle_id = selectedCycleId;
+            applicationFormData.form_type = selectedFormType;
+            
+            // Sync names for visibility logic (requested by user)
+            applicationFormData.course_name = data.courses.find(c => c.id === selectedCourseId)?.name || '';
+            applicationFormData.branch_name = data.branches.find(b => b.id === selectedBranchId)?.name || '';
+        }
+
         // Only check for "any" existing application if NOT loading a specific one from URL
         const urlAppId = $page.url.searchParams.get('applicationId');
         

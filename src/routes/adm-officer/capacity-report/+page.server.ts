@@ -24,6 +24,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     ]);
 
     const selectedYearId = url.searchParams.get('academic_year_id') || activeYear?.id || (academicYears && academicYears[0]?.id);
+    const includeRejected = url.searchParams.get('include_rejected') === 'true';
     const provFormTypes = new Set((formTypes || []).filter(ft => ft.is_prov).map(ft => ft.name));
 
     // 2. Fetch Courses
@@ -81,6 +82,12 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     const seenAppIds = new Set<string>();
     const uniqueApps = (allApps || []).filter(app => {
         if (seenAppIds.has(app.id)) return false;
+
+        const isExcludedStatus = app.status === 'cancelled' || app.status === 'removed' || app.status === 'rejected';
+        if (!includeRejected && isExcludedStatus) {
+            return false;
+        }
+
         seenAppIds.add(app.id);
         return true;
     });
@@ -294,6 +301,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         globalUniqueFormTypes,
         academicYears: academicYears || [],
         selectedYearId,
+        includeRejected,
         activeYearId: activeYear?.id
     };
 };

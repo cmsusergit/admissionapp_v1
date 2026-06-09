@@ -58,6 +58,13 @@
         goto(`?${params.toString()}`);
     }
 
+    function handleRejectedToggle(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const params = new URLSearchParams($page.url.searchParams);
+        params.set('include_rejected', target.checked.toString());
+        goto(`?${params.toString()}`);
+    }
+
     const metrics = [
         { id: 'paid', label: 'Paid Students', icon: 'bi-currency-dollar' },
         { id: 'submitted', label: 'Submitted Apps', icon: 'bi-file-earmark-check' },
@@ -279,21 +286,43 @@
 </script>
 
 <div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h1 class="mb-1">Capacity Report</h1>
-            <p class="text-muted mb-0">
+            <p class="text-muted mb-2">
                 {viewMode === 'simple' 
                     ? 'Summarized view of admitted students categorized by form type.' 
                     : 'Detailed intake capacity, unique student counts, and application breakdowns.'}
             </p>
+
+            <!-- Filters Row -->
+            <div class="d-flex align-items-center bg-white border rounded px-3 py-2 shadow-sm" style="width: fit-content;">
+                <div class="form-check mb-0 me-3 border-end pe-3">
+                    <input class="form-check-input" type="checkbox" id="includeUnassigned" bind:checked={includeUnassigned}>
+                    <label class="form-check-label small fw-bold" for="includeUnassigned">
+                        Include Unassigned
+                    </label>
+                </div>
+                <div class="form-check mb-0">
+                    <input 
+                        class="form-check-input" 
+                        type="checkbox" 
+                        id="includeRejected" 
+                        checked={data.includeRejected}
+                        onchange={handleRejectedToggle}
+                    >
+                    <label class="form-check-label small fw-bold" for="includeRejected">
+                        Include Rejected/Removed
+                    </label>
+                </div>
+            </div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-self-start">
             <div class="me-2">
                 <select 
                     class="form-select shadow-sm" 
                     value={data.selectedYearId} 
-                    on:change={handleYearChange}
+                    onchange={handleYearChange}
                 >
                     {#each data.academicYears as year}
                         <option value={year.id}>
@@ -313,7 +342,7 @@
                             <li>
                                 <button 
                                     class="dropdown-item d-flex align-items-center gap-2 {selectedMetric === metric.id ? 'active' : ''}" 
-                                    on:click={() => selectedMetric = metric.id as any}
+                                    onclick={() => selectedMetric = metric.id as any}
                                 >
                                     <i class={metric.icon}></i> {metric.label}
                                 </button>
@@ -322,34 +351,28 @@
                     </ul>
                 </div>
             {/if}
+
             <div class="btn-group shadow-sm">
                 <button 
                     class="btn {viewMode === 'detailed' ? 'btn-primary' : 'btn-outline-primary'}" 
-                    on:click={() => viewMode = 'detailed'}
+                    onclick={() => viewMode = 'detailed'}
                 >
                     Detailed View
                 </button>
                 <button 
                     class="btn {viewMode === 'simple' ? 'btn-primary' : 'btn-outline-primary'}" 
-                    on:click={() => viewMode = 'simple'}
+                    onclick={() => viewMode = 'simple'}
                 >
                     Simple View
                 </button>
             </div>
-            <div class="d-flex align-items-center bg-white border rounded px-3 shadow-sm">
-                <div class="form-check mb-0">
-                    <input class="form-check-input" type="checkbox" id="includeUnassigned" bind:checked={includeUnassigned}>
-                    <label class="form-check-label small fw-bold" for="includeUnassigned">
-                        Include Unassigned
-                    </label>
-                </div>
-            </div>
+
             <div class="btn-group shadow-sm">
-                <button class="btn btn-success" on:click={downloadCapacityReport}>
+                <button class="btn btn-success" onclick={downloadCapacityReport}>
                     <i class="bi bi-file-earmark-excel"></i> Export Excel
                 </button>
                 {#if viewMode === 'simple'}
-                    <button class="btn btn-danger" on:click={downloadPDF}>
+                    <button class="btn btn-danger" onclick={downloadPDF}>
                         <i class="bi bi-file-earmark-pdf"></i> Export PDF
                     </button>
                 {/if}

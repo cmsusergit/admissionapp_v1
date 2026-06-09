@@ -325,14 +325,23 @@
         
         const { operator = 'equals', equals } = showWhen;
         
+        const valStr = String(checkValue || '').toLowerCase();
+        const equalsStr = String(equals || '').toLowerCase();
+
         if (operator === 'in' && Array.isArray(equals)) {
-            return equals.includes(checkValue);
+            return equals.map(v => String(v).toLowerCase()).includes(valStr);
+        }
+        if (operator === 'contains') {
+            return valStr.includes(equalsStr);
+        }
+        if (operator === 'notContains') {
+            return !valStr.includes(equalsStr);
         }
         if (operator === 'notEquals') {
-            return checkValue !== equals;
+            return valStr !== equalsStr;
         }
         // Default: equals
-        return checkValue === equals;
+        return valStr === equalsStr;
     }
 
     // Track formData changes for visibility and dependent selects

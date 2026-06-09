@@ -279,8 +279,8 @@
                 if (values.length > 0) {
                     field.showWhen = { field: showWhenField.trim(), operator: 'in', equals: values };
                 }
-            } else if (showWhenOperator === 'notEquals' && showWhenValues) {
-                field.showWhen = { field: showWhenField.trim(), operator: 'notEquals', equals: showWhenValues.trim() };
+            } else if ((showWhenOperator === 'notEquals' || showWhenOperator === 'contains' || showWhenOperator === 'notContains') && showWhenValues) {
+                field.showWhen = { field: showWhenField.trim(), operator: showWhenOperator, equals: showWhenValues.trim() };
             } else if (showWhenValues) {
                 // Default: equals
                 field.showWhen = { field: showWhenField.trim(), operator: 'equals', equals: showWhenValues.trim() };
@@ -308,18 +308,18 @@
                     endpoint,
                     valueField,
                     labelField
-                    };
-                    }
-                    }
+                };
+            }
+        }
 
-                    // Copy From & Transform
-                    if (enableCopyFrom && copyFromField && copyFromLabel) {
-                    field.copyFrom = { field: copyFromField, label: copyFromLabel };
-                    }
-                    if (transformUppercase) field.transform = 'uppercase';
+        // Copy From & Transform
+        if (enableCopyFrom && copyFromField && copyFromLabel) {
+            field.copyFrom = { field: copyFromField, label: copyFromLabel };
+        }
+        if (transformUppercase) field.transform = 'uppercase';
 
-                    return field;
-                    }
+        return field;
+    }
 
     function editField(index: number) {
         const field = schema.fields[index];
@@ -956,6 +956,16 @@
                                 placeholder="Search or type field key..."
                             />
                             <datalist id="available-fields-list-{sectionId}">
+                                <!-- System Fields -->
+                                <option value="course_id">Course ID (System Field)</option>
+                                <option value="course_name">Course Name (System Field)</option>
+                                <option value="branch_id">Branch ID (System Field)</option>
+                                <option value="branch_name">Branch Name (System Field)</option>
+                                <option value="admission_type">Admission Type (System Field)</option>
+                                <option value="cycle_id">Cycle (System Field)</option>
+                                <option value="form_type">Form Type (System Field)</option>
+                                
+                                <!-- Form Fields -->
                                 {#each schema.fields.filter(f => f.key !== (linkToProfileField ? selectedProfileFieldKey : key)) as field}
                                     <option value={field.key}>{field.label} ({field.key})</option>
                                 {/each}
@@ -967,6 +977,8 @@
                                 <option value="equals">Equals</option>
                                 <option value="notEquals">Not Equals</option>
                                 <option value="in">In (Multiple)</option>
+                                <option value="contains">Contains (Partial Match)</option>
+                                <option value="notContains">Not Contains</option>
                             </select>
                         </div>
                         <div class="col-md-5">

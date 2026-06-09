@@ -15,6 +15,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
     // Get filter values from URL
     const academicYearId = url.searchParams.get('academic_year_id');
     const selectedFormType = url.searchParams.get('form_type') || 'all';
+    const selectedCourseId = url.searchParams.get('course_id') || 'all';
 
     // 1. Fetch academic years to power the filter
     const { data: academicYears } = await supabase
@@ -52,9 +53,13 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         query = query.eq('form_type', selectedFormType);
     }
 
+    if (selectedCourseId !== 'all') {
+        query = query.eq('course_id', selectedCourseId);
+    }
+
     const { data: forms, error: formsError } = await query.order('created_at', { ascending: false });
 
-    const { data: courses, error: coursesError } = await supabase.from('courses').select('id, name');
+    const { data: courses, error: coursesError } = await supabase.from('courses').select('id, name').order('name');
     const { data: admissionCycles, error: cyclesError } = await supabase.from('admission_cycles').select('id, name, academic_years(name)');
     const { data: formTypes, error: formTypesError } = await supabase.from('form_types').select('name, code').eq('is_active', true).order('name');
 
@@ -69,7 +74,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         formTypes: formTypes || [],
         academicYears: academicYears || [],
         selectedYearId: filterYearId,
-        selectedFormType
+        selectedFormType,
+        selectedCourseId
     };
 };
 

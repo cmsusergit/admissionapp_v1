@@ -60,6 +60,7 @@
         const url = new URL($page.url);
         url.searchParams.set('academic_year_id', data.selectedYearId || '');
         url.searchParams.set('form_type', data.selectedFormType || 'all');
+        url.searchParams.set('course_id', data.selectedCourseId || 'all');
         goto(url.toString());
     }
 </script>
@@ -79,6 +80,15 @@
                     <select class="form-select form-select-sm" bind:value={data.selectedYearId} on:change={handleFilterChange}>
                         {#each data.academicYears as year}
                             <option value={year.id}>{year.name} {year.is_active ? '(Active)' : ''}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="small fw-bold text-muted mb-0">Course</label>
+                    <select class="form-select form-select-sm" bind:value={data.selectedCourseId} on:change={handleFilterChange}>
+                        <option value="all">All Courses</option>
+                        {#each data.courses as course}
+                            <option value={course.id}>{course.name}</option>
                         {/each}
                     </select>
                 </div>
