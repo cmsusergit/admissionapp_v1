@@ -10,20 +10,50 @@
     import { startLoading, stopLoading } from '$lib/stores/loadingStore'; 
     import { getBranchDisplayCode } from '$lib/utils/display_helpers'; // Import the helper
 
-    export let data: PageData;
-    export let form: ActionData; 
+    let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
     // State variables for form selections
-    let selectedCollegeId: string = '';
-    let selectedCourseId: string = '';
-    let selectedCycleId: string = '';
-    let selectedFormType: string = 'Provisional'; // Default
-    let selectedBranchId: string = '';
-    let selectedAdmissionType: string = 'Regular';
+    let selectedCollegeId = $state('');
+    let selectedCourseId = $state('');
+    let selectedCycleId = $state('');
+    let selectedFormType = $state('Provisional'); // Default
+    let selectedBranchId = $state('');
+    let selectedAdmissionType = $state('Regular');
     
     // Application data and UI state
-    let currentApplicationId: string | null = null;
-    let applicationFormData: Record<string, any> = {};
+    let currentApplicationId = $state<string | null>(null);
+    let applicationFormData = $state<Record<string, any>>({});
+    
+    let lastLoadedKey = $state('');
+    let lastCheckedKey = $state('');
+
+    // Derived stores for filtering options
+    let uniqueColleges = $derived(Array.from(new Map(data.courses.map((c: any) => [c.colleges?.id, c.colleges])).values()).filter(c => c));
+    let filteredCourses = $derived(selectedCollegeId 
+        ? data.courses.filter((c: any) => c.colleges?.id === selectedCollegeId) 
+        : []);
+    
+    let filteredBranches = $derived(selectedCourseId
+        ? data.branches.filter((b: any) => b.course_id === selectedCourseId)
+        : []);
+
+    // Filter available form types based on enabled forms for selected Course/Cycle
+    let availableFormTypes = $derived(data.formTypes.filter((ft: any) => {
+        if (!selectedCourseId || !selectedCycleId) return false;
+        if (ft.student_can_apply === false) return false;
+
+        return data.enabledForms?.some((ef: any) => 
+            ef.course_id === selectedCourseId && 
+            ef.cycle_id === selectedCycleId && 
+            ef.form_type === ft.name
+        );
+    }));
+
+    // Derived allowed admission types
+    let currentAdmissionFormSchema = $state<any>(null);
+    let allowedAdmissionTypes = $derived(currentAdmissionFormSchema?.allowedAdmissionTypes 
+        ? currentAdmissionFormSchema.allowedAdmissionTypes.split(',').map((t: string) => t.trim()).filter(Boolean)
+        : []);
 
     // Helper: Merge autofill data from profile and inquiry
     function mergeAutofillData(schema: any) {
@@ -73,42 +103,12 @@
         return merged;
     }
 
-    let currentAdmissionFormSchema: any = null;
-    let isLoadingSchema = false;
-    let uiMessage: { type: 'success' | 'danger' | 'info' | 'warning', text: string } | null = null;
-
-    // Derived allowed admission types
-    $: allowedAdmissionTypes = currentAdmissionFormSchema?.allowedAdmissionTypes 
-        ? currentAdmissionFormSchema.allowedAdmissionTypes.split(',').map((t: string) => t.trim()).filter(Boolean)
-        : [];
+    let isLoadingSchema = $state(false);
+    let uiMessage = $state<{ type: 'success' | 'danger' | 'info' | 'warning', text: string } | null>(null);
 
     // Payment state
-    let showPaymentModal = false;
-    let currentFeeAmount = 0;
-
-    // Derived stores for filtering options
-    $: uniqueColleges = Array.from(new Map(data.courses.map((c: any) => [c.colleges?.id, c.colleges])).values()).filter(c => c);
-    $: filteredCourses = selectedCollegeId 
-        ? data.courses.filter((c: any) => c.colleges?.id === selectedCollegeId) 
-        : [];
-    
-    $: filteredBranches = selectedCourseId
-        ? data.branches.filter((b: any) => b.course_id === selectedCourseId)
-        : [];
-
-    // Filter available form types based on enabled forms for selected Course/Cycle
-    $: availableFormTypes = data.formTypes.filter((ft: any) => {
-        if (!selectedCourseId || !selectedCycleId) return false;
-        
-        // Filter by database permission flag (if it exists)
-        if (ft.student_can_apply === false) return false;
-
-        return data.enabledForms?.some((ef: any) => 
-            ef.course_id === selectedCourseId && 
-            ef.cycle_id === selectedCycleId && 
-            ef.form_type === ft.name
-        );
-    });
+    let showPaymentModal = $state(false);
+    let currentFeeAmount = $state(0);
 
     // Event handlers for selection changes
     function handleCollegeChange() {
@@ -118,7 +118,6 @@
         selectedCycleId = '';
         selectedFormType = '';
         currentAdmissionFormSchema = null;
-        hasAutoChecked = false; // Reset auto-check
         console.log('Resetting selections.');
     }
 
@@ -128,93 +127,133 @@
         selectedCycleId = '';
         selectedFormType = '';
         currentAdmissionFormSchema = null;
-        hasAutoChecked = false; // Reset auto-check
         console.log('Resetting selections.');
     }
 
-    let hasAutoChecked = false;
-    
-    // Reactivity block for filtering form types and checking applications
-    $: {
-        console.log('--- Reactive Block Triggered ---');
-        console.log('Current Selections:', { selectedCollegeId, selectedCourseId, selectedCycleId, selectedFormType, selectedBranchId });
+    // Function to synchronize core selections into form data
+    function syncSelectionsToFormData() {
+        if (!applicationFormData) return;
         
-        // Sync selections into applicationFormData for DynamicForm visibility rules
-        if (applicationFormData) {
-            applicationFormData.course_id = selectedCourseId;
-            applicationFormData.branch_id = selectedBranchId;
-            applicationFormData.admission_type = selectedAdmissionType;
-            applicationFormData.cycle_id = selectedCycleId;
-            applicationFormData.form_type = selectedFormType;
-            
-            // Sync names for visibility logic (requested by user)
-            applicationFormData.course_name = data.courses.find(c => c.id === selectedCourseId)?.name || '';
-            applicationFormData.branch_name = data.branches.find(b => b.id === selectedBranchId)?.name || '';
-        }
-
-        // Only check for "any" existing application if NOT loading a specific one from URL
-        const urlAppId = $page.url.searchParams.get('applicationId');
+        console.log('Syncing selections to form data');
+        applicationFormData.course_id = selectedCourseId;
+        applicationFormData.branch_id = selectedBranchId;
+        applicationFormData.admission_type = selectedAdmissionType;
+        applicationFormData.cycle_id = selectedCycleId;
+        applicationFormData.form_type = selectedFormType;
         
-        // Only auto-check once when Course/Cycle are selected and no type is chosen yet
-        if (selectedCourseId && selectedCycleId && !urlAppId && !selectedFormType && !hasAutoChecked) {
-            console.log('Course and Cycle selected. Checking for existing applications...');
-            checkAnyExistingApplication();
-            hasAutoChecked = true;
-        }
-        
-        // Reset auto-check flag if Course/Cycle changes
-        if (!selectedCourseId || !selectedCycleId) {
-            hasAutoChecked = false;
-        }
-        
-        if (selectedCourseId && selectedCycleId && selectedFormType) {
-            console.log('All main selections made. Loading schema and application data...');
-            loadSchemaAndApplication();
-        } else {
-            currentAdmissionFormSchema = null;
-            console.log('Missing selections for schema/app load.');
-        }
+        // Sync names for visibility logic (requested by user)
+        applicationFormData.course_name = data.courses.find(c => c.id === selectedCourseId)?.name || '';
+        applicationFormData.branch_name = data.branches.find(b => b.id === selectedBranchId)?.name || '';
     }
 
+    // Reactively sync whenever core selections change, but without modifying the selections themselves
+    $effect(() => {
+        if (selectedCourseId || selectedBranchId || selectedAdmissionType || selectedCycleId || selectedFormType) {
+            syncSelectionsToFormData();
+        }
+    });
+
+    // 2. Auto-check for existing applications when Course/Cycle are selected
+    $effect(() => {
+        const checkKey = `${selectedCourseId}|${selectedCycleId}`;
+        const urlAppId = $page.url.searchParams.get('applicationId');
+
+        if (selectedCourseId && selectedCycleId && !urlAppId && !selectedFormType && checkKey !== lastCheckedKey) {
+            console.log('Course and Cycle selected. Checking for existing applications...');
+            checkAnyExistingApplication();
+            lastCheckedKey = checkKey;
+        }
+        
+        if (!selectedCourseId || !selectedCycleId) {
+            lastCheckedKey = '';
+        }
+    });
+    
+    // 3. Load schema and application data when selections are complete
+    $effect(() => {
+        const loadKey = `${selectedCourseId}|${selectedCycleId}|${selectedFormType}`;
+        
+        if (selectedCourseId && selectedCycleId && selectedFormType) {
+            if (loadKey !== lastLoadedKey) {
+                console.log('All main selections made. Guard triggering loadSchemaAndApplication...');
+                lastLoadedKey = loadKey; // Set early to prevent parallel triggers
+                loadSchemaAndApplication();
+            }
+        } else {
+            if (lastLoadedKey !== '') {
+                currentAdmissionFormSchema = null;
+                lastLoadedKey = '';
+                console.log('Selections cleared. Resetting schema.');
+            }
+        }
+    });
+
+    // Default to first available cycle if course is selected
+    $effect(() => {
+        if (selectedCourseId && !selectedCycleId && data.availableCycles.length > 0) {
+            selectedCycleId = data.availableCycles[0].id;
+        }
+    });
+
+    // Reactivity for URL parameters and existing application loading
+    let urlApplicationId = $derived($page.url.searchParams.get('applicationId'));
+    let urlCourseId = $derived($page.url.searchParams.get('courseId'));
+
+    $effect(() => {
+        if (urlApplicationId && urlApplicationId !== currentApplicationId) {
+            currentApplicationId = urlApplicationId;
+            fetchExistingApplication(urlApplicationId);
+        }
+    });
+
+    $effect(() => {
+        if (!urlApplicationId && urlCourseId && !selectedCourseId) {
+            const course = data.courses.find(c => c.id === urlCourseId) as any;
+            if (course && course.colleges) {
+                selectedCollegeId = course.colleges.id;
+                selectedCourseId = course.id;
+            }
+        }
+    });
+
+    // Function to fetch admission form schema from Supabase
     async function checkAnyExistingApplication() {
         console.log('--- checkAnyExistingApplication ---');
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { console.log('User not logged in.'); return; }
-        console.log('Checking for existing application for user:', user.id);
-
-        const { data: anyApp } = await supabase
-            .from('applications')
-            .select('form_type')
-            .eq('student_id', user.id)
-            .eq('course_id', selectedCourseId)
-            .eq('cycle_id', selectedCycleId)
-            .limit(1)
-            .maybeSingle();
         
-        console.log('Query result for checkAnyExistingApplication:', anyApp);
-        if (anyApp) {
-            if (selectedFormType !== anyApp.form_type) {
-                console.log('Existing app found with different form_type. Auto-setting type to:', anyApp.form_type);
-                selectedFormType = anyApp.form_type; // This will trigger the main loadSchemaAndApplication reactive block
-            } else {
-                console.log('Existing app found with same form_type. No change to selectedFormType.');
+        startLoading();
+        try {
+            const { data: anyApp } = await supabase
+                .from('applications')
+                .select('form_type')
+                .eq('student_id', user.id)
+                .eq('course_id', selectedCourseId)
+                .eq('cycle_id', selectedCycleId)
+                .limit(1)
+                .maybeSingle();
+            
+            if (anyApp && selectedFormType !== anyApp.form_type) {
+                console.log('Existing app found. Setting type to:', anyApp.form_type);
+                selectedFormType = anyApp.form_type; 
             }
-        } else {
-            console.log('No existing application found for this Course/Cycle.');
-            // If no existing app, and formType is empty, default it? Or let user pick.
-            // For now, let user pick, or the reactive block will eventually trigger load.
+        } finally {
+            stopLoading();
         }
     }
 
     async function loadSchemaAndApplication() {
-        console.log('--- loadSchemaAndApplication ---');
-        console.log('Fetching schema for:', { selectedCourseId, selectedCycleId, selectedFormType });
-        // 1. Fetch Schema first
-        await fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType);
-        console.log('Schema fetched. Now checking application.');
+        console.log('--- loadSchemaAndApplication START ---');
+        startLoading();
         
-        // 2. Then check application (Always check to support resuming drafts even if branch not selected yet)
-        await checkExistingApplication();
+        try {
+            await fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType);
+            await checkExistingApplication();
+            syncSelectionsToFormData();
+        } finally {
+            console.log('--- loadSchemaAndApplication END ---');
+            stopLoading();
+        }
     }
 
     // Helper to merge profile and inquiry data into form data based on schema
@@ -246,8 +285,6 @@
         console.log('--- checkExistingApplication ---');
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { console.log('User not logged in.'); return; }
-        console.log('Checking for specific existing application for user:', user.id);
-        console.log('Current form selection for query:', { selectedCourseId, selectedCycleId, selectedFormType });
 
         let query = supabase
             .from('applications')
@@ -257,88 +294,38 @@
             .eq('cycle_id', selectedCycleId)
             .eq('form_type', selectedFormType);
 
-        // Branch filter is NOT applied here, because selectedBranchId is set AFTER the app is found
-        // if it has a branch, so we find it first.
-
         const { data: existingApp, error: appQueryError } = await query.maybeSingle();
         if (appQueryError) console.error('Error in checkExistingApplication query:', appQueryError);
-        console.log('Query result for checkExistingApplication:', existingApp);
 
         if (existingApp) {
             currentApplicationId = existingApp.id;
-            console.log('Existing application ID set:', currentApplicationId);
-            
-            if (existingApp.branch_id) {
-                selectedBranchId = existingApp.branch_id;
-                console.log('Branch ID from existing app set:', selectedBranchId);
-            } else {
-                selectedBranchId = '';
-                console.log('No branch ID for existing app.');
-            }
-
-            if (existingApp.admission_type) {
-                selectedAdmissionType = existingApp.admission_type;
-                console.log('Admission Type from existing app set:', selectedAdmissionType);
-            } else {
-                selectedAdmissionType = 'Regular';
-            }
+            if (existingApp.branch_id) selectedBranchId = existingApp.branch_id;
+            if (existingApp.admission_type) selectedAdmissionType = existingApp.admission_type;
             
             applicationFormData = mergeProfileData(
                 existingApp.form_data || {}, 
                 currentAdmissionFormSchema, 
                 data.studentProfile?.profile_data
             );
-            console.log('Application form data merged.');
 
             if (['verified', 'approved', 'submitted'].includes(existingApp.status)) {
                 let msg = 'Application is locked.';
                 if (existingApp.status === 'submitted') msg = 'Application submitted. Pending verification.';
                 if (existingApp.status === 'verified') msg = 'Application verified.';
                 if (existingApp.status === 'approved') msg = 'Application approved.';
-                
                 uiMessage = { type: 'info', text: msg };
-                console.log('UI Message set:', uiMessage.text);
             } else {
                 uiMessage = null;
-                console.log('UI Message cleared.');
             }
         } else {
-            console.log('No specific existing application found for current selections.');
             if (currentApplicationId) {
                 currentApplicationId = null;
                 uiMessage = null;
-                console.log('Resetting current application ID for new draft.');
             }
             applicationFormData = mergeProfileData({}, currentAdmissionFormSchema, data.studentProfile?.profile_data);
-            console.log('Application form data initialized with profile for new draft.');
-        }
-        
-        stopLoading();
-    }
-
-    // Default to first available cycle if course is selected
-    $: if (selectedCourseId && !selectedCycleId && data.availableCycles.length > 0) {
-        selectedCycleId = data.availableCycles[0].id;
-    }
-
-    // Reactivity for URL parameters and existing application loading
-    $: urlApplicationId = $page.url.searchParams.get('applicationId');
-    $: urlCourseId = $page.url.searchParams.get('courseId');
-
-    $: if (urlApplicationId && urlApplicationId !== currentApplicationId) {
-        currentApplicationId = urlApplicationId;
-        fetchExistingApplication(urlApplicationId);
-    }
-
-    $: if (!urlApplicationId && urlCourseId && !selectedCourseId) {
-        const course = data.courses.find(c => c.id === urlCourseId) as any;
-        if (course && course.colleges) {
-            selectedCollegeId = course.colleges.id;
-            selectedCourseId = course.id;
         }
     }
 
-    // Function to fetch admission form schema from Supabase
     async function fetchAdmissionFormSchema(courseId: string, cycleId: string, formType: string) {
         isLoadingSchema = true;
         const { data: formResult, error } = await supabase
@@ -615,14 +602,21 @@
                     {/if}
                 </div>
                 {#if isLoadingSchema}
-                    <p>Loading form...</p>
+                    <div class="text-center p-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading form...</p>
+                    </div>
                 {:else if currentAdmissionFormSchema && currentAdmissionFormSchema.fields && currentAdmissionFormSchema.fields.length > 0}
-                    <DynamicForm 
-                        schema={currentAdmissionFormSchema} 
-                        bind:formData={applicationFormData} 
-                        bind:this={dynamicForm} 
-                        readonly={uiMessage?.text?.includes('locked')}
-                    />
+                    {#key `${selectedCourseId}-${selectedCycleId}-${selectedFormType}`}
+                        <DynamicForm 
+                            schema={currentAdmissionFormSchema} 
+                            bind:formData={applicationFormData} 
+                            bind:this={dynamicForm} 
+                            readonly={uiMessage?.text?.includes('locked')}
+                        />
+                    {/key}
                     {#if !uiMessage?.text?.includes('locked')}
                         <div class="mt-3 text-end">
                             <button class="btn btn-success" on:click={handleSubmitApplication}>Submit Application</button>

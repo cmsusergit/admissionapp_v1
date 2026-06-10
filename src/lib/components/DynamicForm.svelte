@@ -81,8 +81,24 @@
     let dynamicOptions = $state<Record<string, { value: string; label: string }[]>>({});
     let componentId = Math.random().toString(36).substring(7);
     
+    // Internal initialization flags
+    let initialized = $state(false);
+    let defaultsInitialized = $state(false);
+
     // Compute field key helper
     const getKey = (f: FormField) => f.key || f.name || '';
+    
+    // Track rendered keys to prevent duplicates in the UI
+    let renderedKeys = new Set<string>();
+    function shouldRender(field: FormField): boolean {
+        const key = getKey(field);
+        if (renderedKeys.has(key)) return false;
+        renderedKeys.add(key);
+        return true;
+    }
+
+    // Reset rendered keys before each render cycle
+    // Note: In Svelte 5 snippets, we might need a better way, but for now we'll reset in the main render
     
     // Visibility is computed reactively based on formData changes
     // We'll compute it inline in templates using checkVisibility function
@@ -90,49 +106,49 @@
     // Helper to check if a field is visible - uses formData directly
     function isFieldVisible(field: FormField): boolean {
         if (!field.showWhen) return true;
-        const result = checkVisibility(field.showWhen, formData);
-        // Debug: log visibility changes
-        const key = getKey(field);
-        const showWhenField = field.showWhen.field;
-        const showWhenValue = formData[showWhenField];
-        console.log(`[DynamicForm] Visibility check: ${key} depends on '${showWhenField}' = '${showWhenValue}' => ${result}`);
-        return result;
+        return checkVisibility(field.showWhen, formData);
     }
     
     onMount(() => {
         console.debug(`[DynamicForm ${componentId}] Mounted with ${schema.fields?.length || 0} fields`);
-        // Debug: log fields with showWhen
-        const showWhenFields = schema.fields?.filter(f => f.showWhen) || [];
-        if (showWhenFields.length > 0) {
-            console.debug(`[DynamicForm ${componentId}] Fields with showWhen:`, showWhenFields.map(f => ({ key: f.key, showWhen: f.showWhen })));
-        }
         return () => {
             console.debug(`[DynamicForm ${componentId}] Destroyed`);
         };
     });
-    
+
+    // Normalize Schema
+    let normalizedSchema = $derived({
+        layout: schema.layout || 'list',
+        sections: (schema.sections && schema.sections.length > 0) 
+            ? schema.sections 
+            : [{ id: 'default', title: 'General', layout: 'column' as const }],
+        fields: schema.fields || []
+    });
+
     $effect(() => {
-        if (schema.fields?.length > 0) {
-            console.debug(`[DynamicForm ${componentId}] Schema updated: ${schema.fields.length} fields`);
+        if (!activeTabId && normalizedSchema.sections.length > 0) {
+            activeTabId = normalizedSchema.sections[0].id;
+        }
+    });
+
+    $effect(() => {
+        if (normalizedSchema.fields?.length > 0) {
+            console.debug(`[DynamicForm ${componentId}] Schema updated: ${normalizedSchema.fields.length} fields`);
             // Check for duplicate keys in the schema
-            const fieldKeys = schema.fields.map(f => getKey(f));
+            const fieldKeys = normalizedSchema.fields.map(f => getKey(f));
             const duplicateKeys = fieldKeys.filter((key, index) => fieldKeys.indexOf(key) !== index);
             if (duplicateKeys.length > 0) {
-                console.warn(`[DynamicForm ${componentId}] WARNING - Duplicate field keys in database schema:`, [...new Set(duplicateKeys)]);
+                console.warn(`[DynamicForm ${componentId}] WARNING - Duplicate field keys found:`, [...new Set(duplicateKeys)]);
             }
         }
     });
 
     // Reactivity for initializing formData for merit fields and datagrid
-    // Initialize formData for datagrid/merit fields - only runs on first render
-    let initialized = false;
-    let defaultsInitialized = false;
-    
     $effect(() => {
-        // Only run once on initial mount
+        // Only run once per schema
         if (!initialized && normalizedSchema.fields.length > 0) {
             initialized = true;
-            console.log('[DynamicForm] Initializing formData for', normalizedSchema.fields.length, 'fields');
+            console.log('[DynamicForm] Initializing formData');
             
             let newFormData = { ...formData };
             let changed = false;
@@ -144,20 +160,16 @@
 
                 // Handle DATAGRID fields (inDatagrid === true)
                 if (isDatagridField) {
-                     // Only initialize if not already an object
                      if (typeof newFormData[key] !== 'object' || newFormData[key] === null) {
                          const existingValue = newFormData[key];
                          newFormData[key] = {};
                          if (existingValue !== undefined && existingValue !== null && section.tableColumns) {
                              const targetCol = section.tableColumns[0]?.key;
-                             if (targetCol) {
-                                 newFormData[key][targetCol] = existingValue;
-                             }
+                             if (targetCol) newFormData[key][targetCol] = existingValue;
                          }
                          changed = true;
                      }
                      
-                     // Ensure merit columns have proper structure
                      section.tableColumns?.forEach(col => {
                          if (col.is_merit) {
                              const existingColVal = newFormData[key]?.[col.key];
@@ -175,7 +187,6 @@
                          }
                      });
                 } else if (field.is_merit && !sectionHasTable) {
-                    // Handle MERIT fields outside datagrid (non-table sections only)
                     const currentVal = newFormData[key];
                     if (typeof currentVal !== 'object' || currentVal === null || !('value' in currentVal)) {
                         const existingValue = currentVal;
@@ -186,17 +197,13 @@
                         changed = true;
                     }
                 }
-                // REGULAR fields (non-datagrid in table sections, or any field in non-table sections) are NOT wrapped
             });
             
-            if (changed) {
-                formData = newFormData;
-            }
+            if (changed) formData = newFormData;
         }
     });
 
-    // Initialize DEFAULT VALUES for empty fields (after merit/datagrid init)
-    // Priority: existing saved data > autofill > default value
+    // Initialize DEFAULT VALUES
     $effect(() => {
         if (!defaultsInitialized && initialized && normalizedSchema.fields.length > 0) {
             defaultsInitialized = true;
@@ -206,17 +213,11 @@
             
             normalizedSchema.fields.forEach(field => {
                 const key = getKey(field);
-                
-                // Check if field has defaultValue defined in schema
                 if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
                     const currentValue = newFormData[key];
-                    
-                    // Only apply default if current value is empty/undefined
-                    // Don't overwrite existing data (saved in DB or autofilled)
                     const isEmpty = currentValue === undefined || currentValue === null || currentValue === '';
                     
                     if (isEmpty) {
-                        // Handle merit fields (wrapped in object)
                         if (field.is_merit) {
                             if (!newFormData[key] || typeof newFormData[key] !== 'object') {
                                 newFormData[key] = { value: '', max_score: field.max_score ?? 100 };
@@ -226,7 +227,6 @@
                                 changed = true;
                             }
                         } else {
-                            // Regular fields
                             newFormData[key] = field.defaultValue;
                             changed = true;
                         }
@@ -234,10 +234,7 @@
                 }
             });
             
-            if (changed) {
-                console.log('[DynamicForm] Applied default values');
-                formData = newFormData;
-            }
+            if (changed) formData = newFormData;
         }
     });
 
@@ -284,15 +281,6 @@
         if (changed) {
             formData = newFormData;
         }
-    });
-
-    // Normalize Schema
-    let normalizedSchema = $derived({
-        layout: schema.layout || 'list',
-        sections: (schema.sections && schema.sections.length > 0) 
-            ? schema.sections 
-            : [{ id: 'default', title: 'General', layout: 'column' as const }],
-        fields: schema.fields || []
     });
 
     $effect(() => {
@@ -657,7 +645,7 @@
                     type="number"
                     step="any"
                     class="form-control"
-                    id="{fieldId}-value"
+                    id={fieldId}
                     name="{key}-value"
                     placeholder="Score"
                     value={formData[key]?.value ?? ''}
@@ -841,7 +829,7 @@
     {/if}
 {/snippet}
 
-{#snippet sectionContent(section: FormSection)}
+{#snippet sectionContent(section: FormSection, rKeys: Set<string>)}
     {@const sectionFields = getFieldsForSection(section.id)}
     {@const isTableLayout = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0}
     {@const regularFields = isTableLayout ? sectionFields.filter(f => !f.inDatagrid) : sectionFields}
@@ -850,11 +838,12 @@
     <!-- Regular Fields -->
     {#if regularFields.length > 0}
         <div class="row mb-3">
-            {#each regularFields as field, fieldIndex}
+            {#each regularFields as field, fieldIndex (getKey(field) + '-' + fieldIndex)}
                 {@const key = getKey(field)}
-                {@const fieldId = `${section.id}-${key}-${fieldIndex}`}
-                {#if isFieldVisible(field)}
+                {@const fieldId = `reg-${section.id}-${key}-${fieldIndex}`}
+                {#if isFieldVisible(field) && !rKeys.has(key)}
                     <div class="{`col-md-${field.col || 12}`} mb-2">
+                        {rKeys.add(key) ? '' : ''}
                         <label for={fieldId} class="form-label">
                             {field.label}
                             {#if field.required}<span class="text-danger">*</span>{/if}
@@ -876,7 +865,7 @@
                 <thead class="table-light">
                     <tr>
                         <th style="width: 25%">{section.rowHeaderLabel || 'Field Name'}</th>
-                        {#each section.tableColumns || [] as col}
+                        {#each section.tableColumns || [] as col (col.key)}
                             <th>{col.label}</th>
                             {#if col.is_merit}
                                 <th style="width: 15%; min-width: 100px;">{col.label} Max</th>
@@ -885,24 +874,25 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {#each datagridFields as field, fieldIndex}
+                    {#each datagridFields as field, fieldIndex (getKey(field) + '-' + fieldIndex)}
                         {@const key = getKey(field)}
-                        {@const fieldId = `${section.id}-${key}-${fieldIndex}`}
-                        {#if isFieldVisible(field)}
+                        {@const fieldId = `dg-${section.id}-${key}-${fieldIndex}`}
+                        {#if isFieldVisible(field) && !rKeys.has(key)}
                             <tr>
                                 <td>
+                                    {rKeys.add(key) ? '' : ''}
                                     <label for={fieldId} class="form-label mb-0 fw-semibold">
                                         {field.label}
                                         {#if field.required}<span class="text-danger">*</span>{/if}
                                     </label>
                                 </td>
-                                {#each section.tableColumns || [] as col}
-                                    {@const cellId = `${fieldId}-${col.key}`}
+                                {#each section.tableColumns || [] as col, colIndex (col.key)}
+                                    {@const cellId = colIndex === 0 ? fieldId : `${fieldId}-${col.key}`}
                                     {@const maxScoreId = `${fieldId}-${col.key}-max`}
                                     <td>
                                         {#if col.type === 'calculated'}
                                             {@const calcVal = getCalculatedValue(key, col.formula)}
-                                            <input type="text" class="form-control bg-light" readonly value={calcVal} />
+                                            <input type="text" class="form-control bg-light" id={cellId} readonly value={calcVal} />
                                             <input type="hidden" name={`${key}-${col.key}`} value={calcVal} />
                                         {:else}
                                             <input
@@ -961,7 +951,7 @@
                     <tfoot class="table-light">
                         <tr>
                             <td><strong>{section.summaryRowLabel || 'Total'}</strong></td>
-                            {#each section.tableColumns || [] as col}
+                            {#each section.tableColumns || [] as col (col.key)}
                                 <td>
                                     {#if col.aggregate}
                                         {@const values = datagridFields.map(f => {
@@ -1013,61 +1003,65 @@
 {/snippet}
 
 <div class="dynamic-form-container">
-    {#if normalizedSchema.layout === 'tabs'}
-        <ul class="nav nav-tabs mb-3">
-            {#each normalizedSchema.sections as section}
-                <li class="nav-item">
-                    <button 
-                        class="nav-link {activeTabId === section.id ? 'active' : ''}"
-                        onclick={() => activeTabId = section.id}
-                        type="button"
-                    >
-                        {section.title}
-                    </button>
-                </li>
-            {/each}
-        </ul>
-        
-        <div class="tab-content border p-3 border-top-0 rounded-bottom bg-white">
-            {#each normalizedSchema.sections as section}
-                <div class="tab-pane fade {activeTabId === section.id ? 'show active' : ''}" style="display: {activeTabId === section.id ? 'block' : 'none'}">
-                    {@render sectionContent(section)}
-                </div>
-            {/each}
-        </div>
-
-    {:else if normalizedSchema.layout === 'cards'}
-        {#each normalizedSchema.sections as section}
-            <div class="card mb-4 shadow-sm">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0 text-primary">{section.title}</h5>
-                </div>
-                <div class="card-body">
-                    {@render sectionContent(section)}
-                </div>
-            </div>
-        {/each}
-
-    {:else}
-        <!-- List Layout (Legacy) -->
-        <div class="row">
-            {#each schema.fields as field, fieldIndex}
-                {@const key = getKey(field)}
-                {@const fieldId = `${key}-${fieldIndex}`} 
-                {#if isFieldVisible(field)}
-                    <div class="{`col-md-${field.col || 12}`} mb-3">
-                        <label for={fieldId} class="form-label">
-                            {field.label}
-                            {#if field.required}<span class="text-danger">*</span>{/if}
-                        </label>
-                        {@render fieldControl(field, fieldId, key, false)}
-                        {#if errors[key]}
-                            <div class="text-danger mt-1">{errors[key]}</div>
-                        {/if}
+    {#if true}
+        {@const rKeys = new Set<string>()}
+        {#if normalizedSchema.layout === 'tabs'}
+            <ul class="nav nav-tabs mb-3">
+                {#each normalizedSchema.sections as section (section.id)}
+                    <li class="nav-item">
+                        <button 
+                            class="nav-link {activeTabId === section.id ? 'active' : ''}"
+                            onclick={() => activeTabId = section.id}
+                            type="button"
+                        >
+                            {section.title}
+                        </button>
+                    </li>
+                {/each}
+            </ul>
+            
+            <div class="tab-content border p-3 border-top-0 rounded-bottom bg-white">
+                {#each normalizedSchema.sections as section (section.id)}
+                    <div class="tab-pane fade {activeTabId === section.id ? 'show active' : ''}" style="display: {activeTabId === section.id ? 'block' : 'none'}">
+                        {@render sectionContent(section, rKeys)}
                     </div>
-                {/if}
+                {/each}
+            </div>
+
+        {:else if normalizedSchema.layout === 'cards'}
+            {#each normalizedSchema.sections as section (section.id)}
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0 text-primary">{section.title}</h5>
+                    </div>
+                    <div class="card-body">
+                        {@render sectionContent(section, rKeys)}
+                    </div>
+                </div>
             {/each}
-        </div>
+
+        {:else}
+            <!-- List Layout (Legacy) -->
+            <div class="row">
+                {#each normalizedSchema.fields as field, fieldIndex (getKey(field) + '-' + fieldIndex)}
+                    {@const key = getKey(field)}
+                    {@const fieldId = `list-${key}-${fieldIndex}`} 
+                    {#if isFieldVisible(field) && !rKeys.has(key)}
+                        <div class="{`col-md-${field.col || 12}`} mb-3">
+                            {rKeys.add(key) ? '' : ''}
+                            <label for={fieldId} class="form-label">
+                                {field.label}
+                                {#if field.required}<span class="text-danger">*</span>{/if}
+                            </label>
+                            {@render fieldControl(field, fieldId, key, false)}
+                            {#if errors[key]}
+                                <div class="text-danger mt-1">{errors[key]}</div>
+                            {/if}
+                        </div>
+                    {/if}
+                {/each}
+            </div>
+        {/if}
     {/if}
 </div>
 

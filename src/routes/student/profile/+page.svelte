@@ -135,7 +135,7 @@
                                     </label>
 
                                     {#if field.type === 'select'}
-                                        <select class="form-select" name={field.key} bind:value={profileData[field.key]} required={!isDraft && field.is_required}>
+                                        <select class="form-select" id={field.key} name={field.key} bind:value={profileData[field.key]} required={!isDraft && field.is_required}>
                                             <option value="">-- Select --</option>
                                             {#each field.options || [] as opt}
                                                 {@const parts = typeof opt === 'string' ? opt.split('|') : [opt]}
@@ -147,6 +147,7 @@
                                     {:else if field.type === 'textarea'}
                                         <textarea 
                                             class="form-control" 
+                                            id={field.key}
                                             name={field.key} 
                                             bind:value={profileData[field.key]} 
                                             required={!isDraft && field.is_required}
@@ -158,6 +159,7 @@
                                             <input 
                                                 type="file" 
                                                 class="form-control" 
+                                                id={field.key}
                                                 accept="image/*,application/pdf"
                                                 onchange={(e) => handleFileUpload(e, field.key)}
                                                 disabled={uploadingFields[field.key]}
@@ -179,6 +181,7 @@
                                         <input 
                                             type={field.type} 
                                             class="form-control" 
+                                            id={field.key}
                                             name={field.key} 
                                             bind:value={profileData[field.key]}
                                             required={!isDraft && field.is_required}
