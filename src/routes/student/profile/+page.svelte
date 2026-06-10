@@ -153,14 +153,14 @@
                                             required={!isDraft && field.is_required}
                                             style={field.force_uppercase ? 'text-transform: uppercase;' : ''}
                                         ></textarea>
-                                    {:else if field.type === 'file'}
+                                    {:else if field.type === 'file' || field.type === 'image'}
                                         <input type="hidden" name={field.key} value={profileData[field.key] ?? ''}>
                                         <div class="input-group">
                                             <input 
                                                 type="file" 
                                                 class="form-control" 
                                                 id={field.key}
-                                                accept="image/*,application/pdf"
+                                                accept={field.type === 'image' ? 'image/*' : 'image/*,application/pdf'}
                                                 onchange={(e) => handleFileUpload(e, field.key)}
                                                 disabled={uploadingFields[field.key]}
                                             >
@@ -172,9 +172,21 @@
                                             <input type="hidden" required={true} value=""> <!-- Hack for file requirement -->
                                         {/if}
                                         {#if profileData[field.key]}
-                                            <div class="mt-1 d-flex gap-2 align-items-center">
-                                                <small class="text-success">File uploaded</small>
-                                                <a href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{profileData[field.key]}" target="_blank" class="btn btn-sm btn-outline-info">View</a>
+                                            <div class="mt-2 d-flex flex-column gap-2">
+                                                <div class="d-flex gap-2 align-items-center">
+                                                    <small class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> {field.type === 'image' ? 'Photo' : 'File'} uploaded</small>
+                                                    <a href="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{profileData[field.key]}" target="_blank" class="btn btn-sm btn-outline-info">View</a>
+                                                </div>
+                                                {#if field.type === 'image' || profileData[field.key].match(/\.(jpg|jpeg|png|gif|webp)$/i)}
+                                                    <div class="border rounded p-1 bg-light d-inline-block" style="max-width: 150px;">
+                                                        <img 
+                                                            src="{PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/{profileData[field.key]}" 
+                                                            alt="Profile" 
+                                                            class="img-thumbnail"
+                                                            style="max-height: 150px; width: 100%; object-fit: cover;"
+                                                        />
+                                                    </div>
+                                                {/if}
                                             </div>
                                         {/if}
                                     {:else}
