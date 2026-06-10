@@ -106,6 +106,50 @@ export const load: PageServerLoad = async ({
     };
   }
 
+  // --- Provisional Branch Fallback logic ---
+  if (applications && applications.length > 0) {
+    const studentIdsMissingBranch = applications
+        .filter(app => !app.branches?.name)
+        .map(app => app.student_id);
+
+    if (studentIdsMissingBranch.length > 0) {
+        // We need formTypesData to know which types are provisional
+        const { data: formTypesDataForProv } = await supabaseAdmin
+            .from('form_types')
+            .select('name, is_prov');
+
+        const provFormTypes = formTypesDataForProv
+            ?.filter(ft => ft.is_prov)
+            .map(ft => ft.name) || ['Provisional'];
+
+        const { data: provApps } = await supabaseAdmin
+            .from('applications')
+            .select('student_id, branches(name)')
+            .in('student_id', studentIdsMissingBranch)
+            .in('form_type', provFormTypes)
+            .not('branch_id', 'is', null);
+
+        if (provApps && provApps.length > 0) {
+            const provBranchMap = new Map();
+            provApps.forEach(pa => {
+                const branchName = (pa.branches as any)?.name;
+                if (branchName) {
+                    provBranchMap.set(pa.student_id, branchName);
+                }
+            });
+
+            applications.forEach(app => {
+                if (!app.branches?.name) {
+                    const provBranchName = provBranchMap.get(app.student_id);
+                    if (provBranchName) {
+                        (app as any).prov_branch_name = provBranchName;
+                    }
+                }
+            });
+        }
+    }
+  }
+
   // Sign URLs for documents
   if (applications && applications.length > 0) {
     for (const app of applications) {

@@ -7,15 +7,38 @@
     export let form: ActionData;
 
     let selectedCourseId = '';
+    let selectedBranchId = '';
     // Default to the first active cycle if available
     let selectedCycleId = data.cycles.length > 0 ? data.cycles[0].id : '';
     let selectedFormType = ''; // Default empty to force selection? Or first available.
+    let targetStatus = 'verified'; // New: For selection
 
     // Derived filtered list of applications based on selection
     $: filteredApplications = data.applications.filter(app => {
-        return (!selectedCourseId || app.course_id === selectedCourseId) &&
+        const matchesFilters = (!selectedCourseId || app.course_id === selectedCourseId) &&
                (!selectedCycleId || app.cycle_id === selectedCycleId) &&
                (!selectedFormType || app.form_type === selectedFormType);
+        
+        if (!matchesFilters) return false;
+
+        // Branch filter - Check current branch OR provisional fallback branch
+        if (selectedBranchId) {
+            const currentBranchId = app.branch_id;
+            const provBranchName = (app as any).prov_branch_name;
+            const selectedBranchName = data.branches.find(b => b.id === selectedBranchId)?.name;
+
+            const matchesBranch = (currentBranchId === selectedBranchId) || 
+                                 (provBranchName && selectedBranchName && provBranchName === selectedBranchName);
+            
+            if (!matchesBranch) return false;
+        }
+
+        // Apply target status filter for preview
+        if (targetStatus === 'verified') return app.status === 'verified' || app.status === 'approved' || app.status === 'waitlisted';
+        if (targetStatus === 'submitted_paid') return app.status === 'submitted' && app.application_fee_status === 'paid';
+        if (targetStatus === 'both') return true; // Already pre-filtered in server load to only show relevant statuses
+        
+        return true;
     });
 
     // Pagination
@@ -53,8 +76,8 @@
         <div class="card-header">Merit Generation Configuration</div>
         <div class="card-body">
             <div class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <label for="cycle-select" class="form-label">Admission Cycle</label>
+                <div class="col-md-3">
+                    <label for="cycle-select" class="form-label">Cycle</label>
                     <select class="form-select" id="cycle-select" bind:value={selectedCycleId}>
                         <option value="">Select Cycle</option>
                         {#each data.cycles as cycle}
@@ -62,16 +85,25 @@
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label for="course-select" class="form-label">Course</label>
-                    <select class="form-select" id="course-select" bind:value={selectedCourseId}>
+                    <select class="form-select" id="course-select" bind:value={selectedCourseId} on:change={() => selectedBranchId = ''}>
                         <option value="">Select Course</option>
                         {#each data.courses as course}
                             <option value={course.id}>{course.name}</option>
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
+                    <label for="branch-select" class="form-label">Branch (Preview)</label>
+                    <select class="form-select" id="branch-select" bind:value={selectedBranchId} disabled={!selectedCourseId}>
+                        <option value="">All Branches</option>
+                        {#each data.branches.filter(b => b.course_id === selectedCourseId) as branch}
+                            <option value={branch.id}>{branch.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="col-md-3">
                     <label for="type-select" class="form-label">Form Type</label>
                     <select class="form-select" id="type-select" bind:value={selectedFormType}>
                         <option value="">Select Type</option>
@@ -82,7 +114,19 @@
                         {/if}
                     </select>
                 </div>
-                <div class="col-md-2">
+            </div>
+
+            <div class="row g-3 align-items-end mt-2">
+                <div class="col-md-4">
+                    <label for="status-target" class="form-label">Target Applications</label>
+                    <select class="form-select" id="status-target" bind:value={targetStatus}>
+                        <option value="verified">Verified Only</option>
+                        <option value="submitted_paid">Submitted (Paid) Only</option>
+                        <option value="both">Both (Verified & Paid)</option>
+                    </select>
+                    <div class="form-text x-small">Selection for Merit Calculation.</div>
+                </div>
+                <div class="col-md-4">
                     <form method="POST" action="?/generateMerit" use:enhance={() => {
                         startLoading();
                         return async ({ update }) => { await update(); stopLoading(); }
@@ -90,10 +134,14 @@
                         <input type="hidden" name="course_id" value={selectedCourseId}>
                         <input type="hidden" name="cycle_id" value={selectedCycleId}>
                         <input type="hidden" name="form_type" value={selectedFormType}>
+                        <input type="hidden" name="target_status" value={targetStatus}>
                         <button type="submit" class="btn btn-primary w-100" disabled={!canCalculate}>
-                            <i class="bi bi-calculator"></i> Generate List
+                            <i class="bi bi-calculator"></i> Generate Merit List
                         </button>
                     </form>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="x-small text-muted mb-2">Branch filter applies to preview only.</div>
                 </div>
             </div>
         </div>
@@ -151,7 +199,10 @@
                             <th>Rank</th>
                             <th>Score</th>
                             <th>Student</th>
+                            <th>Course</th>
+                            <th>Branch</th>
                             <th>Status</th>
+                            <th>Comment</th>
                             <th>App ID</th>
                         </tr>
                     </thead>
@@ -171,7 +222,34 @@
                                         {app.student_user?.full_name || 'N/A'} <br>
                                         <small class="text-muted">{app.student_user?.email}</small>
                                     </td>
+                                    <td>{app.courses?.name || '-'}</td>
+                                    <td>
+                                        {#if app.branches?.name}
+                                            {app.branches.name}
+                                        {:else if app.prov_branch_name}
+                                            <span class="text-muted">{app.prov_branch_name}</span>
+                                            <small class="badge bg-light text-dark border ms-1" style="font-size: 0.65rem;" title="Branch from provisional application">Prov</small>
+                                        {:else}
+                                            <small class="text-muted">-</small>
+                                        {/if}
+                                    </td>
                                     <td><span class="badge bg-secondary">{app.status}</span></td>
+                                    <td>
+                                        {#if app.approval_comment}
+                                            <div class="text-truncate" style="max-width: 150px;" title={app.approval_comment}>
+                                                {app.approval_comment}
+                                            </div>
+                                        {/if}
+                                        {#if (app as any).prov_approval_comment}
+                                            <div class="text-muted x-small mt-1" title="Comment from provisional application">
+                                                <span class="badge bg-light text-dark border me-1" style="font-size: 0.55rem;">Prov</span>
+                                                <span class="text-truncate d-inline-block align-middle" style="max-width: 120px;">{(app as any).prov_approval_comment}</span>
+                                            </div>
+                                        {/if}
+                                        {#if !app.approval_comment && !(app as any).prov_approval_comment}
+                                            <span class="text-muted">-</span>
+                                        {/if}
+                                    </td>
                                     <td><small>{app.id.slice(0,8)}...</small></td>
                                 </tr>
                             {/each}

@@ -18,6 +18,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     // Fetch options
     const { data: courses } = await supabase.from('courses').select('id, name');
+    const { data: branches } = await supabase.from('branches').select('id, name, course_id');
     const { data: cycles } = await supabase.from('admission_cycles').select('id, name').eq('is_active', true);
     const { data: formTypes } = await supabase.from('form_types').select('name').eq('is_active', true).order('name');
 
@@ -26,23 +27,70 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         .from('admission_forms')
         .select('course_id, cycle_id, form_type, is_merit_published');
 
-    // Fetch ALL relevant applications (Verified + Approved) to show locally filtered list
+    // Fetch ALL relevant applications (Verified + Approved + Submitted/Paid) to show locally filtered list
     // Ideally this should be paginated or filtered by URL params for performance, but starting simple.
-    const { data: applications, error: appError } = await supabase
+    const { data: rawApplications, error: appError } = await supabase
         .from('applications')
         .select(`
-            id, status, course_id, cycle_id, form_type,
+            id, student_id, status, application_fee_status, course_id, cycle_id, form_type, approval_comment, branch_id,
             student_user:users!applications_student_id_fkey (full_name, email),
+            courses(name),
+            branches(name),
             merit_list_entries(merit_rank, merit_score)
         `)
-        .in('status', ['verified', 'approved', 'waitlisted']);
+        .or('status.in.("verified","approved","waitlisted"),and(status.eq.submitted,application_fee_status.eq.paid)');
 
     if (appError) {
         console.error('Error fetching applications:', appError.message);
     }
 
+    // --- Provisional Fallback logic (Branch & Comment) ---
+    if (rawApplications && rawApplications.length > 0) {
+        const studentIds = rawApplications.map(app => app.student_id);
+
+        if (studentIds.length > 0) {
+            const { data: formTypesData } = await supabase
+                .from('form_types')
+                .select('name, is_prov');
+
+            const provFormTypes = formTypesData
+                ?.filter(ft => ft.is_prov)
+                .map(ft => ft.name) || ['Provisional'];
+
+            const { data: provApps } = await supabase
+                .from('applications')
+                .select('student_id, branches(name), approval_comment')
+                .in('student_id', studentIds)
+                .in('form_type', provFormTypes);
+
+            if (provApps && provApps.length > 0) {
+                const provDataMap = new Map();
+                provApps.forEach(pa => {
+                    // Store the first one found or prioritize one with branch/comment? 
+                    // Usually there's only one provisional.
+                    provDataMap.set(pa.student_id, {
+                        branch_name: (pa.branches as any)?.name,
+                        comment: pa.approval_comment
+                    });
+                });
+
+                rawApplications.forEach(app => {
+                    const pData = provDataMap.get(app.student_id);
+                    if (pData) {
+                        if (!app.branches?.name && pData.branch_name) {
+                            (app as any).prov_branch_name = pData.branch_name;
+                        }
+                        if (pData.comment) {
+                            (app as any).prov_approval_comment = pData.comment;
+                        }
+                    }
+                });
+            }
+        }
+    }
+
     // Flatten and sort
-    const mappedApps = applications?.map(app => {
+    const mappedApps = (rawApplications || [])?.map(app => {
         const meritEntry = Array.isArray(app.merit_list_entries) 
             ? app.merit_list_entries[0] 
             : app.merit_list_entries;
@@ -61,6 +109,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     return {
         courses: courses || [],
+        branches: branches || [],
         cycles: cycles || [],
         formTypes: formTypes || [],
         applications: mappedApps,
@@ -79,6 +128,7 @@ export const actions: Actions = {
         const course_id = formData.get('course_id') as string;
         const cycle_id = formData.get('cycle_id') as string;
         const form_type = formData.get('form_type') as string;
+        const target_status = formData.get('target_status') as string || 'verified';
 
         if (!course_id || !cycle_id) {
             return fail(400, { message: 'Course and Cycle are required.', error: true });
@@ -88,7 +138,7 @@ export const actions: Actions = {
         // Using service role guarantees the update works regardless of complex RLS on 'merit_rank' updates.
         const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-        const result = await calculateAndRankMerit(supabaseAdmin, course_id, cycle_id, form_type);
+        const result = await calculateAndRankMerit(supabaseAdmin, course_id, cycle_id, form_type, target_status);
 
         if (!result.success) {
             return fail(500, { message: result.message, error: true });

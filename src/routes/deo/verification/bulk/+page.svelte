@@ -17,6 +17,7 @@
     let filterSearch = data.search || '';
     let filterCourseId = data.courseFilter || '';
     let filterStatus = data.statusFilter || 'submitted';
+    let filterFormType = data.formTypeFilter || '';
 
     // Modals
     let selectedDocument: any = null;
@@ -100,6 +101,7 @@
         if (filterSearch) query.set('search', filterSearch); else query.delete('search');
         if (filterCourseId) query.set('courseId', filterCourseId); else query.delete('courseId');
         if (filterStatus) query.set('status', filterStatus); else query.delete('status');
+        query.set('formType', filterFormType); // Always set to distinguish from fresh load
         query.set('page', '1');
         goto(`?${query.toString()}`);
     }
@@ -123,6 +125,12 @@
                     <option value={course.id}>{course.name}</option>
                 {/each}
             </select>
+            <select class="form-select form-select-sm" style="width: 150px;" bind:value={filterFormType} on:change={applyFilters}>
+                <option value="">All Form Types</option>
+                {#each data.formTypes as ft}
+                    <option value={ft.name}>{ft.name}</option>
+                {/each}
+            </select>
             <select class="form-select form-select-sm" style="width: 150px;" bind:value={filterStatus} on:change={applyFilters}>
                 <option value="submitted">Pending</option>
                 <option value="verified">Verified</option>
@@ -144,7 +152,9 @@
                                 on:change={toggleSelectAll}>
                         </th>
                         <th>Student Details</th>
-                        <th>Course & Branch</th>
+                        <th>Form Type</th>
+                        <th>Course</th>
+                        <th>Branch</th>
                         <th>Status</th>
                         <th>Documents</th>
                         <th class="text-end">Actions</th>
@@ -169,8 +179,21 @@
                                 <small class="text-muted">{app.student_user?.email}</small>
                             </td>
                             <td>
+                                <span class="badge bg-light text-dark border">{app.form_type}</span>
+                            </td>
+                            <td>
                                 <div>{app.courses?.name}</div>
-                                <small class="text-muted">{app.branches?.name || 'No Branch'}</small>
+                            </td>
+                            <td>
+                                {#if app.branches?.name}
+                                    <div class="text-dark small">{app.branches.name}</div>
+                                {:else if (app as any).prov_branch_name}
+                                    <div class="text-muted small" title="Branch from provisional application">
+                                        {(app as any).prov_branch_name} <small class="badge bg-light text-dark border ms-1" style="font-size: 0.6rem;">Prov</small>
+                                    </div>
+                                {:else}
+                                    <div class="text-muted small">-</div>
+                                {/if}
                             </td>
                             <td>
                                 <span class="badge {app.status === 'verified' ? 'bg-success' : app.status === 'needs_correction' ? 'bg-danger' : 'bg-warning text-dark'}">
@@ -194,7 +217,7 @@
                         
                         {#if isExpanded}
                             <tr>
-                                <td colspan="6" class="p-0 border-0">
+                                <td colspan="8" class="p-0 border-0">
                                     <div class="p-4 bg-light border-start border-primary border-4">
                                         <div class="row">
                                             <div class="col-md-9">
@@ -303,13 +326,13 @@
             <nav aria-label="Page navigation">
                 <ul class="pagination pagination-sm mb-0">
                     <li class="page-item" class:disabled={data.page <= 1}>
-                        <button class="page-link" on:click={() => goto(`?page=${data.page - 1}&limit=${data.limit}&status=${filterStatus}&courseId=${filterCourseId}&search=${filterSearch}`)}>Previous</button>
+                        <button class="page-link" on:click={() => goto(`?page=${data.page - 1}&limit=${data.limit}&status=${filterStatus}&courseId=${filterCourseId}&search=${filterSearch}&formType=${filterFormType}`)}>Previous</button>
                     </li>
                     <li class="page-item disabled">
                         <span class="page-link text-dark">Page {data.page} of {totalPages}</span>
                     </li>
                     <li class="page-item" class:disabled={data.page >= totalPages}>
-                        <button class="page-link" on:click={() => goto(`?page=${data.page + 1}&limit=${data.limit}&status=${filterStatus}&courseId=${filterCourseId}&search=${filterSearch}`)}>Next</button>
+                        <button class="page-link" on:click={() => goto(`?page=${data.page + 1}&limit=${data.limit}&status=${filterStatus}&courseId=${filterCourseId}&search=${filterSearch}&formType=${filterFormType}`)}>Next</button>
                     </li>
                 </ul>
             </nav>

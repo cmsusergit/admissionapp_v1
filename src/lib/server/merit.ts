@@ -9,12 +9,13 @@ export async function calculateAndRankMerit(
     supabase: SupabaseClient, 
     courseId: string, 
     cycleId: string,
-    formType: string = 'Provisional' // Default
+    formType: string = 'Provisional', // Default
+    targetStatus: string = 'verified' // New parameter
 ) {
-    console.log(`Starting Merit Calculation for Course: ${courseId}, Cycle: ${cycleId}, Type: ${formType}`);
+    console.log(`Starting Merit Calculation for Course: ${courseId}, Cycle: ${cycleId}, Type: ${formType}, Target: ${targetStatus}`);
 
-    // 1. Fetch Verified Applications
-    const { data: applications, error: appError } = await supabase
+    // 1. Fetch Applications based on Target Status
+    let query = supabase
         .from('applications')
         .select(`
             id, 
@@ -24,16 +25,28 @@ export async function calculateAndRankMerit(
         `)
         .eq('course_id', courseId)
         .eq('cycle_id', cycleId)
-        .eq('form_type', formType)
-        .eq('status', 'verified'); // Only verified applications
+        .eq('form_type', formType);
+
+    if (targetStatus === 'verified') {
+        query = query.eq('status', 'verified');
+    } else if (targetStatus === 'submitted_paid') {
+        query = query.eq('status', 'submitted').eq('application_fee_status', 'paid');
+    } else if (targetStatus === 'both') {
+        query = query.or('status.eq.verified,and(status.eq.submitted,application_fee_status.eq.paid)');
+    } else {
+        // Fallback to verified
+        query = query.eq('status', 'verified');
+    }
+
+    const { data: applications, error: appError } = await query;
 
     if (appError) {
-        console.error('Error fetching verified applications:', appError.message);
+        console.error('Error fetching applications for merit list:', appError.message);
         return { success: false, message: 'Failed to fetch applications.' };
     }
 
     if (!applications || applications.length === 0) {
-        return { success: true, message: 'No verified applications found to process.' };
+        return { success: true, message: `No applications found to process for target: ${targetStatus}.` };
     }
 
     // 2. Fetch Merit Formula
@@ -84,10 +97,17 @@ export async function calculateAndRankMerit(
                     const flattenContext = (obj: any, prefix = '') => {
                         for (const [key, val] of Object.entries(obj)) {
                             const newKey = prefix ? `${prefix}_${key}` : key;
-                            if (typeof val === 'object' && val !== null && 'value' in val && 'max_score' in val) {
-                                // Structured Merit Field
-                                context[newKey] = Number(val.value) || 0;
-                                context[`${newKey}_max`] = Number(val.max_score) || 1; // Avoid div/0
+                            if (typeof val === 'object' && val !== null && ('value' in val || 'max_score' in val)) {
+                                // Structured Merit Field (even if one part is missing)
+                                if ('value' in val) {
+                                    context[newKey] = Number(val.value) || 0;
+                                }
+                                if ('max_score' in val) {
+                                    context[`${newKey}_max`] = Number(val.max_score) || 1;
+                                } else {
+                                    // Fallback if max_score is missing but value is present
+                                    context[`${newKey}_max`] = context[`${newKey}_max`] || 100;
+                                }
                             } else if (typeof val === 'object' && val !== null) {
                                 // Nested datagrid or object
                                 flattenContext(val, newKey);

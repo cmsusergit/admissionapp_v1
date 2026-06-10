@@ -70,6 +70,30 @@ export const load: PageServerLoad = async ({
 
   application.documents = docs || [];
 
+  // --- Provisional Branch Fallback logic for single application ---
+  if (!application.branches?.name) {
+    const { data: formTypesData } = await supabaseAdmin
+        .from('form_types')
+        .select('name, is_prov');
+
+    const provFormTypes = formTypesData
+        ?.filter(ft => ft.is_prov)
+        .map(ft => ft.name) || ['Provisional'];
+
+    const { data: provApp } = await supabaseAdmin
+        .from('applications')
+        .select('branches(name)')
+        .eq('student_id', application.student_id)
+        .in('form_type', provFormTypes)
+        .not('branch_id', 'is', null)
+        .limit(1)
+        .maybeSingle();
+
+    if (provApp && (provApp.branches as any)?.name) {
+        application.prov_branch_name = (provApp.branches as any).name;
+    }
+  }
+
   // Debugging: Check if documents are being fetched
   if (application.documents) {
     console.log(

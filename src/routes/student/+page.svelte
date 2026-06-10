@@ -239,7 +239,7 @@
                                         {/if}
                                         
                                         <!-- Merit Status (Prominent) -->
-                                        {#if app.is_merit_published && app.merit_rank}
+                                        {#if app.is_merit_published && app.merit_rank && ['verified', 'approved', 'waitlisted'].includes(app.status)}
                                             <div class="alert alert-primary mt-2 mb-0 p-2 shadow-sm border-primary">
                                                 <div class="d-flex align-items-center justify-content-between">
                                                     <div>

@@ -27,10 +27,20 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     const courseId = url.searchParams.get('courseId') || null;
     const search = url.searchParams.get('search') || ''; 
 
-    // 1. Get Course Options for Filter Dropdown
-    let coursesQuery = supabaseAdmin.from('courses').select('id, name, college_id');
-    coursesQuery = applyRoleBasedCollegeFilter(coursesQuery, userProfile, 'courses');
-    const { data: courses } = await coursesQuery;
+    // 1. Get Course & Form Type Options for Filter Dropdown
+    const [coursesRes, formTypesRes] = await Promise.all([
+        applyRoleBasedCollegeFilter(supabaseAdmin.from('courses').select('id, name, college_id'), userProfile, 'courses'),
+        supabaseAdmin.from('form_types').select('name, is_prov').eq('is_active', true).order('name')
+    ]);
+
+    const courses = coursesRes.data || [];
+    const formTypes = formTypesRes.data || [];
+
+    // Default formType to MQ/NRI if available in list and not explicitly set
+    let formType = url.searchParams.get('formType');
+    if (formType === null && formTypes.some(ft => ft.name === 'MQ/NRI')) {
+        formType = 'MQ/NRI';
+    }
 
     // Pagination
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -41,7 +51,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     let query = supabaseAdmin
         .from('applications')
         .select(`
-            id, status, form_type, submitted_at,
+            id, student_id, status, form_type, submitted_at,
             student_user:users!student_id!inner (
                 full_name, 
                 email,
@@ -66,6 +76,10 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         query = query.eq('course_id', courseId);
     }
 
+    if (formType) {
+        query = query.eq('form_type', formType);
+    }
+
     if (search) {
         query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`, { foreignTable: 'student_user' });
     }
@@ -84,13 +98,54 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         console.error('[BulkLoad] Error Details:', error);
     }
 
+    // --- Provisional Branch Fallback logic ---
+    if (applications && applications.length > 0) {
+        const studentIdsMissingBranch = applications
+            .filter(app => !app.branches?.name)
+            .map(app => (app as any).student_id);
+
+        if (studentIdsMissingBranch.length > 0) {
+            const provFormTypes = formTypes
+                ?.filter(ft => ft.is_prov)
+                .map(ft => ft.name) || ['Provisional'];
+
+            const { data: provApps } = await supabaseAdmin
+                .from('applications')
+                .select('student_id, branches(name)')
+                .in('student_id', studentIdsMissingBranch)
+                .in('form_type', provFormTypes)
+                .not('branch_id', 'is', null);
+
+            if (provApps && provApps.length > 0) {
+                const provBranchMap = new Map();
+                provApps.forEach(pa => {
+                    const branchName = (pa.branches as any)?.name;
+                    if (branchName) {
+                        provBranchMap.set(pa.student_id, branchName);
+                    }
+                });
+
+                applications.forEach(app => {
+                    if (!app.branches?.name) {
+                        const provBranchName = provBranchMap.get((app as any).student_id);
+                        if (provBranchName) {
+                            (app as any).prov_branch_name = provBranchName;
+                        }
+                    }
+                });
+            }
+        }
+    }
+
     console.log(`[BulkLoad] Found ${applications?.length || 0} applications on current page. Total: ${count || 0}`);
 
     return {
         applications: applications || [],
         courses: courses || [],
+        formTypes: formTypes || [],
         statusFilter: status,
         courseFilter: courseId,
+        formTypeFilter: formType,
         search,
         count: count || 0,
         page,

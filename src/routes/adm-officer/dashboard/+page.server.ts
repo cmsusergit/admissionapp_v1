@@ -174,6 +174,45 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         console.error('Error fetching filtered applications:', filteredAppError.message);
     }
 
+    // --- Provisional Branch Fallback logic ---
+    if (rawApplications && rawApplications.length > 0) {
+        const studentIdsMissingBranch = rawApplications
+            .filter(app => !app.branches?.name)
+            .map(app => app.student_id);
+
+        if (studentIdsMissingBranch.length > 0) {
+            const provFormTypes = formTypesData
+                ?.filter(ft => ft.is_prov)
+                .map(ft => ft.name) || ['Provisional'];
+
+            const { data: provApps } = await supabase
+                .from('applications')
+                .select('student_id, branches(name)')
+                .in('student_id', studentIdsMissingBranch)
+                .in('form_type', provFormTypes)
+                .not('branch_id', 'is', null);
+
+            if (provApps && provApps.length > 0) {
+                const provBranchMap = new Map();
+                provApps.forEach(pa => {
+                    const branchName = (pa.branches as any)?.name;
+                    if (branchName) {
+                        provBranchMap.set(pa.student_id, branchName);
+                    }
+                });
+
+                rawApplications.forEach(app => {
+                    if (!app.branches?.name) {
+                        const provBranchName = provBranchMap.get(app.student_id);
+                        if (provBranchName) {
+                            (app as any).prov_branch_name = provBranchName;
+                        }
+                    }
+                });
+            }
+        }
+    }
+
     let processedApplications = rawApplications || [];
 
     // Helper to extract sorting receipt

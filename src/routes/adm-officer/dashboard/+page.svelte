@@ -470,7 +470,18 @@
                                             <small class="text-muted">{appAny.courses?.colleges?.name || ''}</small>
                                         </td>
                                     {/if}
-                                    {#if visibleColumns.includes('branch')} <td>{appAny.branches?.name || '-'}</td> {/if}
+                                    {#if visibleColumns.includes('branch')}
+                                        <td>
+                                            {#if appAny.branches?.name}
+                                                {appAny.branches.name}
+                                            {:else if appAny.prov_branch_name}
+                                                <span class="text-muted">{appAny.prov_branch_name}</span>
+                                                <small class="badge bg-light text-dark border ms-1" style="font-size: 0.65rem;" title="Branch from provisional application">Prov</small>
+                                            {:else}
+                                                <small class="text-muted">-</small>
+                                            {/if}
+                                        </td>
+                                    {/if}
                                     {#if visibleColumns.includes('form_type')}
                                         <td>
                                             <span class="badge bg-light text-dark border">{app.form_type || 'N/A'}</span>

@@ -290,8 +290,12 @@
                                 </td>
                                 <td>
                                     {app.courses?.name}
-                                    {#if app.branches}
+                                    {#if app.branches?.name}
                                         <br><span class="badge bg-secondary text-light">{app.branches.name}</span>
+                                    {:else if app.prov_branch_name}
+                                        <br>
+                                        <span class="text-muted small">{app.prov_branch_name}</span>
+                                        <small class="badge bg-light text-dark border ms-1" style="font-size: 0.65rem;" title="Branch from provisional application">Prov</small>
                                     {/if}
                                     <div class="small text-muted">{app.courses?.colleges?.name}</div>
                                 </td>
@@ -373,7 +377,13 @@
                         <h6>Status & Course</h6>
                         <p class="mb-1"><strong>Current:</strong> {selectedApplication.status}</p>
                         <p class="mb-1"><strong>Form Type:</strong> {selectedApplication.form_type}</p>
-                        <p class="mb-1"><strong>Course:</strong> {selectedApplication.courses?.name} {#if selectedApplication.branches} <span class="badge bg-secondary">{selectedApplication.branches.name}</span>{/if}</p>
+                        <p class="mb-1"><strong>Course:</strong> {selectedApplication.courses?.name} 
+                            {#if selectedApplication.branches?.name} 
+                                <span class="badge bg-secondary">{selectedApplication.branches.name}</span>
+                            {:else if selectedApplication.prov_branch_name}
+                                <span class="badge bg-light text-dark border" title="Branch from provisional application">{selectedApplication.prov_branch_name} <small class="text-muted ms-1">Prov</small></span>
+                            {/if}
+                        </p>
                     </div>
                 </div>
                 

@@ -34,6 +34,7 @@ export const GET: RequestHandler = async ({
     .select(
       `
                     id,
+                    student_id,
                     status,
                     form_type,
                     submitted_at,
@@ -47,48 +48,94 @@ export const GET: RequestHandler = async ({
                     account_admissions(admission_number),
                     merit_list_entries(merit_score)
                     `,
-                    )
-                    .order("updated_at", { ascending: false });
-                    if (statusFilter) query = query.eq("status", statusFilter);
-                    if (courseFilter) query = query.eq("course_id", courseFilter);
-                    if (branchFilter) query = query.eq("branch_id", branchFilter);
-                    if (formTypeFilter) query = query.eq("form_type", formTypeFilter);
-                    if (startDate) query = query.gte("submitted_at", startDate);
-                    if (endDate) query = query.lte("submitted_at", endDate + "T23:59:59");
+    )
+    .order("updated_at", { ascending: false });
+  if (statusFilter) query = query.eq("status", statusFilter);
+  if (courseFilter) query = query.eq("course_id", courseFilter);
+  if (branchFilter) query = query.eq("branch_id", branchFilter);
+  if (formTypeFilter) query = query.eq("form_type", formTypeFilter);
+  if (startDate) query = query.gte("submitted_at", startDate);
+  if (endDate) query = query.lte("submitted_at", endDate + "T23:59:59");
 
-                    if (searchQuery) {
-                    query = query.or(
-                    `email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`,
-                    { foreignTable: "student_user" },
-                    );
-                    }
+  if (searchQuery) {
+    query = query.or(
+      `email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`,
+      { foreignTable: "student_user" },
+    );
+  }
 
-                    const { data: applications, error } = await query;
+  const [applicationsRes, formTypesRes] = await Promise.all([
+    query,
+    supabaseAdmin.from("form_types").select("name, is_prov")
+  ]);
 
-                    if (error) {
-                    console.error("Export query error:", error);
-                    return new Response("Error fetching data: " + error.message, { status: 500 });
-                    }
+  const { data: applications, error } = applicationsRes;
+  const { data: formTypesData } = formTypesRes;
 
-                    // Define Field Mappings
-                    const fieldMap: Record<
-                    string,
-                    { label: string; getValue: (app: any) => string }
-                    > = {
-                    id: { label: "Application ID", getValue: (app) => app.id },
-                    student_name: {
-                    label: "Student Name",
-                    getValue: (app) => `"${app.student_user?.full_name || ""}"`,
-                    },
-                    email: { label: "Email", getValue: (app) => app.student_user?.email || "" },
-                    enrollment_number: {
-                    label: "College ID",
-                    getValue: (app) => app.student_user?.student_profiles?.enrollment_number || "",
-                    },    course: {
+  if (error) {
+    console.error("Export query error:", error);
+    return new Response("Error fetching data: " + error.message, { status: 500 });
+  }
+
+  // --- Provisional Branch Fallback logic for Export ---
+  if (applications && applications.length > 0) {
+    const studentIdsMissingBranch = applications
+      .filter(app => !app.branches?.name)
+      .map(app => app.student_id);
+
+    if (studentIdsMissingBranch.length > 0) {
+      const provFormTypes = formTypesData
+        ?.filter(ft => ft.is_prov)
+        .map(ft => ft.name) || ['Provisional'];
+
+      const { data: provApps } = await supabaseAdmin
+        .from('applications')
+        .select('student_id, branches(name)')
+        .in('student_id', studentIdsMissingBranch)
+        .in('form_type', provFormTypes)
+        .not('branch_id', 'is', null);
+
+      if (provApps && provApps.length > 0) {
+        const provBranchMap = new Map();
+        provApps.forEach(pa => {
+          const branchName = (pa.branches as any)?.name;
+          if (branchName) {
+            provBranchMap.set(pa.student_id, branchName);
+          }
+        });
+
+        applications.forEach(app => {
+          if (!app.branches?.name) {
+            const provBranchName = provBranchMap.get(app.student_id);
+            if (provBranchName) {
+              (app as any).prov_branch_name = provBranchName;
+            }
+          }
+        });
+      }
+    }
+  }
+
+  // Define Field Mappings
+  const fieldMap: Record<
+    string,
+    { label: string; getValue: (app: any) => string }
+  > = {
+    id: { label: "Application ID", getValue: (app) => app.id },
+    student_name: {
+      label: "Student Name",
+      getValue: (app) => `"${app.student_user?.full_name || ""}"`,
+    },
+    email: { label: "Email", getValue: (app) => app.student_user?.email || "" },
+    enrollment_number: {
+      label: "College ID",
+      getValue: (app) => app.student_user?.student_profiles?.enrollment_number || "",
+    },
+    course: {
       label: "Course",
       getValue: (app) => `"${app.courses?.name || ""}"`,
     },
-    branch: { label: "Branch", getValue: (app) => app.branches?.name || "-" },
+    branch: { label: "Branch", getValue: (app) => app.branches?.name || app.prov_branch_name || "-" },
     form_type: { label: "Form Type", getValue: (app) => app.form_type || "" },
     admission_type: { label: "Admission Mode", getValue: (app) => app.admission_type || "Regular" },
     college: {
