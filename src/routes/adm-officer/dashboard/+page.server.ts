@@ -106,11 +106,13 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     });
 
     // --- Filtered Applications List ---
-    const statusFilter = url.searchParams.get('status');
+    const statusParam = url.searchParams.get('status');
+    const selectedStatuses = statusParam ? statusParam.split(',').filter(Boolean) : [];
     const searchQuery = url.searchParams.get('search');
     const courseFilter = url.searchParams.get('course');
     const branchFilter = url.searchParams.get('branch');
-    const formTypeFilter = url.searchParams.get('form_type') ?? 'Provisional';
+    const formTypeParam = url.searchParams.get('form_type');
+    const selectedFormTypes = formTypeParam ? formTypeParam.split(',').filter(Boolean) : ['Provisional'];
     const startDate = url.searchParams.get('start_date');
     const endDate = url.searchParams.get('end_date');
     
@@ -123,8 +125,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    if (searchQuery || sortField === 'receipt_number') {
-        console.log(`🔍 Adm-Officer dashboard: ${searchQuery ? 'Searching' : 'Sorting by receipt'}. Fetching all records for in-memory processing.`);
+    if (searchQuery || sortField === 'receipt_number' || sortField === 'student_name') {
+        console.log(`🔍 Adm-Officer dashboard: ${searchQuery ? 'Searching' : 'Sorting'}. Fetching all records for in-memory processing.`);
     }
 
     // Main List Query (Filtered)
@@ -143,10 +145,10 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     applicationsQuery = applyRoleBasedCollegeFilter(applicationsQuery, userProfile, 'applications');
 
     // Add filters
-    if (statusFilter) applicationsQuery = applicationsQuery.eq('status', statusFilter);
+    if (selectedStatuses.length > 0) applicationsQuery = applicationsQuery.in('status', selectedStatuses);
     if (courseFilter) applicationsQuery = applicationsQuery.eq('course_id', courseFilter);
     if (branchFilter) applicationsQuery = applicationsQuery.eq('branch_id', branchFilter);
-    if (formTypeFilter) applicationsQuery = applicationsQuery.eq('form_type', formTypeFilter);
+    if (selectedFormTypes.length > 0) applicationsQuery = applicationsQuery.in('form_type', selectedFormTypes);
     if (startDate) applicationsQuery = applicationsQuery.gte('updated_at', startDate);
     if (endDate) applicationsQuery = applicationsQuery.lte('updated_at', endDate + 'T23:59:59');
 
@@ -155,8 +157,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     }
 
     // Execute query
-    // If NOT searching or sorting by receipt, use pagination and server-side sort
-    if (!searchQuery && sortField !== 'receipt_number') {
+    // If NOT searching or sorting by receipt or student_name, use pagination and server-side sort
+    if (!searchQuery && sortField !== 'receipt_number' && sortField !== 'student_name') {
         const allowedSorts = ['updated_at', 'status', 'merit_score'];
         if (sortField === 'merit_score') {
             applicationsQuery = applicationsQuery.order('merit_score', { foreignTable: 'merit_list_entries', ascending: sortOrder === 'asc' });
@@ -228,7 +230,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         };
     };
 
-    // In-memory sorting for receipt_number
+    // In-memory sorting for receipt_number or student_name
     if (sortField === 'receipt_number') {
         processedApplications.sort((a, b) => {
             const rA = getSortReceipt(a);
@@ -238,13 +240,19 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
             }
             return sortOrder === 'asc' ? rA.num.localeCompare(rB.num) : rB.num.localeCompare(rA.num);
         });
+    } else if (sortField === 'student_name') {
+        processedApplications.sort((a, b) => {
+            const nameA = (a as any).users?.full_name || '';
+            const nameB = (b as any).users?.full_name || '';
+            return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        });
     }
 
     // Final pagination
-    const finalApplications = (searchQuery || sortField === 'receipt_number') 
+    const finalApplications = (searchQuery || sortField === 'receipt_number' || sortField === 'student_name') 
         ? processedApplications.slice(from, to + 1) 
         : processedApplications;
-    const finalCount = (searchQuery || sortField === 'receipt_number') ? processedApplications.length : (totalCount || 0);
+    const finalCount = (searchQuery || sortField === 'receipt_number' || sortField === 'student_name') ? processedApplications.length : (totalCount || 0);
 
     // Fetch recent applications for this college officer (Dashboard Card)
     let recentAppsQuery = supabase
@@ -277,11 +285,11 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         filteredApplications: finalApplications,
         recentApplications: recentApplications || [],
         filters: {
-            status: statusFilter,
+            status: selectedStatuses.join(','),
             search: searchQuery,
             course: courseFilter,
             branch: branchFilter,
-            form_type: formTypeFilter,
+            form_type: selectedFormTypes.join(','),
             start_date: startDate,
             end_date: endDate,
             page,

@@ -20,11 +20,13 @@ export const GET: RequestHandler = async ({
     SUPABASE_SERVICE_ROLE_KEY,
   );
 
-  const statusFilter = url.searchParams.get("status");
+  const statusParam = url.searchParams.get("status");
+  const selectedStatuses = statusParam ? statusParam.split(",").filter(Boolean) : [];
   const searchQuery = url.searchParams.get("search");
   const courseFilter = url.searchParams.get("course");
   const branchFilter = url.searchParams.get("branch");
   const formTypeFilter = url.searchParams.get("form_type");
+  const formTypes = formTypeFilter ? formTypeFilter.split(",").filter(Boolean) : [];
   const startDate = url.searchParams.get("start_date");
   const endDate = url.searchParams.get("end_date");
   const fieldsParam = url.searchParams.get("fields");
@@ -50,10 +52,10 @@ export const GET: RequestHandler = async ({
                     `,
     )
     .order("updated_at", { ascending: false });
-  if (statusFilter) query = query.eq("status", statusFilter);
+  if (selectedStatuses.length > 0) query = query.in("status", selectedStatuses);
   if (courseFilter) query = query.eq("course_id", courseFilter);
   if (branchFilter) query = query.eq("branch_id", branchFilter);
-  if (formTypeFilter) query = query.eq("form_type", formTypeFilter);
+  if (formTypes.length > 0) query = query.in("form_type", formTypes);
   if (startDate) query = query.gte("submitted_at", startDate);
   if (endDate) query = query.lte("submitted_at", endDate + "T23:59:59");
 

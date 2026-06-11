@@ -20,6 +20,26 @@
         goto(url.toString());
     }
 
+    function handleStatusToggle(status: string) {
+        const url = new URL($page.url);
+        let currentStatuses = url.searchParams.get('status')?.split(',').filter(Boolean) || [];
+        
+        if (currentStatuses.includes(status)) {
+            currentStatuses = currentStatuses.filter(s => s !== status);
+        } else {
+            currentStatuses = [...currentStatuses, status];
+        }
+
+        if (currentStatuses.length > 0) {
+            url.searchParams.set('status', currentStatuses.join(','));
+        } else {
+            url.searchParams.delete('status');
+        }
+        
+        url.searchParams.set('page', '1');
+        goto(url.toString());
+    }
+
     function handleSearch() {
         const url = new URL($page.url);
         if (searchText) {
@@ -72,6 +92,33 @@
         }
 
         url.searchParams.set('page', '1'); // Reset to first page
+        goto(url.toString());
+    }
+
+    function handleFormTypeToggle(type: string) {
+        const url = new URL($page.url);
+        let currentTypes = url.searchParams.get('form_type')?.split(',').filter(Boolean) || [];
+        
+        // If param is missing, server defaults to 'Provisional'
+        if (!url.searchParams.has('form_type')) {
+            currentTypes = ['Provisional'];
+        }
+
+        if (currentTypes.includes(type)) {
+            // Prevent removing last type if we want to avoid accidental "show all" if default was intended
+            // But usually, it's better to allow it. 
+            currentTypes = currentTypes.filter(t => t !== type);
+        } else {
+            currentTypes = [...currentTypes, type];
+        }
+
+        if (currentTypes.length > 0) {
+            url.searchParams.set('form_type', currentTypes.join(','));
+        } else {
+            url.searchParams.delete('form_type');
+        }
+        
+        url.searchParams.set('page', '1');
         goto(url.toString());
     }
 
@@ -234,20 +281,22 @@
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Applications by Status</span>
-                    {#if data.filters.status}
+                    {#if $page.url.searchParams.has('status')}
                         <button class="btn btn-sm btn-outline-dark" on:click={() => applyFilter(null)}>Clear</button>
                     {/if}
                 </div>
                 <div class="card-body">
                     {#if data.statusCounts && data.statusCounts.length > 0}
+                        {@const selectedStatuses = data.filters.status?.split(',') || []}
                         <div class="list-group list-group-flush">
                             {#each data.statusCounts as statusCount}
+                                {@const isActive = selectedStatuses.includes(statusCount.status)}
                                 <button 
-                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {data.filters.status === statusCount.status ? 'active' : ''}"
-                                    on:click={() => applyFilter(statusCount.status)}
+                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {isActive ? 'active' : ''}"
+                                    on:click={() => handleStatusToggle(statusCount.status)}
                                 >
                                     {statusCount.status}
-                                    <span class="badge {data.filters.status === statusCount.status ? 'bg-light text-dark' : 'bg-primary'} rounded-pill">
+                                    <span class="badge {isActive ? 'bg-light text-dark' : 'bg-primary'} rounded-pill">
                                         {statusCount.count}
                                     </span>
                                 </button>
@@ -265,20 +314,22 @@
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Applications by Type</span>
-                    {#if data.filters.form_type}
+                    {#if $page.url.searchParams.has('form_type')}
                         <button class="btn btn-sm btn-outline-dark" on:click={() => handleFilterChange('form_type', '')}>Clear</button>
                     {/if}
                 </div>
                 <div class="card-body">
                     {#if data.formTypeCounts && data.formTypeCounts.length > 0}
+                        {@const selectedTypes = data.filters.form_type?.split(',') || []}
                         <div class="list-group list-group-flush">
                             {#each data.formTypeCounts as typeCount}
+                                {@const isActive = selectedTypes.includes(typeCount.form_type)}
                                 <button 
-                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {data.filters.form_type === typeCount.form_type ? 'active' : ''}"
-                                    on:click={() => handleFilterChange('form_type', typeCount.form_type)}
+                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {isActive ? 'active' : ''}"
+                                    on:click={() => handleFormTypeToggle(typeCount.form_type)}
                                 >
                                     {typeCount.form_type || 'N/A'}
-                                    <span class="badge {data.filters.form_type === typeCount.form_type ? 'bg-light text-dark' : 'bg-primary'} rounded-pill">
+                                    <span class="badge {isActive ? 'bg-light text-dark' : 'bg-primary'} rounded-pill">
                                         {typeCount.count}
                                     </span>
                                 </button>
@@ -336,12 +387,15 @@
                         <div class="d-flex align-items-center gap-2">
                             <h5 class="mb-0">
                                 Application List 
-                                {#if data.filters.status}
+                                {#if $page.url.searchParams.has('status')}
                                     <span class="badge bg-secondary ms-2">Status: {data.filters.status}</span>
                                 {/if}
                                 {#if data.filters.course}
                                     {@const cName = data.options.courses.find(c => c.id === data.filters.course)?.name}
                                     <span class="badge bg-info ms-2">Course: {cName}</span>
+                                {/if}
+                                {#if $page.url.searchParams.has('form_type')}
+                                    <span class="badge bg-warning text-dark ms-2">Type: {data.filters.form_type}</span>
                                 {/if}
                             </h5>
                             <span class="badge bg-light text-dark border">{data.pagination.total} Total</span>
@@ -414,7 +468,11 @@
                             {#if visibleColumns.includes('sr_no')} <th>Sr. No</th> {/if}
                             {#if visibleColumns.includes('app_id')} <th>App ID</th> {/if}
                             {#if visibleColumns.includes('college_id')} <th>College ID</th> {/if}
-                            {#if visibleColumns.includes('student')} <th>Student</th> {/if}
+                            {#if visibleColumns.includes('student')}
+                                <th style="cursor: pointer;" on:click={() => handleSort('student_name')}>
+                                    Student {data.filters.sort === 'student_name' ? (data.filters.order === 'asc' ? '↑' : '↓') : ''}
+                                </th>
+                            {/if}
                             {#if visibleColumns.includes('course')} <th>Course</th> {/if}
                             {#if visibleColumns.includes('branch')} <th>Branch</th> {/if}
                             {#if visibleColumns.includes('form_type')} <th>Form Type</th> {/if}
