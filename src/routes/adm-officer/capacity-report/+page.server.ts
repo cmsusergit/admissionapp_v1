@@ -106,7 +106,13 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         
         if (pA !== pB) return pA - pB;
 
-        // If status is same, prioritize Bypass types (GCAS, ACPC, etc.) over non-bypass types
+        // If status is same, prioritize Provisional over Bypass types
+        const isProvA = provFormTypes.has(a.form_type || '');
+        const isProvB = provFormTypes.has(b.form_type || '');
+        if (isProvA && !isProvB) return -1;
+        if (!isProvA && isProvB) return 1;
+
+        // Then prioritize Bypass types (GCAS, ACPC, etc.) over others
         const isBypassA = bypassFormTypes.has(a.form_type || '');
         const isBypassB = bypassFormTypes.has(b.form_type || '');
         if (isBypassA && !isBypassB) return -1;
@@ -212,17 +218,15 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
         // Logic branching: Bypass types (GCAS/ACPC/Direct) show ONLY final admissions across all metric columns
         if (isBypassType) {
-            // For bypass types, we directly show the final admission count based on enrollment/admission
-            if (isAdmitted && !isCancelledOrRemoved) {
+            // For bypass types, we show the count based on actual enrollment (Enrollment Number generated)
+            if (hasEnrollmentNumber && !isCancelledOrRemoved) {
                 increment('submitted');
                 increment('approved');
                 increment('paid');
                 increment('admitted_id');
                 increment('admitted');
-                // Admitted & Paid includes those with enrollment numbers (as they must have paid to be enrolled)
-                if (hasTuitionFee || hasEnrollmentNumber) {
-                    increment('admitted_paid');
-                }
+                // Enrolled students are by definition paid
+                increment('admitted_paid');
             }
         } else {
             // Standard Logic for Provisional/MQ/NRI
@@ -233,7 +237,18 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             }
 
             // 3. Approved Apps
-            if (app.status === 'approved') {
+            // Logic: For strictly 'Provisional' form type, count ONLY status='approved'
+            // For others (MQ, NRI), include enrollment number and paid status
+            let isMetricApproved = false;
+            if (app.form_type === 'Provisional') {
+                isMetricApproved = app.status === 'approved';
+            } else {
+                const isApproved = app.status === 'approved';
+                const isPaidProv = isProv && hasPaidTargetFee;
+                isMetricApproved = isApproved || hasEnrollmentNumber || isPaidProv;
+            }
+            
+            if (isMetricApproved && !isCancelledOrRemoved) {
                 increment('approved');
             }
             

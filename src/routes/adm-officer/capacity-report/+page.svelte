@@ -108,7 +108,6 @@
             // Header
             const headerRow = ['COURSE / BRANCH', 'INTAKE'];
             data.globalUniqueFormTypes.forEach(f => headerRow.push(f.toUpperCase()));
-            headerRow.push('TOTAL');
             tableBody.push(headerRow.map(text => ({ text, style: 'tableHeader' })));
 
             // Data Rows
@@ -126,11 +125,10 @@
                         data.globalUniqueFormTypes.forEach((fType: string) => {
                             row.push((branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0).toString());
                         });
-                        row.push((branch.metrics?.[selectedMetric]?.total || 0).toString());
                         tableBody.push(row.map((text, idx) => ({ 
                             text, 
                             alignment: idx === 0 ? 'left' : 'center',
-                            bold: idx === row.length - 1 || (idx > 1 && parseInt(text) > 0)
+                            bold: idx > 1 && parseInt(text) > 0
                         })));
                     });
 
@@ -139,7 +137,6 @@
                     data.globalUniqueFormTypes.forEach((fType: string) => {
                         subtotalRow.push(courseMetricTotal(course.branches, fType).toString());
                     });
-                    subtotalRow.push(branchTotal(course.branches, 'metric_total').toString());
                     
                     tableBody.push(subtotalRow.map((cell: any, idx) => {
                         const cellObj = typeof cell === 'string' ? { text: cell } : cell;
@@ -153,7 +150,6 @@
             grandMetricTotals.forEach((total: number) => {
                 grandTotalRow.push(total.toString());
             });
-            grandTotalRow.push(grandTotalMetricTotal.toString());
             
             tableBody.push(grandTotalRow.map((cell: any, idx) => {
                 const cellObj = typeof cell === 'string' ? { text: cell } : cell;
@@ -161,8 +157,8 @@
                     ...cellObj, 
                     bold: true, 
                     fontSize: 12, 
-                    fillColor: idx === grandTotalRow.length - 1 ? '#343a40' : '#e9ecef',
-                    color: idx === grandTotalRow.length - 1 ? 'white' : 'black',
+                    fillColor: '#e9ecef',
+                    color: 'black',
                     alignment: idx === 0 ? 'right' : 'center'
                 };
             }));
@@ -177,7 +173,7 @@
                     {
                         table: {
                             headerRows: 1,
-                            widths: ['*', 'auto', ...data.globalUniqueFormTypes.map(() => 'auto'), 'auto'],
+                            widths: ['*', 'auto', ...data.globalUniqueFormTypes.map(() => 'auto')],
                             body: tableBody
                         },
                         layout: {
@@ -240,7 +236,6 @@
                             data.globalUniqueFormTypes.forEach((ft: string) => {
                                 row[ft] = branch.metrics?.[selectedMetric]?.formTypes?.[ft] || 0;
                             });
-                            row[`TOTAL ${metricLabel.toUpperCase()}`] = branch.metrics?.[selectedMetric]?.total || 0;
                             return row;
                         } else {
                             const row: any = {
@@ -275,7 +270,6 @@
                         data.globalUniqueFormTypes.forEach((ft: string) => {
                             subtotal[ft] = courseMetricTotal(course.branches, ft);
                         });
-                        subtotal[`TOTAL ${metricLabel.toUpperCase()}`] = branchTotal(course.branches, 'metric_total');
                         sheetData.push(subtotal);
                     }
 
@@ -534,14 +528,13 @@
                                     {#each data.globalUniqueFormTypes || [] as fType}
                                         <th style="width: 80px;">{fType.toUpperCase()}</th>
                                     {/each}
-                                    <th style="width: 100px;" class="bg-light">TOTAL</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {#each filteredCapacityData as college}
                                     {#each college.courses as course}
                                         <tr class="bg-light fw-bold text-uppercase border-dark border-top-2 border-bottom-1">
-                                            <td colspan={(data.globalUniqueFormTypes?.length || 0) + 3} class="py-2 px-3">
+                                            <td colspan={(data.globalUniqueFormTypes?.length || 0) + 2} class="py-2 px-3">
                                                 {course.courseName}
                                             </td>
                                         </tr>
@@ -554,7 +547,6 @@
                                                         {branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0}
                                                     </td>
                                                 {/each}
-                                                <td class="fw-bold">{branch.metrics?.[selectedMetric]?.total || 0}</td>
                                             </tr>
                                         {/each}
                                         <!-- Course Subtotal -->
@@ -564,7 +556,6 @@
                                             {#each data.globalUniqueFormTypes || [] as fType}
                                                 <td>{courseMetricTotal(course.filteredBranches, fType)}</td>
                                             {/each}
-                                            <td>{branchTotal(course.filteredBranches, 'metric_total')}</td>
                                         </tr>
                                     {/each}
                                 {/each}
@@ -576,7 +567,6 @@
                                     {#each grandMetricTotals as total}
                                         <td class="fs-5">{total}</td>
                                     {/each}
-                                    <td class="fs-4 bg-dark text-white">{grandTotalMetricTotal}</td>
                                 </tr>
                             </tfoot>
                         </table>
