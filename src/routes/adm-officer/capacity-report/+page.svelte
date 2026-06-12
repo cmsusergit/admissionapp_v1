@@ -7,7 +7,7 @@
     let { data } = $props<{ data: PageData }>();
 
     let viewMode = $state<'detailed' | 'simple'>('simple');
-    let selectedMetric = $state<'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid'>('approved');
+    let selectedMetric = $state<'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid'>('paid');
     let includeUnassigned = $state(false);
 
     // Derived filtered data
@@ -246,13 +246,12 @@
                                 'Common Applicants': branch.commonCount,
                             };
 
-                            // Add dynamic form type columns
+                            // Add dynamic form type columns based on selected metric
                             data.globalUniqueFormTypes.forEach((fType: string) => {
-                                const stats = branch.formTypes[fType];
-                                row[`${fType} (Total/Appr)`] = stats ? `${stats.total} / ${stats.approved}` : '0 / 0';
+                                row[fType] = branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0;
                             });
 
-                            row['Total Approved'] = branch.approved;
+                            row[`Total ${metricLabel}`] = branch.metrics?.[selectedMetric]?.total || 0;
                             row['Admissions Done (ID Gen)'] = branch.metrics.admitted_id.total;
                             row['Tuition Paid'] = branch.metrics.admitted_paid.total;
                             row['Vacancy'] = calculateVacancy(branch.capacity, branch.metrics.admitted_id.total);
@@ -409,7 +408,9 @@
                                                         <th rowspan="2">Intake Capacity</th>
                                                         <th colspan="2" class="bg-info bg-opacity-10">Applicant Metrics</th>
                                                         {#if collegeGroup.uniqueFormTypes.length > 0}
-                                                            <th colspan={collegeGroup.uniqueFormTypes.length} class="bg-success bg-opacity-10">Form-wise Applications (Total / Approved)</th>
+                                                            <th colspan={collegeGroup.uniqueFormTypes.length} class="bg-success bg-opacity-10">
+                                                                Form-wise Applications ({metrics.find(m => m.id === selectedMetric)?.label})
+                                                            </th>
                                                         {/if}
                                                         <th rowspan="2">Approved / Admitted<br><small class="fw-normal text-muted" style="font-size: 0.7rem;">(Appr / ID Gen)</small></th>
                                                         <th rowspan="2">Admissions Done<br><small class="fw-normal text-muted" style="font-size: 0.7rem;">(ID Gen / Paid)</small></th>
@@ -439,11 +440,8 @@
                                                             
                                                             {#each collegeGroup.uniqueFormTypes as fType}
                                                                 <td class="table-success bg-opacity-10">
-                                                                    {#if branch.formTypes[fType]}
-                                                                        <div class="d-flex flex-column">
-                                                                            <span class="fw-bold">{branch.formTypes[fType].total}</span>
-                                                                            <span class="text-success x-small">(Appr: {branch.formTypes[fType].approved})</span>
-                                                                        </div>
+                                                                    {#if (branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0) > 0}
+                                                                        <span class="fw-bold">{branch.metrics[selectedMetric].formTypes[fType]}</span>
                                                                     {:else}
                                                                         <span class="text-muted small">-</span>
                                                                     {/if}
@@ -477,7 +475,7 @@
                                                         
                                                         {#each collegeGroup.uniqueFormTypes as fType}
                                                             <td>
-                                                                {course.filteredBranches.reduce((sum, b) => sum + (b.formTypes[fType]?.approved || 0), 0)}
+                                                                {courseMetricTotal(course.filteredBranches, fType)}
                                                             </td>
                                                         {/each}
 

@@ -124,8 +124,11 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     // Deduplicate by student and branch to avoid counting the same person twice for capacity
     const seenStudentBranch = new Set<string>();
     const uniqueApps = sortedApps.filter(app => {
+        // Do not deduplicate provisional form types
+        const isProv = provFormTypes.has(app.form_type || '');
+        
         const key = `${app.student_id}_${app.branch_id || 'unassigned'}`;
-        if (seenStudentBranch.has(key)) return false;
+        if (!isProv && seenStudentBranch.has(key)) return false;
 
         // Strictly exclude drafts from all capacity calculations
         if (app.status === 'draft') return false;
@@ -135,7 +138,9 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             return false;
         }
 
-        seenStudentBranch.add(key);
+        if (!isProv) {
+            seenStudentBranch.add(key);
+        }
         return true;
     });
 
@@ -213,13 +218,12 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         // Final Admission = Enrollment Number Generated OR Admission ID Generated OR (Bypass Type + Tuition Paid)
         const isAdmitted = hasEnrollmentNumber || hasAdmissionNumber || (isNonProvBypass && hasTuitionFee);
 
-        // 1. All Applications
-        increment('all');
-
         // Logic branching: Bypass types (GCAS/ACPC/Direct) show ONLY final admissions across all metric columns
         if (isBypassType) {
             // For bypass types, we show the count based on actual enrollment (Enrollment Number generated)
             if (hasEnrollmentNumber && !isCancelledOrRemoved) {
+                // 1. All Applications (restricted for bypass)
+                increment('all');
                 increment('submitted');
                 increment('approved');
                 increment('paid');
@@ -227,10 +231,19 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                 increment('admitted');
                 // Enrolled students are by definition paid
                 increment('admitted_paid');
+
+                // Unique student tracking for Detailed View (restricted for bypass)
+                if (app.student_id) {
+                    if (!stats.students[app.student_id]) stats.students[app.student_id] = new Set();
+                    stats.students[app.student_id].add(type);
+                }
             }
         } else {
             // Standard Logic for Provisional/MQ/NRI
             
+            // 1. All Applications
+            increment('all');
+
             // 2. Submitted Apps
             if (app.status !== 'draft' && !isCancelledOrRemoved) {
                 increment('submitted');
@@ -267,12 +280,12 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             if (hasTuitionFee && isAdmitted && !isCancelledOrRemoved) {
                 increment('admitted_paid');
             }
-        }
 
-        // Unique student tracking for Detailed View
-        if (app.student_id && !isCancelledOrRemoved) {
-            if (!stats.students[app.student_id]) stats.students[app.student_id] = new Set();
-            stats.students[app.student_id].add(type);
+            // Unique student tracking for Detailed View
+            if (app.student_id && !isCancelledOrRemoved) {
+                if (!stats.students[app.student_id]) stats.students[app.student_id] = new Set();
+                stats.students[app.student_id].add(type);
+            }
         }
     });
 
