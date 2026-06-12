@@ -52,7 +52,13 @@ export const GET: RequestHandler = async ({
                     `,
     )
     .order("updated_at", { ascending: false });
-  if (selectedStatuses.length > 0) query = query.in("status", selectedStatuses);
+
+  if (selectedStatuses.length > 0) {
+    query = query.in("status", selectedStatuses);
+  } else {
+    query = query.neq("status", "draft");
+  }
+
   if (courseFilter) query = query.eq("course_id", courseFilter);
   if (branchFilter) query = query.eq("branch_id", branchFilter);
   if (formTypes.length > 0) query = query.in("form_type", formTypes);

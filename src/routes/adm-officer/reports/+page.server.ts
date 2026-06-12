@@ -105,6 +105,7 @@ export const load: PageServerLoad = async ({
             merit_list_entries(merit_score)
         `,
     )
+    .neq("status", "draft")
     .order("updated_at", { ascending: false })
     .limit(10); // Preview limit
 

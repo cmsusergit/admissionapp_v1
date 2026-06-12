@@ -20,12 +20,13 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     const [{ data: academicYears }, { data: activeYear }, { data: formTypes }] = await Promise.all([
         supabaseAdmin.from('academic_years').select('id, name').order('name', { ascending: false }),
         supabaseAdmin.from('academic_years').select('id').eq('is_active', true).maybeSingle(),
-        supabaseAdmin.from('form_types').select('name, is_prov')
+        supabaseAdmin.from('form_types').select('name, is_prov, direct_admission_on_submit, is_government_quota')
     ]);
 
     const selectedYearId = url.searchParams.get('academic_year_id') || activeYear?.id || (academicYears && academicYears[0]?.id);
     const includeRejected = url.searchParams.get('include_rejected') === 'true';
     const provFormTypes = new Set((formTypes || []).filter(ft => ft.is_prov).map(ft => ft.name));
+    const bypassFormTypes = new Set((formTypes || []).filter(ft => ft.direct_admission_on_submit || ft.is_government_quota).map(ft => ft.name));
 
     // 2. Fetch Courses
     let coursesQuery = supabaseAdmin
@@ -64,6 +65,11 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             ),
             account_admissions (
                 admission_number
+            ),
+            users:student_id (
+                student_profiles (
+                    enrollment_number
+                )
             )
         `)
         .eq('admission_cycles.academic_year_id', selectedYearId);
@@ -72,23 +78,58 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         appQuery = appQuery.eq('courses.college_id', userProfile.college_id);
     }
 
-    const { data: allApps, error: appError } = await appQuery.limit(20000); 
+    // Sort by status to ensure 'approved' apps are processed first for deduplication
+    const { data: allApps, error: appError } = await appQuery
+        .order('status', { ascending: true }) // 'approved' comes before 'submitted' alphabetically, but let's be more robust in JS
+        .limit(20000); 
 
     if (appError) {
         console.error('Capacity Report - applications fetch error:', appError.message);
     }
 
-    // Ensure unique applications to avoid duplication from joins
-    const seenAppIds = new Set<string>();
-    const uniqueApps = (allApps || []).filter(app => {
-        if (seenAppIds.has(app.id)) return false;
+    // Status priority for deduplication (lower is better)
+    const statusPriority: Record<string, number> = {
+        'approved': 1,
+        'verified': 2,
+        'submitted': 3,
+        'needs_correction': 4,
+        'draft': 5,
+        'rejected': 6,
+        'cancelled': 7,
+        'removed': 8
+    };
+
+    // Sort raw data to ensure the most important application for a student is seen first
+    const sortedApps = (allApps || []).sort((a, b) => {
+        const pA = statusPriority[a.status.toLowerCase()] || 99;
+        const pB = statusPriority[b.status.toLowerCase()] || 99;
+        
+        if (pA !== pB) return pA - pB;
+
+        // If status is same, prioritize Bypass types (GCAS, ACPC, etc.) over non-bypass types
+        const isBypassA = bypassFormTypes.has(a.form_type || '');
+        const isBypassB = bypassFormTypes.has(b.form_type || '');
+        if (isBypassA && !isBypassB) return -1;
+        if (!isBypassA && isBypassB) return 1;
+
+        return 0;
+    });
+
+    // Deduplicate by student and branch to avoid counting the same person twice for capacity
+    const seenStudentBranch = new Set<string>();
+    const uniqueApps = sortedApps.filter(app => {
+        const key = `${app.student_id}_${app.branch_id || 'unassigned'}`;
+        if (seenStudentBranch.has(key)) return false;
+
+        // Strictly exclude drafts from all capacity calculations
+        if (app.status === 'draft') return false;
 
         const isExcludedStatus = app.status === 'cancelled' || app.status === 'removed' || app.status === 'rejected';
         if (!includeRejected && isExcludedStatus) {
             return false;
         }
 
-        seenAppIds.add(app.id);
+        seenStudentBranch.add(key);
         return true;
     });
 
@@ -132,57 +173,85 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         };
 
         const isCancelledOrRemoved = app.status === 'cancelled' || app.status === 'removed';
-
-        // 1. All Applications
-        increment('all');
-
-        // 2. Submitted Apps: Anything that is not a draft (submitted, verified, approved, etc.)
-        if (app.status !== 'draft' && !isCancelledOrRemoved) {
-            increment('submitted');
-        }
-
-        // 3. Approved Apps
-        if (app.status === 'approved') {
-            increment('approved');
-        }
-        
-        // 4. Paid: Application/Provisional fee paid
         const isProv = provFormTypes.has(app.form_type || '');
         const payments = app.payments as any || [];
         
         let hasPaidTargetFee = false;
         if (isProv) {
-            // For provisional form types, we strictly check provisional_fee
             hasPaidTargetFee = payments.some((p: any) => p.payment_type === 'provisional_fee' && p.status === 'completed');
         } else {
-            // For non-provisional (MQ/NRI, GCAS, ACPC), check for application_fee OR tuition_fee
-            // GCAS/ACPC usually have no application fee, so tuition_fee is the primary "paid" indicator
             hasPaidTargetFee = payments.some((p: any) => 
                 (p.payment_type === 'application_fee' || p.payment_type === 'tuition_fee') && p.status === 'completed'
             ) || app.application_fee_status === 'paid';
         }
 
-        if (hasPaidTargetFee && !isCancelledOrRemoved) {
-            increment('paid');
-        }
-
-        // 5. Admitted: (College ID / Admission Number generated)
         const hasAdmissionNumber = !!(Array.isArray(app.account_admissions) 
             ? app.account_admissions[0]?.admission_number 
             : (app.account_admissions as any)?.admission_number);
 
-        if (hasAdmissionNumber && !isCancelledOrRemoved) {
-            increment('admitted_id');
-            increment('admitted');
-        }
+        // Extract enrollment number from nested join users -> student_profiles
+        const studentProfile = (app.users as any)?.student_profiles;
+        const enrollmentNumber = Array.isArray(studentProfile)
+            ? studentProfile[0]?.enrollment_number
+            : studentProfile?.enrollment_number;
+        
+        const hasEnrollmentNumber = !!enrollmentNumber;
 
-        // 6. Admitted & Paid: (Tuition fee paid) AND (ID generated)
         const hasTuitionFee = (app.payments as any || []).some(
             (p: any) => p.payment_type === 'tuition_fee' && p.status === 'completed'
         );
 
-        if (hasTuitionFee && hasAdmissionNumber && !isCancelledOrRemoved) {
-            increment('admitted_paid');
+        const isBypassType = bypassFormTypes.has(app.form_type || '');
+        const isNonProvBypass = isBypassType && !isProv;
+        
+        // Final Admission = Enrollment Number Generated OR Admission ID Generated OR (Bypass Type + Tuition Paid)
+        const isAdmitted = hasEnrollmentNumber || hasAdmissionNumber || (isNonProvBypass && hasTuitionFee);
+
+        // 1. All Applications
+        increment('all');
+
+        // Logic branching: Bypass types (GCAS/ACPC/Direct) show ONLY final admissions across all metric columns
+        if (isBypassType) {
+            // For bypass types, we directly show the final admission count based on enrollment/admission
+            if (isAdmitted && !isCancelledOrRemoved) {
+                increment('submitted');
+                increment('approved');
+                increment('paid');
+                increment('admitted_id');
+                increment('admitted');
+                // Admitted & Paid includes those with enrollment numbers (as they must have paid to be enrolled)
+                if (hasTuitionFee || hasEnrollmentNumber) {
+                    increment('admitted_paid');
+                }
+            }
+        } else {
+            // Standard Logic for Provisional/MQ/NRI
+            
+            // 2. Submitted Apps
+            if (app.status !== 'draft' && !isCancelledOrRemoved) {
+                increment('submitted');
+            }
+
+            // 3. Approved Apps
+            if (app.status === 'approved') {
+                increment('approved');
+            }
+            
+            // 4. Paid: Application/Provisional fee paid
+            if (hasPaidTargetFee && !isCancelledOrRemoved) {
+                increment('paid');
+            }
+
+            // 5. Admitted
+            if (isAdmitted && !isCancelledOrRemoved) {
+                increment('admitted_id');
+                increment('admitted');
+            }
+
+            // 6. Admitted & Paid
+            if (hasTuitionFee && isAdmitted && !isCancelledOrRemoved) {
+                increment('admitted_paid');
+            }
         }
 
         // Unique student tracking for Detailed View

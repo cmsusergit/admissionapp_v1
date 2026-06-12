@@ -103,7 +103,14 @@ export const load: PageServerLoad = async ({
   // Apply filters
   if (courseId) baseQuery = baseQuery.eq("course_id", courseId);
   if (cycleId) baseQuery = baseQuery.eq("cycle_id", cycleId);
-  if (status) baseQuery = baseQuery.eq("status", status);
+  
+  if (status) {
+    baseQuery = baseQuery.eq("status", status);
+  } else {
+    // Exclude drafts by default from "All Statuses" list
+    baseQuery = baseQuery.neq("status", "draft");
+  }
+
   if (formType) baseQuery = baseQuery.eq("form_type", formType);
   if (branchId) baseQuery = baseQuery.eq("branch_id", branchId);
   

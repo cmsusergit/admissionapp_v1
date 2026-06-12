@@ -4,25 +4,26 @@
     import { goto } from '$app/navigation';
     import { page } from '$app/stores';
 
-    export let data: PageData;
+    let { data } = $props<{ data: PageData }>();
 
-    let viewMode: 'detailed' | 'simple' = 'simple';
-    let selectedMetric: 'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid' = 'paid';
-    let includeUnassigned = false;
+    let viewMode = $state<'detailed' | 'simple'>('simple');
+    let selectedMetric = $state<'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid'>('approved');
+    let includeUnassigned = $state(false);
 
-    $: filteredCapacityData = data.capacityData.map(college => ({
-        ...college,
-        courses: college.courses.map((course: any) => ({
-            ...course,
-            filteredBranches: includeUnassigned 
-                ? course.branches 
-                : (course.branches || []).filter((b: any) => b.name !== 'Unassigned/Other')
+    // Derived filtered data
+    let filteredCapacityData = $derived(
+        data.capacityData.map(college => ({
+            ...college,
+            courses: college.courses.map((course: any) => ({
+                ...course,
+                filteredBranches: includeUnassigned 
+                    ? course.branches 
+                    : (course.branches || []).filter((b: any) => b.name !== 'Unassigned/Other')
+            }))
         }))
-    }));
+    );
 
     function branchTotal(branches: any[], field: string): number {
-        // Branches passed here are usually course.filteredBranches or course.branches
-        // If they are course.branches, we still need to filter based on includeUnassigned
         const filtered = includeUnassigned ? branches : (branches || []).filter(b => b.name !== 'Unassigned/Other');
         
         if (field === 'capacity') return filtered.reduce((sum, branch) => sum + (branch.capacity || 0), 0);
@@ -37,19 +38,25 @@
         return filtered.reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0), 0);
     }
 
-    $: grandTotalCapacity = filteredCapacityData.reduce((acc, college) => {
-        return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'capacity'), 0);
-    }, 0);
+    let grandTotalCapacity = $derived(
+        filteredCapacityData.reduce((acc, college) => {
+            return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'capacity'), 0);
+        }, 0)
+    );
 
-    $: grandTotalMetricTotal = filteredCapacityData.reduce((acc, college) => {
-        return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'metric_total'), 0);
-    }, 0);
+    let grandTotalMetricTotal = $derived(
+        filteredCapacityData.reduce((acc, college) => {
+            return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'metric_total'), 0);
+        }, 0)
+    );
 
-    $: grandMetricTotals = (data.globalUniqueFormTypes || []).map(fType => {
-        return filteredCapacityData.reduce((acc, college) => {
-            return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + courseMetricTotal(course.filteredBranches, fType), 0);
-        }, 0);
-    });
+    let grandMetricTotals = $derived(
+        (data.globalUniqueFormTypes || []).map(fType => {
+            return filteredCapacityData.reduce((acc, college) => {
+                return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + courseMetricTotal(course.filteredBranches, fType), 0);
+            }, 0);
+        })
+    );
 
     function handleYearChange(event: Event) {
         const target = event.target as HTMLSelectElement;
@@ -66,9 +73,9 @@
     }
 
     const metrics = [
+        { id: 'approved', label: 'Approved Apps', icon: 'bi-check-all' },
         { id: 'paid', label: 'Paid Students', icon: 'bi-currency-dollar' },
         { id: 'submitted', label: 'Submitted Apps', icon: 'bi-file-earmark-check' },
-        { id: 'approved', label: 'Approved Apps', icon: 'bi-check-all' },
         { id: 'admitted_id', label: 'ID Generated', icon: 'bi-person-vcard' },
         { id: 'admitted_paid', label: 'ID & Paid', icon: 'bi-person-check' },
         { id: 'admitted', label: 'Final Admissions', icon: 'bi-person-badge' },

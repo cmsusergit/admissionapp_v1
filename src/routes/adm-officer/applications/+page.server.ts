@@ -67,6 +67,11 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         query = query.ilike('status', status);
     }
 
+    // Explicitly exclude drafts unless the status filter is explicitly set to 'draft'
+    if (status !== 'draft') {
+        query = query.neq('status', 'draft');
+    }
+
     // Apply Form Type Filter (Case-Insensitive)
     if (formTypeFilter && formTypeFilter.toLowerCase() !== 'all') {
         const canonicalType = formTypesData?.find(ft => ft.name.toLowerCase() === formTypeFilter!.toLowerCase())?.name;

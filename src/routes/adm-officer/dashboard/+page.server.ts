@@ -32,11 +32,11 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         supabase.rpc('get_application_course_counts'),
         supabase.from('payments').select('amount').eq('status', 'completed').eq('payment_type', 'application_fee'),
         supabase.from('payments').select('amount').eq('status', 'completed').eq('payment_type', 'provisional_fee'),
-        supabase.from('applications').select('*', { count: 'exact', head: true }),
+        supabase.from('applications').select('*', { count: 'exact', head: true }).neq('status', 'draft'),
         supabase.from('courses').select('id, name, code').order('name'),
         supabase.from('branches').select('id, name, course_id, courses(name)').order('name'),
         supabase.from('applications').select('form_type').limit(100),
-        supabase.from('applications').select('branch_id, form_type'),
+        supabase.from('applications').select('id, course_id, branch_id, form_type').neq('status', 'draft'),
         supabase.from('academic_years').select('id, name').eq('is_active', true).maybeSingle(),
         supabase.from('form_types').select('name, is_prov')
     ]);
@@ -75,12 +75,27 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     // Get distinct form types
     const formTypes = [...new Set(distinctTypes?.map(a => a.form_type).filter(Boolean))].sort();
     
+    const courseCountsMap = new Map<string, number>();
     const branchCountsMap = new Map<string, number>();
+    const formTypeCountsMap = new Map<string, number>();
+
     allAppBranches?.forEach(app => {
+        if (app.course_id) {
+            courseCountsMap.set(app.course_id, (courseCountsMap.get(app.course_id) || 0) + 1);
+        }
         if (app.branch_id) {
             branchCountsMap.set(app.branch_id, (branchCountsMap.get(app.branch_id) || 0) + 1);
         }
+        if (app.form_type) {
+            formTypeCountsMap.set(app.form_type, (formTypeCountsMap.get(app.form_type) || 0) + 1);
+        }
     });
+
+    const calculatedCourseCounts = allCourses?.map(c => ({
+        course_name: c.name,
+        count: courseCountsMap.get(c.id) || 0
+    })).filter(c => c.count > 0).sort((a, b) => b.count - a.count) || [];
+
     const branchCounts = allBranches?.map(b => ({
         branch_id: b.id,
         branch_name: b.name,
@@ -88,12 +103,6 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         count: branchCountsMap.get(b.id) || 0
     })).filter(b => b.count > 0).sort((a, b) => b.count - a.count) || [];
 
-    const formTypeCountsMap = new Map<string, number>();
-    allAppBranches?.forEach(app => {
-        if (app.form_type) {
-            formTypeCountsMap.set(app.form_type, (formTypeCountsMap.get(app.form_type) || 0) + 1);
-        }
-    });
     const formTypeCounts = Array.from(formTypeCountsMap.entries())
         .map(([type, count]) => ({ form_type: type, count }))
         .sort((a, b) => b.count - a.count);
@@ -145,7 +154,13 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     applicationsQuery = applyRoleBasedCollegeFilter(applicationsQuery, userProfile, 'applications');
 
     // Add filters
-    if (selectedStatuses.length > 0) applicationsQuery = applicationsQuery.in('status', selectedStatuses);
+    if (selectedStatuses.length > 0) {
+        applicationsQuery = applicationsQuery.in('status', selectedStatuses);
+    } else {
+        // Exclude drafts by default if no specific status is selected
+        applicationsQuery = applicationsQuery.neq('status', 'draft');
+    }
+
     if (courseFilter) applicationsQuery = applicationsQuery.eq('course_id', courseFilter);
     if (branchFilter) applicationsQuery = applicationsQuery.eq('branch_id', branchFilter);
     if (selectedFormTypes.length > 0) applicationsQuery = applicationsQuery.in('form_type', selectedFormTypes);
@@ -267,12 +282,13 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     recentAppsQuery = applyRoleBasedCollegeFilter(recentAppsQuery, userProfile, 'applications');
 
     const { data: recentApplications } = await recentAppsQuery
+        .neq('status', 'draft')
         .order('submitted_at', { ascending: false })
         .limit(10);
 
     return {
-        statusCounts: statusCounts || [],
-        courseCounts: courseCounts || [],
+        statusCounts: (statusCounts || []).filter((s: any) => s.status !== 'draft'),
+        courseCounts: calculatedCourseCounts,
         branchCounts: branchCounts || [],
         formTypeCounts: formTypeCounts || [],
         totalAmountCollected: totalAmountCollected,
