@@ -21,21 +21,24 @@ export async function calculateAndRankMerit(
             id, 
             student_id, 
             form_data,
+            submitted_at,
             marks (*)
         `)
         .eq('course_id', courseId)
         .eq('cycle_id', cycleId)
-        .eq('form_type', formType);
+        .eq('form_type', formType)
+        .eq('application_fee_status', 'paid'); // STRICTURE: Must be paid
 
     if (targetStatus === 'verified') {
-        query = query.eq('status', 'verified');
+        // 'Verified' pool includes verified, approved, and waitlisted applications
+        query = query.in('status', ['verified', 'approved', 'waitlisted']);
     } else if (targetStatus === 'submitted_paid') {
-        query = query.eq('status', 'submitted').eq('application_fee_status', 'paid');
+        query = query.eq('status', 'submitted');
     } else if (targetStatus === 'both') {
-        query = query.or('status.eq.verified,and(status.eq.submitted,application_fee_status.eq.paid)');
+        query = query.in('status', ['verified', 'approved', 'waitlisted', 'submitted']);
     } else {
-        // Fallback to verified
-        query = query.eq('status', 'verified');
+        // Fallback to verified pool
+        query = query.in('status', ['verified', 'approved', 'waitlisted']);
     }
 
     const { data: applications, error: appError } = await query;
@@ -47,6 +50,25 @@ export async function calculateAndRankMerit(
 
     if (!applications || applications.length === 0) {
         return { success: true, message: `No applications found to process for target: ${targetStatus}.` };
+    }
+
+    // --- STEP: Clear existing ranks for this cohort to prevent stale/duplicate ranks ---
+    // Fetch ALL application IDs for this cohort (regardless of current status) to clear them
+    const { data: appsToClear } = await supabase
+        .from('applications')
+        .select('id')
+        .eq('course_id', courseId)
+        .eq('cycle_id', cycleId)
+        .eq('form_type', formType);
+
+    if (appsToClear && appsToClear.length > 0) {
+        const clearIds = appsToClear.map(a => a.id);
+        // Batch delete from merit_list_entries
+        for (let i = 0; i < clearIds.length; i += 500) {
+            const chunk = clearIds.slice(i, i + 500);
+            await supabase.from('merit_list_entries').delete().in('application_id', chunk);
+        }
+        console.log(`Cleared ${clearIds.length} existing merit entries for Course: ${courseId}, Cycle: ${cycleId}, Type: ${formType}`);
     }
 
     // 2. Fetch Merit Formula
@@ -161,11 +183,22 @@ export async function calculateAndRankMerit(
         // Ensure score is a number
         if (isNaN(score)) score = 0;
 
-        updates.push({ id: app.id, merit_score: score });
+        updates.push({ 
+            id: app.id, 
+            merit_score: score,
+            submitted_at: app.submitted_at || new Date().toISOString()
+        });
     }
 
     // 4. Sort by Score (Descending) to determine Rank
-    updates.sort((a, b) => b.merit_score - a.merit_score);
+    // TIE BREAKER: If scores are equal, earlier submission (submitted_at) wins.
+    updates.sort((a, b) => {
+        if (b.merit_score !== a.merit_score) {
+            return b.merit_score - a.merit_score;
+        }
+        // Earlier date is "smaller", so a - b for ascending order
+        return new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime();
+    });
 
     // 5. Update Database (Batch or Loop)
     // We update both score and rank in the new table

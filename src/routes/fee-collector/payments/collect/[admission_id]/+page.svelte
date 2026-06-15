@@ -3,7 +3,7 @@
     import { enhance } from '$app/forms';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
     import { toastStore } from '$lib/stores/toastStore';
-    import { goto } from '$app/navigation';
+    import { goto, invalidateAll } from '$app/navigation';
     import { generateReceiptPDF, downloadReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
 
     let { data, form } = $props();
@@ -12,6 +12,9 @@
     let app = $derived(admission.applications as any);
     let student = $derived(app.student_user);
     let college = $derived(app.courses.colleges);
+
+    let isEditingName = $state(false);
+    let editNameValue = $state('');
 
     let feePeriod = $state('year'); 
     let paymentDate = $state(new Date().toISOString().split('T')[0]);
@@ -72,7 +75,14 @@
             if (form.error) toastStore.error(form.message);
             else {
                 toastStore.success(form.message);
-                if (form.success) goto('/fee-collector/payments');
+                if (form.success) {
+                    if (form.action === 'updateStudentName') {
+                        isEditingName = false;
+                        invalidateAll();
+                    } else {
+                        goto('/fee-collector/payments');
+                    }
+                }
             }
         }
     });
@@ -89,6 +99,33 @@
             window.location.reload();
         } else {
             toastStore.error('Failed to update scheme.');
+        }
+        stopLoading();
+    }
+
+    function startEditingName() {
+        editNameValue = student?.full_name || '';
+        isEditingName = true;
+    }
+
+    async function handleUpdateName() {
+        if (!editNameValue.trim()) {
+            toastStore.error('Name cannot be empty.');
+            return;
+        }
+        startLoading();
+        const formData = new FormData();
+        formData.append('student_id', app.student_id);
+        formData.append('full_name', editNameValue);
+        const response = await fetch('?/updateStudentName', { method: 'POST', body: formData });
+        const result = await response.json();
+        
+        if (response.ok) {
+            toastStore.success('Student name updated!');
+            isEditingName = false;
+            window.location.reload();
+        } else {
+            toastStore.error('Failed to update name.');
         }
         stopLoading();
     }
@@ -192,7 +229,24 @@
                             <i class="bi bi-person fs-2"></i>
                         </div>
                         <div>
-                            <h4 class="mb-0 fw-bold">{student?.full_name}</h4>
+                            {#if isEditingName}
+                                <div class="input-group mb-2">
+                                    <input type="text" class="form-control" bind:value={editNameValue} placeholder="Full Name" />
+                                    <button class="btn btn-success" on:click={handleUpdateName}>
+                                        <i class="bi bi-check-lg"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary" on:click={() => isEditingName = false}>
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            {:else}
+                                <h4 class="mb-0 fw-bold d-flex align-items-center">
+                                    {student?.full_name}
+                                    <button class="btn btn-sm text-muted p-0 ms-2" on:click={startEditingName}>
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                </h4>
+                            {/if}
                             <p class="text-muted mb-0">{student?.email}</p>
                             <span class="badge bg-light text-dark border mt-1">
                                 Enrollment: {student?.student_profiles?.[0]?.enrollment_number || 'Pending'}
@@ -423,6 +477,9 @@
                                         <td class="fw-bold">₹{payment.amount.toLocaleString()}</td>
                                         <td class="pe-3 text-end">
                                             <div class="btn-group">
+                                                <a href="/fee-collector/payments/edit/{payment.id}" class="btn btn-sm btn-outline-primary" title="Edit Payment">
+                                                    <i class="bi bi-pencil"></i>
+                                                </a>
                                                 <button class="btn btn-sm btn-outline-secondary" title="Print" on:click={() => printReceipt(payment)}>
                                                     <i class="bi bi-printer"></i>
                                                 </button>

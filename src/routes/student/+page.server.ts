@@ -135,7 +135,6 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 ...app,
                 documents: documentsWithUrls,
                 merit_rank: meritEntry?.merit_rank,
-                merit_score: meritEntry?.merit_score,
                 is_merit_published: form?.is_merit_published || false
             };
         }) || []));

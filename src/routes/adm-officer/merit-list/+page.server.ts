@@ -27,8 +27,10 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         .from('admission_forms')
         .select('course_id, cycle_id, form_type, is_merit_published');
 
-    // Fetch ALL relevant applications (Verified + Approved + Submitted/Paid) to show locally filtered list
-    // Ideally this should be paginated or filtered by URL params for performance, but starting simple.
+    // Fetch ALL relevant applications to show locally filtered list
+    // We fetch verified, approved, waitlisted, and submitted/paid applications.
+    // CRITICAL: We also need to fetch ANY application that has a merit rank assigned, 
+    // otherwise the UI will show "skipped" ranks if the application's status changed.
     const { data: rawApplications, error: appError } = await supabase
         .from('applications')
         .select(`
@@ -36,17 +38,52 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             student_user:users!applications_student_id_fkey (full_name, email),
             courses(name),
             branches(name),
-            merit_list_entries(merit_rank, merit_score)
-        `)
-        .or('status.in.("verified","approved","waitlisted"),and(status.eq.submitted,application_fee_status.eq.paid)');
+            merit_list_entries!inner(merit_rank, merit_score)
+        `);
 
-    if (appError) {
+    // If no merit entries, fallback to fetching all relevant applications for generation
+    let finalApplications = rawApplications;
+    if (!rawApplications || rawApplications.length === 0) {
+        const { data: fallbackApps } = await supabase
+            .from('applications')
+            .select(`
+                id, student_id, status, application_fee_status, course_id, cycle_id, form_type, approval_comment, branch_id,
+                student_user:users!applications_student_id_fkey (full_name, email),
+                courses(name),
+                branches(name),
+                merit_list_entries(merit_rank, merit_score)
+            `)
+            .or('status.in.("verified","approved","waitlisted"),and(status.eq.submitted,application_fee_status.eq.paid)');
+        finalApplications = fallbackApps;
+    } else {
+        // We have some ranked apps, but we ALSO want to fetch unranked ones that are eligible for generation
+        const { data: unrankedApps } = await supabase
+            .from('applications')
+            .select(`
+                id, student_id, status, application_fee_status, course_id, cycle_id, form_type, approval_comment, branch_id,
+                student_user:users!applications_student_id_fkey (full_name, email),
+                courses(name),
+                branches(name),
+                merit_list_entries(merit_rank, merit_score)
+            `)
+            .or('status.in.("verified","approved","waitlisted"),and(status.eq.submitted,application_fee_status.eq.paid)');
+        
+        // Merge without duplicates
+        const existingIds = new Set(finalApplications!.map(a => a.id));
+        unrankedApps?.forEach(app => {
+            if (!existingIds.has(app.id)) {
+                (finalApplications as any).push(app);
+            }
+        });
+    }
+
+    if (appError && !finalApplications) {
         console.error('Error fetching applications:', appError.message);
     }
 
     // --- Provisional Fallback logic (Branch & Comment) ---
-    if (rawApplications && rawApplications.length > 0) {
-        const studentIds = rawApplications.map(app => app.student_id);
+    if (finalApplications && finalApplications.length > 0) {
+        const studentIds = finalApplications.map(app => app.student_id);
 
         if (studentIds.length > 0) {
             const { data: formTypesData } = await supabase
@@ -74,7 +111,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                     });
                 });
 
-                rawApplications.forEach(app => {
+                finalApplications.forEach(app => {
                     const pData = provDataMap.get(app.student_id);
                     if (pData) {
                         if (!app.branches?.name && pData.branch_name) {
@@ -90,7 +127,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     }
 
     // Flatten and sort
-    const mappedApps = (rawApplications || [])?.map(app => {
+    const mappedApps = (finalApplications || [])?.map(app => {
         const meritEntry = Array.isArray(app.merit_list_entries) 
             ? app.merit_list_entries[0] 
             : app.merit_list_entries;

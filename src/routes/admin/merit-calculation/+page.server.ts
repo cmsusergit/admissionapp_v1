@@ -19,6 +19,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     const cycleId = url.searchParams.get('cycleId');
     const formType = url.searchParams.get('formType');
     const search = url.searchParams.get('search');
+    const sortBy = url.searchParams.get('sortBy') || 'merit_rank';
+    const sortOrder = url.searchParams.get('sortOrder') || 'asc';
 
     // Use Service Role to bypass RLS for fetching all applications
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -41,8 +43,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             courses(id, name, colleges(name)),
             admission_cycles(name, academic_years(name))
         `)
-        .in('status', ['submitted', 'verified', 'approved', 'waitlisted']) 
-        .order('status', { ascending: true });
+        .in('status', ['submitted', 'verified', 'approved', 'waitlisted']);
 
     // Apply Filters
     if (courseId) query = query.eq('course_id', courseId);
@@ -62,7 +63,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     }
 
     // Flatten the data for easier consumption in the frontend
-    const flattenedApps = applications?.map(app => {
+    let flattenedApps = applications?.map(app => {
         const meritEntry = Array.isArray(app.merit_list_entries) ? app.merit_list_entries[0] : app.merit_list_entries;
         return {
             ...app,
@@ -71,11 +72,30 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         };
     }) || [];
 
+    // Apply Sorting in-memory (Supabase JS client order() on foreign tables doesn't sort parent rows)
+    if (sortBy === 'merit_rank' || sortBy === 'merit_score') {
+        flattenedApps.sort((a, b) => {
+            const valA = a[sortBy] !== null ? parseFloat(a[sortBy]) : null;
+            const valB = b[sortBy] !== null ? parseFloat(b[sortBy]) : null;
+
+            if (valA === null && valB === null) return 0;
+            if (valA === null) return 1;
+            if (valB === null) return -1;
+
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+    } else {
+        // Default sort by status if not merit sorting
+        flattenedApps.sort((a, b) => (a.status || '').localeCompare(b.status || ''));
+    }
+
     return {
         applications: flattenedApps,
         courses: courses || [],
         cycles: cycles || [],
-        filters: { courseId, cycleId, formType, search },
+        filters: { courseId, cycleId, formType, search, sortBy, sortOrder },
         message: null
     };
 };
@@ -115,7 +135,7 @@ export const actions: Actions = {
             return fail(500, { message: 'Failed to update merit score.', error: true });
         }
 
-        return { success: true, message: `Merit score updated to ${merit_score.toFixed(2)}` };
+        return { success: true, message: `Merit score updated to ${merit_score.toFixed(5)}` };
     },
 
     recalculateRanks: async ({ request, locals: { getAuthenticatedUser, userProfile } }) => {
@@ -128,6 +148,8 @@ export const actions: Actions = {
         const course_id = formData.get('course_id') as string;
         const cycle_id = formData.get('cycle_id') as string;
         const form_type = formData.get('form_type') as string;
+        const start_rank_str = formData.get('start_rank') as string;
+        const start_rank = parseInt(start_rank_str) || 1;
 
         if (!course_id || !cycle_id) {
             return fail(400, { message: 'Course and Cycle ID are required to recalculate ranks.', error: true });
@@ -160,11 +182,11 @@ export const actions: Actions = {
             return fail(404, { message: 'No entries found to rank.', error: true });
         }
 
-        // Assign new ranks
+        // Assign new ranks starting from start_rank
         const updates = entries.map((entry, index) => ({
             application_id: entry.application_id,
             merit_score: entry.merit_score, // Keep existing score
-            merit_rank: index + 1
+            merit_rank: start_rank + index
         }));
 
         // Batch update using upsert

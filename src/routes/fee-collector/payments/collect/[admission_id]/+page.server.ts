@@ -370,5 +370,35 @@ export const actions: Actions = {
         }
 
         return { success: true, message: 'Fee scheme assigned successfully!' };
+    },
+
+    updateStudentName: async ({ request, locals: { getAuthenticatedUser, userProfile } }) => {
+        const authenticatedUser = await getAuthenticatedUser();
+        if (!authenticatedUser || userProfile?.role !== 'fee_collector') {
+            throw redirect(303, '/login');
+        }
+
+        const formData = await request.formData();
+        const student_id = formData.get('student_id') as string;
+        const full_name = formData.get('full_name') as string;
+
+        if (!student_id || !full_name) {
+            return fail(400, { message: 'Student ID and full name are required.', error: true });
+        }
+
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+            auth: { persistSession: false }
+        });
+
+        const { error } = await supabaseAdmin
+            .from('users')
+            .update({ full_name })
+            .eq('id', student_id);
+
+        if (error) {
+            return fail(500, { message: 'Failed to update student name: ' + error.message, error: true });
+        }
+
+        return { success: true, message: 'Student name updated successfully!', action: 'updateStudentName' };
     }
 };

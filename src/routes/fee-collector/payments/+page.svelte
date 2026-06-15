@@ -455,14 +455,17 @@
                                                 </a>
                                             {/if}
                                         {/if}
+                                        <a href="/fee-collector/payments/edit/{payment.id}" class="btn btn-sm btn-outline-primary" title="Edit Payment">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
                                         <button class="btn btn-sm btn-secondary" title="Print" onclick={() => printReceipt(payment)}>
                                             <i class="bi bi-printer"></i>
                                         </button>
                                         <button class="btn btn-sm btn-outline-secondary" title="Download" onclick={() => downloadReceipt(payment)}>
                                             <i class="bi bi-download"></i>
                                         </button>
-                                    </div>
-                                </td>
+                                        </div>
+                                        </td>
                             </tr>
                         {:else}
                             <tr>

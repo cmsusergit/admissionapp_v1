@@ -12,6 +12,8 @@
     let filterCycleId = data.filters?.cycleId || '';
     let filterFormType = data.filters?.formType || '';
     let filterSearch = data.filters?.search || '';
+    let sortBy = data.filters?.sortBy || 'merit_rank';
+    let sortOrder = data.filters?.sortOrder || 'asc';
 
     // Extract unique options for Recalculate Ranks form (or use filters if set)
     // We default to the filter values if set, otherwise empty
@@ -34,7 +36,21 @@
         if (filterSearch) query.set('search', filterSearch);
         else query.delete('search');
 
+        query.set('sortBy', sortBy);
+        query.set('sortOrder', sortOrder);
+
         goto(`?${query.toString()}`);
+    }
+
+    function toggleSort(field: string) {
+        if (sortBy === field) {
+            sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortBy = field;
+            // Default to descending for score (highest first), ascending for rank
+            sortOrder = field === 'merit_score' ? 'desc' : 'asc';
+        }
+        applyFilters();
     }
 
     function clearFilters() {
@@ -42,6 +58,8 @@
         filterCycleId = '';
         filterFormType = '';
         filterSearch = '';
+        sortBy = 'merit_rank';
+        sortOrder = 'asc';
         goto('?');
     }
 </script>
@@ -122,7 +140,7 @@
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">Admission Cycle</label>
                     <select class="form-select" name="cycle_id" bind:value={selectedCycleId} required>
                         <option value="">Select Cycle</option>
@@ -131,7 +149,7 @@
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">Form Type</label>
                     <select class="form-select" name="form_type" bind:value={selectedFormType}>
                         <option value="">Select Type (Default: Provisional)</option>
@@ -140,6 +158,10 @@
                         <option value="MQ/NRI">MQ/NRI</option>
                         <option value="Vacant">Vacant</option>
                     </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Start Rank</label>
+                    <input type="number" class="form-control" name="start_rank" value="1" min="1" required />
                 </div>
                 <div class="col-md-3">
                     <button type="submit" class="btn btn-dark w-100">
@@ -165,8 +187,22 @@
                                 <th>Course</th>
                                 <th>Cycle</th>
                                 <th>Status</th>
-                                <th>Current Rank</th>
-                                <th style="width: 250px;">Merit Score (Manual)</th>
+                                <th>
+                                    <button class="btn btn-link p-0 fw-bold text-decoration-none" on:click={() => toggleSort('merit_rank')}>
+                                        Current Rank
+                                        {#if sortBy === 'merit_rank'}
+                                            <i class="bi bi-sort-{sortOrder === 'asc' ? 'up' : 'down'}"></i>
+                                        {/if}
+                                    </button>
+                                </th>
+                                <th style="width: 250px;">
+                                    <button class="btn btn-link p-0 fw-bold text-decoration-none" on:click={() => toggleSort('merit_score')}>
+                                        Merit Score (Manual)
+                                        {#if sortBy === 'merit_score'}
+                                            <i class="bi bi-sort-{sortOrder === 'asc' ? 'up' : 'down'}"></i>
+                                        {/if}
+                                    </button>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -192,11 +228,11 @@
                                             <input type="hidden" name="application_id" value={appAny.id} />
                                             <input 
                                                 type="number" 
-                                                step="0.01" 
+                                                step="0.000001" 
                                                 class="form-control form-control-sm" 
                                                 name="merit_score" 
                                                 value={appAny.merit_score || 0} 
-                                                style="width: 100px;"
+                                                style="width: 120px;"
                                             />
                                             <button type="submit" class="btn btn-sm btn-outline-success">Update</button>
                                         </form>

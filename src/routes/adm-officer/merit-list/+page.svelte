@@ -34,6 +34,10 @@
         }
 
         // Apply target status filter for preview
+        // ENHANCEMENT: If an application already has a merit_rank, we ALWAYS show it in the preview 
+        // to avoid "missing ranks" confusion when viewing a list generated with different criteria.
+        if (app.merit_rank) return true;
+
         if (targetStatus === 'verified') return app.status === 'verified' || app.status === 'approved' || app.status === 'waitlisted';
         if (targetStatus === 'submitted_paid') return app.status === 'submitted' && app.application_fee_status === 'paid';
         if (targetStatus === 'both') return true; // Already pre-filtered in server load to only show relevant statuses
@@ -217,7 +221,7 @@
                                             <span class="text-muted">-</span>
                                         {/if}
                                     </td>
-                                    <td>{app.merit_score ? app.merit_score.toFixed(2) : '-'}</td>
+                                    <td>{app.merit_score ? app.merit_score.toFixed(5) : '-'}</td>
                                     <td>
                                         {app.student_user?.full_name || 'N/A'} <br>
                                         <small class="text-muted">{app.student_user?.email}</small>

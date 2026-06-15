@@ -95,6 +95,17 @@
                 return { class: 'bg-secondary', icon: 'bi-question-circle', text: status || 'Unknown' };
         }
     }
+
+    // Hardcoded merit timings based on rank
+    function getMeritTiming(rank: number) {
+        if (!rank) return null;
+        if (rank >= 1 && rank <= 50) return { date: '26/06/2026', time: '11:00 AM to 12:00 PM' };
+        if (rank >= 51 && rank <= 100) return { date: '26/06/2026', time: '12:00 PM to 01:00 PM' };
+        if (rank >= 101 && rank <= 150) return { date: '26/06/2026', time: '02:00 PM to 04:00 PM' };
+        if (rank >= 151 && rank <= 200) return { date: '27/06/2026', time: '11:00 AM to 12:00 PM' };
+        if (rank >= 201) return { date: '27/06/2026', time: '01:00 PM to 04:00 PM' };
+        return null;
+    }
 </script>
 
 <div class="container-fluid">
@@ -239,20 +250,26 @@
                                         {/if}
                                         
                                         <!-- Merit Status (Prominent) -->
-                                        {#if app.is_merit_published && app.merit_rank && ['verified', 'approved', 'waitlisted'].includes(app.status)}
+                                        {#if app.is_merit_published && app.merit_rank && (['verified', 'approved', 'waitlisted'].includes(app.status) || (app.status === 'submitted' && app.application_fee_status === 'paid'))}
+                                            {@const timing = getMeritTiming(app.merit_rank)}
                                             <div class="alert alert-primary mt-2 mb-0 p-2 shadow-sm border-primary">
                                                 <div class="d-flex align-items-center justify-content-between">
                                                     <div>
                                                         <h5 class="mb-0 text-primary fw-bold">
                                                             <i class="bi bi-trophy-fill me-1"></i>Merit Rank: #{app.merit_rank}
                                                         </h5>
+                                                        {#if timing}
+                                                            <div class="mt-1 small">
+                                                                <i class="bi bi-calendar-check me-1"></i> <strong>Counseling Schedule:</strong> {timing.date} | {timing.time}
+                                                            </div>
+                                                        {/if}
                                                     </div>
                                                     {#if app.status === 'waitlisted'}
                                                         <span class="badge bg-warning text-dark border border-dark">Waitlisted</span>
                                                     {/if}
                                                 </div>
                                             </div>
-                                        {:else if (app.status === 'verified' || app.status === 'approved') && !app.is_merit_published}
+                                        {:else if (['verified', 'approved'].includes(app.status) || (app.status === 'submitted' && app.application_fee_status === 'paid')) && !app.is_merit_published}
                                             <div class="mt-2 p-2 bg-light border rounded text-muted small">
                                                 <i class="bi bi-clock-history me-1"></i> Merit List Pending Publication
                                             </div>
