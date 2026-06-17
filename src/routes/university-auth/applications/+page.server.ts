@@ -59,7 +59,7 @@ export const load: PageServerLoad = async ({
     .select(
       `
             id, status, form_type, admission_type, submitted_at, updated_at, student_id, course_id, cycle_id, branch_id, form_data, application_fee_status, created_by, updated_by, approval_comment, rejection_reason,
-            courses(id, name, colleges(id, name, universities(name))),
+            courses(id, name, branches(id, name, code, collegeid_code), colleges(id, name, universities(name))),
             branches(id, name, code),
             admission_cycles(id, name, academic_years(id, name)),
             users!student_id!inner(full_name, email),

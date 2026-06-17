@@ -43,6 +43,7 @@ export interface ReceiptData {
     contactEmail?: string;
   };
   collegeAlias?: string;
+  admissionType?: string; // e.g. MQ/NRI, ACPC
 }
 
 function formatCurrency(amount: any): string {
@@ -415,6 +416,170 @@ async function buildReceiptDocument(data: ReceiptData, filename?: string): Promi
   } else {
     pdfDoc.print();
   }
+}
+
+/**
+ * 4. ADMISSION SLIP FORMAT (A5)
+ */
+function createAdmissionSlipContent(data: ReceiptData): any[] {
+    const content: any[] = [];
+    
+    // Header
+    const headerRow: any[] = [];
+    if (data.university.logoUrl) {
+        headerRow.push({
+            width: 70,
+            image: data.university.logoUrl,
+            fit: [55, 55],
+            alignment: "left"
+        });
+    } else {
+        headerRow.push({ width: 70, text: "" });
+    }
+
+    headerRow.push({
+        width: "*",
+        stack: [
+            { text: data.university.name.toUpperCase(), fontSize: 13, bold: true, alignment: "center" },
+            { text: data.university.address || "Vasad", fontSize: 10, alignment: "center", margin: [0, 2, 0, 0] }
+        ],
+        margin: [0, 5, 0, 0]
+    });
+
+    headerRow.push({ width: 70, text: "" });
+
+    content.push({
+        columns: headerRow,
+        margin: [0, 0, 0, 15]
+    });
+
+    content.push({
+        text: "ADMISSION SLIP",
+        fontSize: 14,
+        bold: true,
+        alignment: "center",
+        color: "white",
+        background: "#333",
+        margin: [0, 0, 0, 20]
+    });
+
+    // Student and Admission Number
+    content.push({
+        columns: [
+            {
+                width: "*",
+                stack: [
+                    { text: "Student Full Name", fontSize: 8, color: "#666", margin: [0, 0, 0, 2] },
+                    { text: data.studentName.toUpperCase(), fontSize: 12, bold: true }
+                ]
+            },
+            {
+                width: "auto",
+                stack: [
+                    { text: "Admission Number", fontSize: 8, color: "#666", alignment: "right", margin: [0, 0, 0, 2] },
+                    { text: data.admissionNumber || "PENDING", fontSize: 12, bold: true, color: "#0d6efd", alignment: "right" }
+                ]
+            }
+        ],
+        margin: [0, 0, 0, 15],
+        canvas: [{ type: 'line', x1: 0, y1: 30, x2: 535, y2: 30, lineWidth: 0.5, lineColor: '#ddd' }]
+    });
+
+    // Info Grid
+    const infoGridBody = [
+        [
+            { stack: [{ text: "COURSE", fontSize: 7, color: "#666" }, { text: data.courseName, fontSize: 10, bold: true }] },
+            { stack: [{ text: "BRANCH", fontSize: 7, color: "#666" }, { text: data.branchName || "General / N/A", fontSize: 10, bold: true }] },
+            { stack: [{ text: "ACADEMIC YEAR", fontSize: 7, color: "#666" }, { text: data.academicYear || "-", fontSize: 10, bold: true }] }
+        ],
+        [
+            { stack: [{ text: "APPLICATION TYPE", fontSize: 7, color: "#666" }, { text: data.admissionType || data.paymentType || "-", fontSize: 10, bold: true }] },
+            { stack: [{ text: "ADMISSION MODE", fontSize: 7, color: "#666" }, { text: "Regular", fontSize: 10, bold: true }] },
+            { stack: [{ text: "DATE OF ISSUE", fontSize: 7, color: "#666" }, { text: formatDate(new Date().toISOString()), fontSize: 10, bold: true }] }
+        ]
+    ];
+
+    content.push({
+        table: {
+            widths: ["*", "*", "*"],
+            body: infoGridBody
+        },
+        layout: "noBorders",
+        margin: [0, 0, 0, 20]
+    });
+
+    content.push({
+        stack: [
+            { text: `Status: APPROVED`, fontSize: 11, bold: true, color: "#198754", alignment: "center" }
+        ],
+        fillColor: "#f8f9fa",
+        margin: [0, 0, 0, 30],
+        padding: [10, 10, 10, 10]
+    });
+
+    // Footer Signatures
+    content.push({
+        columns: [
+            {
+                width: 150,
+                stack: [
+                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 150, y2: 0, lineWidth: 0.5 }], margin: [0, 40, 0, 5] },
+                    { text: "Student's Signature", fontSize: 8, alignment: "center" }
+                ]
+            },
+            { width: "*", text: "" },
+            {
+                width: 150,
+                stack: [
+                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 150, y2: 0, lineWidth: 0.5 }], margin: [0, 40, 0, 5] },
+                    { text: "Authorized Signature", fontSize: 8, alignment: "center" },
+                    { text: `${data.collegeAlias || "SVIT"}, Vasad`, fontSize: 7, color: "#666", alignment: "center" }
+                ]
+            }
+        ]
+    });
+
+    content.push({
+        text: "* This is a computer-generated admission slip. Please present this slip for fee payment and enrollment processes.",
+        fontSize: 7,
+        italics: true,
+        color: "#666",
+        margin: [0, 20, 0, 0],
+        canvas: [{ type: 'line', x1: 0, y1: -5, x2: 535, y2: -5, lineWidth: 0.5, lineColor: '#ddd' }]
+    });
+
+    return content;
+}
+
+async function buildAdmissionSlipDocument(data: ReceiptData, filename?: string): Promise<void> {
+  const docData = JSON.parse(JSON.stringify(data));
+  if (docData.university.logoUrl && docData.university.logoUrl.startsWith('http')) {
+      const dataUrl = await imageToDataURL(docData.university.logoUrl);
+      docData.university.logoUrl = dataUrl || undefined;
+  }
+
+  const docDefinition: any = {
+    pageSize: "A5",
+    pageOrientation: "landscape",
+    pageMargins: [30, 30, 30, 30],
+    content: createAdmissionSlipContent(docData),
+  };
+
+  const pdfDoc = pdfMake.createPdf(docDefinition);
+  if (filename) {
+    pdfDoc.download(filename);
+  } else {
+    pdfDoc.print();
+  }
+}
+
+export async function generateAdmissionSlipPDF(data: ReceiptData): Promise<void> {
+  await buildAdmissionSlipDocument(data);
+}
+
+export async function downloadAdmissionSlipPDF(data: ReceiptData): Promise<void> {
+  const filename = `AdmissionSlip_${data.admissionNumber || "Draft"}.pdf`;
+  await buildAdmissionSlipDocument(data, filename);
 }
 
 export async function generateReceiptPDF(data: ReceiptData): Promise<void> {

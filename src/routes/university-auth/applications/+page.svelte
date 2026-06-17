@@ -49,15 +49,12 @@
 
     function openApproveModal(app: any) {
         selectedApplication = app;
-        selectedBranchId = '';
+        selectedBranchId = app.branch_id || ''; // Pre-select existing branch
         applicationApprovalComment = '';
         
-        const isSpecial = app.form_type === 'MQ/NRI' || app.form_type === 'Vacant';
         const hasBranches = app.courses?.branches && app.courses.branches.length > 0;
-        const needsBranch = (!app.branch_id || isSpecial) && hasBranches;
 
-        if (needsBranch) {
-            selectedBranchId = app.branch_id || '';
+        if (hasBranches) {
             showApproveModal = true;
         } else {
             // Confirm direct approval
@@ -90,6 +87,10 @@
         showApproveModal = false;
         if (res.type === 'success') {
             toastStore.success('Application approved!');
+            const appId = selectedApplication?.id;
+            if (appId && confirm('Application approved successfully! Would you like to print the Admission Slip now?')) {
+                window.open(`/receipts/admission/${appId}?print=1`, '_blank');
+            }
             await invalidate('/university-auth/applications');
         } else {
             const errorMsg = (res.data as any)?.message || 'Error approving.';
@@ -330,6 +331,9 @@
                                             <i class="bi bi-x-lg"></i>
                                         </button>
                                     {:else if activeTab === 'approved'}
+                                        <a href="/receipts/admission/{app.id}?print=1" target="_blank" class="btn btn-sm btn-outline-primary me-1" title="Print Admission Slip">
+                                            <i class="bi bi-printer"></i> Slip
+                                        </a>
                                         <button class="btn btn-sm btn-outline-danger" on:click={() => revertApp(app)} title="Revert Approval">
                                             <i class="bi bi-arrow-counterclockwise"></i>
                                         </button>
