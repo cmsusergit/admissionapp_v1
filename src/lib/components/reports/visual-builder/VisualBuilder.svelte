@@ -109,6 +109,7 @@
                     { label: 'Status', path: 'status' }
                 ];
                 nodeToProcess.style.width = '100%';
+                nodeToProcess.style.marginBottom = '10px';
             } else if (type === 'layoutTable') {
                 nodeToProcess.children = [0, 1].map(() => ({
                     id: generateId(),
@@ -453,10 +454,67 @@
 
     function updateSelectedNode(updates: any, targetId?: string) {
         const id = targetId || selectedId;
-        if (!id) return;
+        if (!id && !updates.groupFlow) return;
         const targetNode = findNode(layout, id);
         if (targetNode && targetNode.x === undefined) { delete updates.x; delete updates.y; }
         if (updates.delete) { deleteNode(id); return; }
+
+        if (updates.groupFlow) {
+            const nodesToGroup = selectedIds.map(sid => findNode(layout, sid)).filter(Boolean);
+            if (nodesToGroup.length < 2) return;
+
+            // Find bounds
+            const minX = Math.min(...nodesToGroup.map(n => n.x ?? 0));
+            const minY = Math.min(...nodesToGroup.map(n => n.y ?? 0));
+            const maxX = Math.max(...nodesToGroup.map(n => (n.x ?? 0) + (n.w ?? 0)));
+            const maxY = Math.max(...nodesToGroup.map(n => (n.y ?? 0) + (n.h ?? 0)));
+
+            // Sort nodes by Y position to preserve visual order
+            nodesToGroup.sort((a, b) => (a.y ?? 0) - (b.y ?? 0));
+
+            // Create container
+            const container: any = {
+                id: generateId(),
+                type: 'column',
+                x: minX,
+                y: minY,
+                w: maxX - minX,
+                h: maxY - minY,
+                style: {
+                    position: 'absolute',
+                    left: `${minX}px`,
+                    top: `${minY}px`,
+                    width: `${maxX - minX}px`,
+                    minHeight: `${maxY - minY}px`,
+                    padding: '5px'
+                },
+                children: nodesToGroup.map(n => {
+                    const cloned = JSON.parse(JSON.stringify(n));
+                    delete cloned.x;
+                    delete cloned.y;
+                    cloned.style = {
+                        ...cloned.style,
+                        position: 'relative',
+                        left: undefined,
+                        top: undefined,
+                        width: '100%',
+                        marginBottom: '10px'
+                    };
+                    return cloned;
+                })
+            };
+
+            // Remove original nodes and add container
+            let newLayout = JSON.parse(JSON.stringify(layout));
+            selectedIds.forEach(sid => {
+                newLayout = removeNodeFromLayout(newLayout, sid);
+            });
+            layout = [...newLayout, container];
+            selectedIds = [container.id];
+            compile();
+            return;
+        }
+
         if (updates.duplicate) {
             const nodesToDuplicate = targetId ? [targetId] : selectedIds;
             const newIds: string[] = [];

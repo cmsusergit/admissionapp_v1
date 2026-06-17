@@ -174,7 +174,7 @@
 
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Applications with Generated Merit List Entries</span>
+            <span>Applications Management</span>
             <span class="badge bg-secondary">{data.applications.length} Found</span>
         </div>
         <div class="card-body">
@@ -187,6 +187,7 @@
                                 <th>Course</th>
                                 <th>Cycle</th>
                                 <th>Status</th>
+                                <th>Fee</th>
                                 <th>
                                     <button class="btn btn-link p-0 fw-bold text-decoration-none" on:click={() => toggleSort('merit_rank')}>
                                         Current Rank
@@ -203,6 +204,7 @@
                                         {/if}
                                     </button>
                                 </th>
+                                <th>Calculated Preview</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -217,10 +219,15 @@
                                     <td>{appAny.admission_cycles?.name}</td>
                                     <td><span class="badge bg-info">{appAny.status}</span></td>
                                     <td>
+                                        <span class="badge {appAny.application_fee_status === 'paid' ? 'bg-success' : (['pending', 'waived', 'partial'].includes(appAny.application_fee_status) ? 'bg-warning text-dark' : 'bg-secondary')}">
+                                            {appAny.application_fee_status || 'N/A'}
+                                        </span>
+                                    </td>
+                                    <td>
                                         {#if appAny.merit_rank}
                                             <span class="badge bg-primary rounded-pill">#{appAny.merit_rank}</span>
                                         {:else}
-                                            <span class="text-muted">-</span>
+                                            <span class="badge bg-light text-muted border">Unranked</span>
                                         {/if}
                                     </td>
                                     <td>
@@ -237,13 +244,21 @@
                                             <button type="submit" class="btn btn-sm btn-outline-success">Update</button>
                                         </form>
                                     </td>
+                                    <td>
+                                        {#if appAny.preview_score !== undefined}
+                                            <span class="text-success fw-bold">{appAny.preview_score.toFixed(5)}</span>
+                                            <small class="text-muted d-block" style="font-size: 0.7rem;">(Formula result)</small>
+                                        {:else}
+                                            <span class="text-muted small">Matches manual</span>
+                                        {/if}
+                                    </td>
                                 </tr>
                             {/each}
                         </tbody>
                     </table>
                 </div>
             {:else}
-                <p>No applications found with generated merit entries. Use the Admission Officer "Merit List" page to generate the initial list first.</p>
+                <p>No eligible applications found for this selection. (Applications must be Verified, or Submitted & Paid to be ranked).</p>
             {/if}
         </div>
     </div>

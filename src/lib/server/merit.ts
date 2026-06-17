@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { evaluate } from 'mathjs';
+import { evaluate, parse } from 'mathjs';
 
 /**
  * Calculates merit scores for all verified applications in a specific course and cycle.
@@ -48,6 +48,8 @@ export async function calculateAndRankMerit(
         return { success: false, message: 'Failed to fetch applications.' };
     }
 
+    console.log(`Found ${applications?.length || 0} applications matching criteria.`);
+
     if (!applications || applications.length === 0) {
         return { success: true, message: `No applications found to process for target: ${targetStatus}.` };
     }
@@ -63,6 +65,7 @@ export async function calculateAndRankMerit(
 
     if (appsToClear && appsToClear.length > 0) {
         const clearIds = appsToClear.map(a => a.id);
+        console.log(`Clearing ${clearIds.length} existing merit entries...`);
         // Batch delete from merit_list_entries
         for (let i = 0; i < clearIds.length; i += 500) {
             const chunk = clearIds.slice(i, i + 500);
@@ -77,7 +80,12 @@ export async function calculateAndRankMerit(
         .select('rules_json')
         .eq('course_id', courseId)
         .eq('form_type', formType)
-        .single();
+        .maybeSingle();
+
+    if (formulaError) {
+        console.error('Error fetching formula:', formulaError.message);
+    }
+    console.log(`Formula found: ${formulaData ? 'Yes' : 'No (Fallback to form_data)'}`);
 
     // Default formula if none exists (e.g., just sum of marks or straight percentage)
     // For now, we assume a simple 'total_percentage' if available in form_data, or 0.
@@ -95,24 +103,6 @@ export async function calculateAndRankMerit(
             try {
                 // Build Context
                 const context: any = {};
-                
-                // 1. Add marks from 'marks' table
-                if (app.marks && app.marks.length > 0) {
-                    app.marks.forEach((m: any) => {
-                        // Normalize key: lowercase, remove spaces, etc. if needed.
-                        // Assuming frontend uses keys that match exactly what's saved in 'subject' or mapped correctly.
-                        // Ideally, we should use the field key.
-                        
-                        // NOTE: 'subject' in marks table currently stores the LABEL or Subject Name.
-                        // BUT our formula uses Keys.
-                        // We need to map labels back to keys OR ensure marks are stored with keys.
-                        // The trigger we wrote stores 'subject' as the Label/Name.
-                        // BUT it inserts based on schema.
-                        
-                        // Hack/Adjustment: We iterate marks. We also need access to form_data for raw keys if needed.
-                        // Better approach: Use form_data for raw values since they are reliable keys.
-                    });
-                }
                 
                 // PREFERRED: Build context from form_data directly as it has the keys
                 if (app.form_data) {
@@ -142,9 +132,34 @@ export async function calculateAndRankMerit(
                     flattenContext(app.form_data);
                 }
 
+                // SECURITY: Pre-parse the expression and ensure all symbols exist in context
+                // This prevents "Undefined symbol" errors if some apps are missing fields
+                const node = parse(rules.expression);
+                if (node) {
+                    node.traverse((n: any) => {
+                        if (n.isSymbolNode) {
+                            const isMathFunc = typeof (evaluate as any)[n.name] === 'function';
+                            if (!isMathFunc) {
+                                // If missing OR zero (to prevent division by zero), set defaults
+                                if (!(n.name in context) || context[n.name] === 0) {
+                                    if (n.name.endsWith('_max')) {
+                                        context[n.name] = 100; // Default max score to 100
+                                    } else if (!(n.name in context)) {
+                                        context[n.name] = 0; // Default score to 0
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
                 score = evaluate(rules.expression, context);
-            } catch (e) {
-                console.error(`Error evaluating formula for app ${app.id}:`, e);
+                if (isNaN(score) || !isFinite(score)) {
+                    console.warn(`Evaluation returned invalid result (${score}) for app ${app.id}.`);
+                    score = 0;
+                }
+            } catch (e: any) {
+                console.error(`Error evaluating formula for app ${app.id}:`, e.message);
                 score = 0;
             }
         }
@@ -190,6 +205,8 @@ export async function calculateAndRankMerit(
         });
     }
 
+    console.log(`Calculated scores for ${updates.length} applications.`);
+
     // 4. Sort by Score (Descending) to determine Rank
     // TIE BREAKER: If scores are equal, earlier submission (submitted_at) wins.
     updates.sort((a, b) => {
@@ -203,6 +220,7 @@ export async function calculateAndRankMerit(
     // 5. Update Database (Batch or Loop)
     // We update both score and rank in the new table
     let rank = 1;
+    let successCount = 0;
     for (const update of updates) {
         const { error } = await supabase
             .from('merit_list_entries')
@@ -215,9 +233,20 @@ export async function calculateAndRankMerit(
         
         if (error) {
             console.error(`Failed to update merit for app ${update.id}:`, error.message);
+        } else {
+            successCount++;
         }
         rank++;
     }
 
-    return { success: true, message: `Successfully calculated and ranked ${updates.length} applications.` };
+    console.log(`Successfully assigned ranks to ${successCount} entries.`);
+    return { 
+        success: true, 
+        message: `Successfully calculated and ranked ${successCount} applications.`,
+        details: {
+            total_found: applications.length,
+            ranked: successCount,
+            skipped: applications.length - successCount
+        }
+    };
 }

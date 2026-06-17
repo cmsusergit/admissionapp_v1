@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
-export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
+export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile }, url }) => {
     const authenticatedUser = await getAuthenticatedUser();
 
     if (!authenticatedUser) {
@@ -15,6 +15,10 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     if (!['adm_officer', 'admin'].includes(userProfile?.role || '')) {
         throw redirect(303, '/login');
     }
+
+    const courseId = url.searchParams.get('courseId');
+    const cycleId = url.searchParams.get('cycleId');
+    const formType = url.searchParams.get('formType');
 
     // Fetch options
     const { data: courses } = await supabase.from('courses').select('id, name');
@@ -27,11 +31,9 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         .from('admission_forms')
         .select('course_id, cycle_id, form_type, is_merit_published');
 
-    // Fetch ALL relevant applications to show locally filtered list
-    // We fetch verified, approved, waitlisted, and submitted/paid applications.
-    // CRITICAL: We also need to fetch ANY application that has a merit rank assigned, 
-    // otherwise the UI will show "skipped" ranks if the application's status changed.
-    const { data: rawApplications, error: appError } = await supabase
+    // Fetch relevant applications based on filters (Server-Side Filtering)
+    // CRITICAL: We also need to fetch ANY application that has a merit rank assigned.
+    let rawQuery = supabase
         .from('applications')
         .select(`
             id, student_id, status, application_fee_status, course_id, cycle_id, form_type, approval_comment, branch_id,
@@ -41,41 +43,38 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
             merit_list_entries!inner(merit_rank, merit_score)
         `);
 
-    // If no merit entries, fallback to fetching all relevant applications for generation
-    let finalApplications = rawApplications;
-    if (!rawApplications || rawApplications.length === 0) {
-        const { data: fallbackApps } = await supabase
-            .from('applications')
-            .select(`
-                id, student_id, status, application_fee_status, course_id, cycle_id, form_type, approval_comment, branch_id,
-                student_user:users!applications_student_id_fkey (full_name, email),
-                courses(name),
-                branches(name),
-                merit_list_entries(merit_rank, merit_score)
-            `)
-            .or('status.in.("verified","approved","waitlisted"),and(status.eq.submitted,application_fee_status.eq.paid)');
-        finalApplications = fallbackApps;
-    } else {
-        // We have some ranked apps, but we ALSO want to fetch unranked ones that are eligible for generation
-        const { data: unrankedApps } = await supabase
-            .from('applications')
-            .select(`
-                id, student_id, status, application_fee_status, course_id, cycle_id, form_type, approval_comment, branch_id,
-                student_user:users!applications_student_id_fkey (full_name, email),
-                courses(name),
-                branches(name),
-                merit_list_entries(merit_rank, merit_score)
-            `)
-            .or('status.in.("verified","approved","waitlisted"),and(status.eq.submitted,application_fee_status.eq.paid)');
-        
-        // Merge without duplicates
-        const existingIds = new Set(finalApplications!.map(a => a.id));
-        unrankedApps?.forEach(app => {
-            if (!existingIds.has(app.id)) {
-                (finalApplications as any).push(app);
-            }
-        });
-    }
+    if (courseId) rawQuery = rawQuery.eq('course_id', courseId);
+    if (cycleId) rawQuery = rawQuery.eq('cycle_id', cycleId);
+    if (formType) rawQuery = rawQuery.eq('form_type', formType);
+
+    const { data: rawApplications, error: appError } = await rawQuery;
+
+    // Fetch unranked ones that are eligible for generation, also with filters
+    let unrankedQuery = supabase
+        .from('applications')
+        .select(`
+            id, student_id, status, application_fee_status, course_id, cycle_id, form_type, approval_comment, branch_id,
+            student_user:users!applications_student_id_fkey (full_name, email),
+            courses(name),
+            branches(name),
+            merit_list_entries(merit_rank, merit_score)
+        `)
+        .or('status.in.("verified","approved","waitlisted"),and(status.eq.submitted,application_fee_status.eq.paid)');
+
+    if (courseId) unrankedQuery = unrankedQuery.eq('course_id', courseId);
+    if (cycleId) unrankedQuery = unrankedQuery.eq('cycle_id', cycleId);
+    if (formType) unrankedQuery = unrankedQuery.eq('form_type', formType);
+
+    const { data: unrankedApps } = await unrankedQuery;
+
+    // Merge without duplicates
+    let finalApplications = rawApplications || [];
+    const existingIds = new Set(finalApplications.map(a => a.id));
+    unrankedApps?.forEach(app => {
+        if (!existingIds.has(app.id)) {
+            (finalApplications as any).push(app);
+        }
+    });
 
     if (appError && !finalApplications) {
         console.error('Error fetching applications:', appError.message);
@@ -150,7 +149,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         cycles: cycles || [],
         formTypes: formTypes || [],
         applications: mappedApps,
-        admissionForms: admissionForms || []
+        admissionForms: admissionForms || [],
+        filters: { courseId, cycleId, formType }
     };
 };
 

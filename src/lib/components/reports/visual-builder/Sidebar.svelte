@@ -94,6 +94,12 @@
             vars.push({ path: 'student.photo_url', label: 'Student > Profile Photo URL' });
         }
         
+        // Add common list paths for dynamic tables
+        vars.push({ path: 'marks_list', label: 'List > All Board Marks' });
+        vars.push({ path: 'merit_marks', label: 'List > Merit Board Marks' });
+        vars.push({ path: 'entrance_marks_list', label: 'List > Entrance Exam Marks' });
+        vars.push({ path: 'payments', label: 'List > Payment History' });
+        
         return vars;
     });
 
@@ -142,8 +148,8 @@
     );
 
     const components = [
+        { type: 'column', label: 'Flow Section', icon: 'bi-box-arrow-in-down', description: 'Vertical stack (stops overlapping)' },
         { type: 'row', label: 'Row', icon: 'bi-grid-1x2', description: 'Horizontal container' },
-        { type: 'column', label: 'Column', icon: 'bi-layout-sidebar', description: 'Vertical container' },
         { type: 'text', label: 'Text', icon: 'bi-type', description: 'Paragraph or Label' },
         { type: 'variable', label: 'Variable', icon: 'bi-braces', description: 'Database field' },
         { type: 'image', label: 'Image', icon: 'bi-image', description: 'Logo or Photo' },
@@ -156,10 +162,26 @@
     const listSuggestions: Record<string, { label: string, path: string }[]> = {
         'marks_list': [
             { label: 'Subject', path: 'subject' },
-            { label: 'Marks Obtained', path: 'score' },
-            { label: 'Total Marks', path: 'max_score' },
-            { label: 'Grade', path: 'grade' },
-            { label: 'Status', path: 'status' }
+            { label: 'Theory', path: 'theory_obtained' },
+            { label: 'Theory Max', path: 'theory_max' },
+            { label: 'Practical', path: 'practical_obtained' },
+            { label: 'Practical Max', path: 'practical_max' },
+            { label: 'Total', path: 'score' },
+            { label: 'Total Max', path: 'max_score' }
+        ],
+        'merit_marks': [
+            { label: 'Subject', path: 'subject' },
+            { label: 'Theory', path: 'theory_obtained' },
+            { label: 'Theory Max', path: 'theory_max' },
+            { label: 'Practical', path: 'practical_obtained' },
+            { label: 'Practical Max', path: 'practical_max' },
+            { label: 'Total', path: 'score' },
+            { label: 'Total Max', path: 'max_score' }
+        ],
+        'entrance_marks_list': [
+            { label: 'Subject', path: 'subject' },
+            { label: 'Marks Obtained', path: 'obtained' },
+            { label: 'Total Marks', path: 'total' }
         ],
         'payments': [
             { label: 'Type', path: 'payment_type' },
@@ -167,12 +189,6 @@
             { label: 'Receipt No', path: 'receipt_number' },
             { label: 'Status', path: 'status' },
             { label: 'Date', path: 'payment_date' }
-        ],
-        'merit_marks': [
-            { label: 'Section', path: 'section' },
-            { label: 'Obtained', path: 'marks_obtained' },
-            { label: 'Total', path: 'total_marks' },
-            { label: 'Weightage', path: 'weightage' }
         ]
     };
 
@@ -399,9 +415,15 @@
                         </p>
                     </div>
 
-                    <button type="button" class="btn btn-sm btn-outline-primary w-100 mb-2" onclick={(e) => { e.stopPropagation(); onUpdateNode({ duplicate: true }); }}>
-                        <i class="bi bi-layers me-1"></i> Duplicate All
-                    </button>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick={(e) => { e.stopPropagation(); onUpdateNode({ duplicate: true }); }}>
+                            <i class="bi bi-layers me-1"></i> Duplicate All
+                        </button>
+                        
+                        <button type="button" class="btn btn-sm btn-primary" onclick={(e) => { e.stopPropagation(); onUpdateNode({ groupFlow: true }); }}>
+                            <i class="bi bi-box-arrow-in-down me-1"></i> Group as Vertical Stack
+                        </button>
+                    </div>
                 </div>
             {:else if selectedNode}
                 <div class="property-editor p-1">

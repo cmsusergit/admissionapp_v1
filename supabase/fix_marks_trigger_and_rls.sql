@@ -64,8 +64,16 @@ BEGIN
             BEGIN
                 IF field_data IS NOT NULL THEN
                     IF jsonb_typeof(field_data) = 'object' THEN
-                        -- New format: { "value": 85, "max_score": 100 }
-                        field_value := (field_data ->> 'value')::NUMERIC;
+                        -- 1. Check for standard {value, max_score} format
+                        IF (field_data ->> 'value') IS NOT NULL THEN
+                            field_value := (field_data ->> 'value')::NUMERIC;
+                        ELSE
+                            -- 2. Check for nested table layout format (Theory + Practical + etc)
+                            -- Sum up all numeric values in nested objects
+                            SELECT SUM(COALESCE((val->>'value')::NUMERIC, 0)) INTO field_value
+                            FROM jsonb_each(field_data) AS t(col, val)
+                            WHERE jsonb_typeof(val) = 'object';
+                        END IF;
                     ELSE
                         -- Old format: scalar value "85" or 85
                         field_value := (field_data #>> '{}')::NUMERIC; 
@@ -76,12 +84,23 @@ BEGIN
             END;
 
             -- Determine max score
-            max_score_val := 100;
+            max_score_val := 0;
             BEGIN
-                IF field_data IS NOT NULL AND jsonb_typeof(field_data) = 'object' AND (field_data ->> 'max_score') IS NOT NULL THEN
-                    max_score_val := (field_data ->> 'max_score')::NUMERIC;
-                ELSIF (field_def->>'max_score') IS NOT NULL THEN
-                    max_score_val := (field_def->>'max_score')::NUMERIC;
+                IF field_data IS NOT NULL AND jsonb_typeof(field_data) = 'object' THEN
+                    IF (field_data ->> 'max_score') IS NOT NULL THEN
+                        max_score_val := (field_data ->> 'max_score')::NUMERIC;
+                    ELSE
+                        -- Sum up max scores from nested columns
+                        -- Try to get max_score from the data, fallback to schema column defaults
+                        SELECT SUM(COALESCE((val->>'max_score')::NUMERIC, (field_def->'column_max_scores'->>col)::NUMERIC, 100)) INTO max_score_val
+                        FROM jsonb_each(field_data) AS t(col, val)
+                        WHERE jsonb_typeof(val) = 'object';
+                    END IF;
+                END IF;
+                
+                -- Fallback to schema-level max_score if still 0
+                IF max_score_val = 0 OR max_score_val IS NULL THEN
+                    max_score_val := COALESCE((field_def->>'max_score')::NUMERIC, 100);
                 END IF;
             EXCEPTION WHEN OTHERS THEN
                 max_score_val := 100;

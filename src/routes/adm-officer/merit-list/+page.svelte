@@ -2,24 +2,47 @@
     import type { PageData, ActionData } from './$types';
     import { enhance } from '$app/forms';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
+    import { goto } from '$app/navigation';
+    import { page } from '$app/stores';
 
     export let data: PageData;
     export let form: ActionData;
 
-    let selectedCourseId = '';
+    let selectedCourseId = data.filters?.courseId || '';
     let selectedBranchId = '';
     // Default to the first active cycle if available
-    let selectedCycleId = data.cycles.length > 0 ? data.cycles[0].id : '';
-    let selectedFormType = ''; // Default empty to force selection? Or first available.
+    let selectedCycleId = data.filters?.cycleId || (data.cycles.length > 0 ? data.cycles[0].id : '');
+    let selectedFormType = data.filters?.formType || ''; 
     let targetStatus = 'verified'; // New: For selection
+    let searchTerm = ''; // Search by name or email
+
+    function applyFilters() {
+        const query = new URLSearchParams($page.url.searchParams.toString());
+        
+        if (selectedCourseId) query.set('courseId', selectedCourseId);
+        else query.delete('courseId');
+
+        if (selectedCycleId) query.set('cycleId', selectedCycleId);
+        else query.delete('cycleId');
+
+        if (selectedFormType) query.set('formType', selectedFormType);
+        else query.delete('formType');
+
+        goto(`?${query.toString()}`, { keepFocus: true, noScroll: true });
+    }
 
     // Derived filtered list of applications based on selection
     $: filteredApplications = data.applications.filter(app => {
-        const matchesFilters = (!selectedCourseId || app.course_id === selectedCourseId) &&
-               (!selectedCycleId || app.cycle_id === selectedCycleId) &&
-               (!selectedFormType || app.form_type === selectedFormType);
+        // Server-side already filtered by Course, Cycle, Form Type.
+        // We only do Branch and Search term filtering in-memory here.
         
-        if (!matchesFilters) return false;
+        // Search term filter
+        if (searchTerm) {
+            const search = searchTerm.toLowerCase();
+            const fullName = (app.student_user?.full_name || '').toLowerCase();
+            const email = (app.student_user?.email || '').toLowerCase();
+            if (!fullName.includes(search) && !email.includes(search)) return false;
+        }
 
         // Branch filter - Check current branch OR provisional fallback branch
         if (selectedBranchId) {
@@ -64,6 +87,35 @@
         f.cycle_id === selectedCycleId && 
         f.form_type === selectedFormType
     )?.is_merit_published || false;
+
+    async function exportToExcel() {
+        const XLSX = await import('xlsx');
+        if (!filteredApplications || filteredApplications.length === 0) {
+            alert('No data to export');
+            return;
+        }
+
+        const exportData = filteredApplications.map(app => ({
+            'Rank': app.merit_rank || '-',
+            'Score': app.merit_score !== undefined && app.merit_score !== null ? app.merit_score.toFixed(5) : '-',
+            'Student Name': app.student_user?.full_name || 'N/A',
+            'Email': app.student_user?.email || 'N/A',
+            'Course': app.courses?.name || '-',
+            'Branch': app.branches?.name || (app as any).prov_branch_name || '-',
+            'Status': app.status,
+            'Fee Status': app.application_fee_status || 'N/A',
+            'Comment': app.approval_comment || (app as any).prov_approval_comment || '-'
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Merit List');
+
+        const courseName = data.courses.find(c => c.id === selectedCourseId)?.name || 'Course';
+        const fileName = `Merit_List_${courseName.replace(/\s+/g, '_')}_${selectedFormType}_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+        XLSX.writeFile(workbook, fileName);
+    }
 </script>
 
 <div class="container-fluid">
@@ -82,7 +134,7 @@
             <div class="row g-3 align-items-end">
                 <div class="col-md-3">
                     <label for="cycle-select" class="form-label">Cycle</label>
-                    <select class="form-select" id="cycle-select" bind:value={selectedCycleId}>
+                    <select class="form-select" id="cycle-select" bind:value={selectedCycleId} on:change={applyFilters}>
                         <option value="">Select Cycle</option>
                         {#each data.cycles as cycle}
                             <option value={cycle.id}>{cycle.name}</option>
@@ -91,7 +143,7 @@
                 </div>
                 <div class="col-md-3">
                     <label for="course-select" class="form-label">Course</label>
-                    <select class="form-select" id="course-select" bind:value={selectedCourseId} on:change={() => selectedBranchId = ''}>
+                    <select class="form-select" id="course-select" bind:value={selectedCourseId} on:change={() => { selectedBranchId = ''; applyFilters(); }}>
                         <option value="">Select Course</option>
                         {#each data.courses as course}
                             <option value={course.id}>{course.name}</option>
@@ -109,7 +161,7 @@
                 </div>
                 <div class="col-md-3">
                     <label for="type-select" class="form-label">Form Type</label>
-                    <select class="form-select" id="type-select" bind:value={selectedFormType}>
+                    <select class="form-select" id="type-select" bind:value={selectedFormType} on:change={applyFilters}>
                         <option value="">Select Type</option>
                         {#if data.formTypes}
                             {#each data.formTypes as ft}
@@ -153,8 +205,8 @@
 
     <!-- Results Table -->
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div class="d-flex align-items-center gap-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="d-flex align-items-center gap-3 flex-grow-1">
                 <span>Merit List Preview ({filteredApplications.length})</span>
                 {#if isPublished}
                     <span class="badge bg-success">Published</span>
@@ -164,8 +216,31 @@
                     <span class="badge bg-secondary">Not Generated</span>
                 {/if}
             </div>
+
+            <div class="flex-grow-1" style="max-width: 300px;">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input 
+                        type="text" 
+                        class="form-control border-start-0 ps-0" 
+                        placeholder="Search name or email..." 
+                        bind:value={searchTerm}
+                    >
+                    {#if searchTerm}
+                        <button class="btn btn-outline-secondary border-start-0" type="button" on:click={() => searchTerm = ''}>
+                            <i class="bi bi-x"></i>
+                        </button>
+                    {/if}
+                </div>
+            </div>
             
             <div class="d-flex gap-2">
+                <button class="btn btn-outline-success btn-sm" on:click={exportToExcel} disabled={filteredApplications.length === 0}>
+                    <i class="bi bi-file-earmark-excel me-1"></i> Export to Excel
+                </button>
+
                 {#if isPublished}
                     <form method="POST" action="?/unpublishMerit" use:enhance={() => {
                         if(!confirm('Unpublishing will hide ranks from students. Continue?')) return cancel();
@@ -206,8 +281,9 @@
                             <th>Course</th>
                             <th>Branch</th>
                             <th>Status</th>
+                            <th>Fee</th>
                             <th>Comment</th>
-                            <th>App ID</th>
+                            <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -221,7 +297,13 @@
                                             <span class="text-muted">-</span>
                                         {/if}
                                     </td>
-                                    <td>{app.merit_score ? app.merit_score.toFixed(5) : '-'}</td>
+                                    <td>
+                                        {#if app.merit_score !== undefined && app.merit_score !== null}
+                                            {app.merit_score.toFixed(5)}
+                                        {:else}
+                                            <span class="text-muted">-</span>
+                                        {/if}
+                                    </td>
                                     <td>
                                         {app.student_user?.full_name || 'N/A'} <br>
                                         <small class="text-muted">{app.student_user?.email}</small>
@@ -239,6 +321,11 @@
                                     </td>
                                     <td><span class="badge bg-secondary">{app.status}</span></td>
                                     <td>
+                                        <span class="badge {app.application_fee_status === 'paid' ? 'bg-success' : (['pending', 'waived', 'partial'].includes(app.application_fee_status) ? 'bg-warning text-dark' : 'bg-secondary')}">
+                                            {app.application_fee_status || 'N/A'}
+                                        </span>
+                                    </td>
+                                    <td>
                                         {#if app.approval_comment}
                                             <div class="text-truncate" style="max-width: 150px;" title={app.approval_comment}>
                                                 {app.approval_comment}
@@ -254,12 +341,16 @@
                                             <span class="text-muted">-</span>
                                         {/if}
                                     </td>
-                                    <td><small>{app.id.slice(0,8)}...</small></td>
+                                    <td class="text-end">
+                                        <a href="/adm-officer/applications/{app.id}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                            <i class="bi bi-eye"></i> View
+                                        </a>
+                                    </td>
                                 </tr>
                             {/each}
                         {:else}
                             <tr>
-                                <td colspan="5" class="text-center py-4">
+                                <td colspan="8" class="text-center py-4">
                                     {#if canCalculate}
                                         No applications found for this selection.
                                     {:else}
