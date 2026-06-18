@@ -41,7 +41,7 @@
     let detailedModes = $derived(paymentModes.filter(m => ['online', 'cheque'].includes(m.type)));
 
     // DERIVED CALCULATIONS
-    let totalPaidForStudent = $derived(data.studentPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
+    let totalPaidForStudent = $derived(data.studentPayments.filter(p => p.payment_type === 'tuition_fee').reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
     
     let firstSemAmount = $derived(() => {
         if (!data.feeStructure) return 0;

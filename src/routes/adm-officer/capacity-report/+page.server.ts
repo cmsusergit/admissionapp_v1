@@ -101,8 +101,8 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
     // Sort raw data to ensure the most important application for a student is seen first
     const sortedApps = (allApps || []).sort((a, b) => {
-        const pA = statusPriority[a.status.toLowerCase()] || 99;
-        const pB = statusPriority[b.status.toLowerCase()] || 99;
+        const pA = statusPriority[(a.status || '').toLowerCase()] || 99;
+        const pB = statusPriority[(b.status || '').toLowerCase()] || 99;
         
         if (pA !== pB) return pA - pB;
 
@@ -121,14 +121,19 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         return 0;
     });
 
-    // Deduplicate by student and branch to avoid counting the same person twice for capacity
-    const seenStudentBranch = new Set<string>();
+    // Deduplicate by student, branch AND form_type to avoid counting the same person twice for capacity
+    // However, for MQ, NRI, and Provisional types, we allow all applications to be counted separately
+    const seenStudentBranchType = new Set<string>();
     const uniqueApps = sortedApps.filter(app => {
-        // Do not deduplicate provisional form types
-        const isProv = provFormTypes.has(app.form_type || '');
+        const type = (app.form_type || '').trim();
+        const isProv = provFormTypes.has(type);
+        const isMQorNRI = type === 'MQ' || type === 'NRI';
         
-        const key = `${app.student_id}_${app.branch_id || 'unassigned'}`;
-        if (!isProv && seenStudentBranch.has(key)) return false;
+        const branchKey = app.branch_id || `unassigned_${app.course_id}`;
+        const key = `${app.student_id}_${branchKey}_${type || 'Unknown'}`;
+        
+        // If not a "Multiple Allowed" type, check deduplication
+        if (!isProv && !isMQorNRI && seenStudentBranchType.has(key)) return false;
 
         // Strictly exclude drafts from all capacity calculations
         if (app.status === 'draft') return false;
@@ -138,8 +143,9 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             return false;
         }
 
-        if (!isProv) {
-            seenStudentBranch.add(key);
+        // Only track "seen" for types that require deduplication
+        if (!isProv && !isMQorNRI) {
+            seenStudentBranchType.add(key);
         }
         return true;
     });
@@ -185,6 +191,9 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
         const isCancelledOrRemoved = app.status === 'cancelled' || app.status === 'removed';
         const isProv = provFormTypes.has(app.form_type || '');
+        const isBypassType = bypassFormTypes.has(app.form_type || '');
+        const isNonProvBypass = isBypassType && !isProv;
+
         const payments = app.payments as any || [];
         
         let hasPaidTargetFee = false;
@@ -206,33 +215,38 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             ? studentProfile[0]?.enrollment_number
             : studentProfile?.enrollment_number;
         
-        const hasEnrollmentNumber = !!enrollmentNumber;
+        // A student has an enrollment number if they are admitted in ANY application.
+        // To avoid overcounting, we only consider it "Admitted" for THIS application if it is also APPROVED.
+        const isApprovedStatus = (app.status || '').toLowerCase() === 'approved';
+        const hasEnrollmentForThisApp = !!enrollmentNumber && isApprovedStatus;
 
         const hasTuitionFee = (app.payments as any || []).some(
             (p: any) => p.payment_type === 'tuition_fee' && p.status === 'completed'
         );
-
-        const isBypassType = bypassFormTypes.has(app.form_type || '');
-        const isNonProvBypass = isBypassType && !isProv;
         
         // Final Admission = Enrollment Number Generated OR Admission ID Generated OR (Bypass Type + Tuition Paid)
-        const isAdmitted = hasEnrollmentNumber || hasAdmissionNumber || (isNonProvBypass && hasTuitionFee);
+        const isAdmitted = hasEnrollmentForThisApp || hasAdmissionNumber || (isNonProvBypass && hasTuitionFee);
 
-        // Logic branching: Bypass types (GCAS/ACPC/Direct) show ONLY final admissions across all metric columns
+        // Logic branching: Bypass types (GCAS/ACPC/Direct)
         if (isBypassType) {
-            // For bypass types, we show the count based on actual enrollment (Enrollment Number generated)
-            if (hasEnrollmentNumber && !isCancelledOrRemoved) {
-                // 1. All Applications (restricted for bypass)
+            // For bypass types, we show the count if it's submitted (it bypasses verification/approval)
+            if (!isCancelledOrRemoved) {
+                // 1. All Applications
                 increment('all');
                 increment('submitted');
-                increment('approved');
-                increment('paid');
-                increment('admitted_id');
-                increment('admitted');
-                // Enrolled students are by definition paid
-                increment('admitted_paid');
 
-                // Unique student tracking for Detailed View (restricted for bypass)
+                // For bypass, if it's submitted, we count it as approved (since it bypasses verification)
+                increment('approved');
+
+                if (hasPaidTargetFee) increment('paid');
+
+                if (isAdmitted) {
+                    increment('admitted_id');
+                    increment('admitted');
+                    if (hasTuitionFee) increment('admitted_paid');
+                }
+
+                // Unique student tracking for Detailed View
                 if (app.student_id) {
                     if (!stats.students[app.student_id]) stats.students[app.student_id] = new Set();
                     stats.students[app.student_id].add(type);
@@ -253,12 +267,11 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             // Logic: For strictly 'Provisional' form type, count ONLY status='approved'
             // For others (MQ, NRI), include enrollment number and paid status
             let isMetricApproved = false;
-            if (app.form_type === 'Provisional') {
+            if (isProv) {
                 isMetricApproved = app.status === 'approved';
             } else {
-                const isApproved = app.status === 'approved';
-                const isPaidProv = isProv && hasPaidTargetFee;
-                isMetricApproved = isApproved || hasEnrollmentNumber || isPaidProv;
+                const isPaidProv = isProv && hasPaidTargetFee; // Note: isProv check is redundant here but safe
+                isMetricApproved = isApprovedStatus || hasEnrollmentForThisApp || isPaidProv;
             }
             
             if (isMetricApproved && !isCancelledOrRemoved) {

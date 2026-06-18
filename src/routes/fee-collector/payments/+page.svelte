@@ -113,7 +113,7 @@
     let amountDue = $derived(feePeriod === 'semester' ? firstSemAmount() : (feeStructureToCollect?.total_fee || 0));
 
     let totalPaidForStudent = $derived(data.payments.filter(p => 
-        p.applications?.id === actualApplicationId && p.status === 'completed'
+        p.applications?.id === actualApplicationId && p.status === 'completed' && p.payment_type === 'tuition_fee'
     ).reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
 
     let initialRemainingAmount = $derived(amountDue - totalPaidForStudent); 
