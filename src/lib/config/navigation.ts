@@ -92,6 +92,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         href: "/admin/config-guide",
         icon: "bi-gear-wide-connected",
       },
+      {
+        title: "Bus Seva QR Config",
+        href: "/admin/busseva",
+        icon: "bi-qr-code",
+      },
     ],
   },
   adm_officer: {
@@ -177,6 +182,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         icon: "bi-file-earmark-spreadsheet",
       },
       { title: "Help", href: "/deo/help", icon: "bi-question-circle" },
+      {
+        title: "Bus Seva Fees",
+        href: "/busseva",
+        icon: "bi-bus-front",
+      },
     ],
   },
   fee_collector: {
@@ -207,6 +217,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         title: "Help",
         href: "/fee-collector/help",
         icon: "bi-question-circle",
+      },
+      {
+        title: "Bus Seva Fees",
+        href: "/busseva",
+        icon: "bi-bus-front",
       },
     ],
   },
