@@ -58,19 +58,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
 
     let query = supabaseAdmin
         .from('payments')
-        .select(`
-            *,
-            applications (
-                id,
-                student_user:users!student_id (full_name, email, student_profiles(enrollment_number)),
-                courses (
-                    name, 
-                    colleges (name)
-                ),
-                branches (name),
-                account_admissions (admission_number)
-            )
-        `)
+        .select(selectString)
         .eq('payment_type', 'tuition_fee')
         .order('payment_date', { ascending: false });
 

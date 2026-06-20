@@ -59,10 +59,6 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     // unless using !inner join, which filters the parent rows.
     
     if (courseFilter) {
-        query = query.eq('applications.course_id', courseFilter); 
-        // Note: This 'inner' filtering via dot notation works if relationship is set, 
-        // but typically requires explicit !inner in select string for filtering parent by child.
-        // Let's use the explicit !inner syntax for reliability:
         query = supabaseAdmin
             .from('payments')
             .select(`
@@ -76,9 +72,10 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                 )
             `)
             .eq('payment_type', 'tuition_fee')
+            .eq('applications.course_id', courseFilter)
+            .order('payment_date', { ascending: false })
             .limit(10);
-            
-        // Re-apply other filters to this new query object
+
         if (statusFilter) query = query.eq('status', statusFilter);
         if (startDate) query = query.gte('payment_date', startDate);
         if (endDate) query = query.lte('payment_date', endDate + 'T23:59:59');
@@ -100,13 +97,14 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                     account_admissions(admission_number)
                 )
             `)
-            .eq('payment_type', 'tuition_fee')
-            .limit(10);
-            if (statusFilter) query = query.eq('status', statusFilter);
-            if (startDate) query = query.gte('payment_date', startDate);
-            if (endDate) query = query.lte('payment_date', endDate + 'T23:59:59');
-         }
-         query = query.eq('applications.branch_id', branchFilter);
+             .eq('payment_type', 'tuition_fee')
+             .order('payment_date', { ascending: false })
+             .limit(10);
+             if (statusFilter) query = query.eq('status', statusFilter);
+             if (startDate) query = query.gte('payment_date', startDate);
+             if (endDate) query = query.lte('payment_date', endDate + 'T23:59:59');
+          }
+          query = query.eq('applications.branch_id', branchFilter);
     }
 
 
