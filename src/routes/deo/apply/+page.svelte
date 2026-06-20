@@ -273,6 +273,8 @@
         if (!studentSearchTerm || studentSearchTerm.length < 2) return [];
         const term = studentSearchTerm.toLowerCase();
         
+        console.log(`[DEO-SEARCH] data.students count: ${data.students?.length}, term: "${term}"`);
+        
         // 1. Existing Students
         const students = data.students
             .filter((s: any) => s.full_name?.toLowerCase().includes(term) || s.email?.toLowerCase().includes(term))
@@ -283,7 +285,20 @@
             .filter((s: any) => !students.some((st: any) => st.email === s.email))
             .map((s: any) => ({ ...s, type: 'inquiry' }));
 
-        return [...students, ...inquiryMatches];
+        const result = [...students, ...inquiryMatches];
+        console.log(`[DEO-SEARCH] student matches: ${students.length}, inquiry matches: ${inquiryMatches.length}, total: ${result.length}`);
+        if (students.length > 0) console.log('[DEO-SEARCH] first match:', students[0]?.full_name, students[0]?.email);
+        return result;
+    });
+
+    // React to search term changes (instead of inline oninput handler which can conflict with bind:value in Svelte 5)
+    $effect(() => {
+        if (studentSearchTerm) {
+            searchInquiries(studentSearchTerm);
+            isStudentListExpanded = true;
+        } else {
+            inquirySuggestions = [];
+        }
     });
 
     async function handleSelectResult(item: any) {
@@ -496,20 +511,12 @@
     let prevCourseId = '';
     let prevCycleId = '';
     let prevFormType = '';
-    let prevStudentId = '';
     let prevBranchId = '';
 
-    // Reactive statement to fetch form schema, student profile, and check for existing application
+    // Reactive statement to fetch form schema and check for existing application
     $effect(() => {
-        if (selectedStudentId && selectedStudentId !== prevStudentId) {
-             prevStudentId = selectedStudentId;
-             // If student changes, fetch their profile
-             if (!loadedStudentProfile || loadedStudentProfile.user_id !== selectedStudentId) {
-                 fetchStudentProfile(selectedStudentId);
-             }
-        } else if (!selectedStudentId) {
+        if (!selectedStudentId) {
             loadedStudentProfile = null;
-            prevStudentId = '';
         }
 
         // Only fetch schema if the combination actually changed
@@ -530,7 +537,11 @@
                 // If we loaded from applicationId, skip the check since we already have the app data
                 if (isLoadedFromApplicationId) {
                     isLoadedFromApplicationId = false; // Reset the flag after first use
-                    fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, true).then(() => {
+                    fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, true).then(async () => {
+                         // Ensure profile data is loaded before merging
+                         if (!loadedStudentProfile && selectedStudentId) {
+                             await fetchStudentProfile(selectedStudentId);
+                         }
                          if (currentAdmissionFormSchema && loadedStudentProfile) {
                               applicationFormData = mergeProfileData(applicationFormData, currentAdmissionFormSchema, loadedStudentProfile.profile_data);
                          }
@@ -578,6 +589,11 @@
 
     async function loadSchemaAndCheckApp() {
         await fetchAdmissionFormSchema(selectedCourseId, selectedCycleId, selectedFormType, isEditingExistingApplication);
+        
+        // Ensure profile data is loaded before merging (handles case where student was pre-selected via URL, not via search)
+        if (!loadedStudentProfile && selectedStudentId) {
+            await fetchStudentProfile(selectedStudentId);
+        }
         
         // Explicitly pre-fill form data from profile as soon as schema is loaded
         if (currentAdmissionFormSchema && loadedStudentProfile) {
@@ -956,7 +972,6 @@
                         id="student-search" 
                         placeholder="Type name or email..." 
                         bind:value={studentSearchTerm}
-                        oninput={(e) => { searchInquiries(e.currentTarget.value); isStudentListExpanded = true; }}
                         onfocus={() => isStudentListExpanded = true}
                         disabled={!!currentApplicationId || isLoadingApplication}
                         autocomplete="off"
@@ -984,7 +999,7 @@
                                 {/if}
                             </button>
                         {:else}
-                            <div class="list-group-item text-muted">No results found matching "{studentSearchTerm}"</div>
+                            <div class="list-group-item text-muted">No results found matching "{studentSearchTerm}" (total students: {data.students?.length || 0})</div>
                         {/each}
                     </div>
                 {/if}

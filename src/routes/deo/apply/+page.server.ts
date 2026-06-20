@@ -186,11 +186,29 @@ export const load: PageServerLoad = async ({
     throw redirect(303, "/login"); // Redirect non-DEO users
   }
 
-  // Fetch list of existing student users
-  const { data: students, error: studentError } = await supabase
-    .from("users")
-    .select("id, email, full_name")
-    .eq("role", "student");
+  // Fetch list of existing student users (using service role to bypass RLS)
+  // PostgREST has a default 1000-row limit, so paginate to get all students
+  const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+  const allStudents = [];
+  const pageSize = 1000;
+  let offset = 0;
+  let pageError = null;
+  while (true) {
+    const { data: page, error } = await supabaseAdmin
+      .from("users")
+      .select("id, email, full_name")
+      .eq("role", "student")
+      .range(offset, offset + pageSize - 1);
+    if (error) { pageError = error; break; }
+    if (!page || page.length === 0) break;
+    allStudents.push(...page);
+    offset += pageSize;
+    if (page.length < pageSize) break;
+  }
+  const students = allStudents;
+  const studentError = pageError;
 
   if (studentError) {
     console.error("Error fetching student list:", studentError.message);
@@ -203,6 +221,8 @@ export const load: PageServerLoad = async ({
       admissionFormSchema: null,
     };
   }
+
+  console.log(`[DEO-APPLY] Fetched ${students?.length || 0} students for DEO search`);
 
   const studentId = url.searchParams.get("studentId");
   const applicationId = url.searchParams.get("applicationId");
