@@ -1,18 +1,11 @@
 <script lang="ts">
-    import type { PageData, ActionData } from './$types';
-    import { enhance } from '$app/forms';
-    import { writable } from 'svelte/store';
-    import { startLoading, stopLoading } from '$lib/stores/loadingStore';
-    import { onMount } from 'svelte';
-    import { invalidateAll, goto } from '$app/navigation';
-    import { page } from '$app/stores';
+    import type { PageData } from './$types';
+    import { goto } from '$app/navigation';
     import { toastStore } from '$lib/stores/toastStore';
     import { generateReceiptPDF, downloadReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
 
-    let { data, form } = $props();
+    let { data } = $props();
 
-    let showRecordModal = $state(false);
-    let showReceiptModal = $state(false);
     let searchTerm = $state(data.searchTerm || '');
     let selectedCourseId = $state(data.selectedCourseId || '');
     let activeTab: 'tuition' | 'application' | 'provisional' = $state(data.activeTab || 'tuition');
@@ -48,106 +41,40 @@
         goto(url.toString());
     }
 
-    $effect(() => {
-        if (form?.message) {
-            if (form.error) {
-                toastStore.error(form.message);
-            } else {
-                toastStore.success(form.message);
-            }
-        }
-    });
-
-    // filteredPayments now simply uses the current list provided by the server for this specific tab
     let filteredPayments = $derived(activeTab === 'tuition' ? data.tuitionPayments : 
                      activeTab === 'application' ? data.applicationFeePayments : 
                      data.provisionalFeePayments);
 
-    let selectedAdmissionId = $state(''); 
-    let feePeriod = $state('year'); // 'year' or 'semester'
-    let showSchemeEdit = $state(false); 
-    let paymentDate = $state(new Date().toISOString().split('T')[0]);
-
-    let paymentModes = $state([
-        { type: 'cash', amount: 0, reference: '' },
-        { type: 'online', amount: 0, reference: '' },
-        { type: 'cheque', amount: 0, reference: '' },
-        { type: 'dd', amount: 0, reference: '' }
-    ]);
-
-    let admissionCategoryCode = $state(''); 
-    let selectedFeeSchemeId = $state('');
-    let lastSetAdmissionId = '';
-
+    // --- On-Demand Student Autocomplete State & Search ---
     let studentSearchQuery = $state('');
     let showStudentDropdown = $state(false);
+    let admissionsList = $state<any[]>([]);
+    let isSearchingAdmissions = $state(false);
 
-    // DERIVED VALUES (Replace $effect for pure calculations)
-    let selectedAdmission = $derived(data.admissions.find(a => a.id === selectedAdmissionId));
-    let actualApplicationId = $derived(selectedAdmission?.application_id || '');
-    
-    let feeStructureToCollect = $derived(data.feeStructures.find(fs => fs.admissionId === selectedAdmissionId)?.feeStructure || null);
-    
-    // Calculate first semester amount based on installments or component-wise splitting
-    let firstSemAmount = $derived(() => {
-        if (!feeStructureToCollect) return 0;
-        
-        // If installments are explicitly defined, use the first one
-        if (feeStructureToCollect.installment_json && feeStructureToCollect.installment_json.length > 0) {
-            return Number(feeStructureToCollect.installment_json[0].amount) || 0;
-        }
-        
-        // Use component-wise splitting: 50% if splittable, 100% otherwise
-        const components = feeStructureToCollect.fee_components || [];
-        let total = 0;
-        components.forEach((section: any) => {
-            (section.items || []).forEach((item: any) => {
-                const val = Number(item.amount) || 0;
-                // Use admin configuration 'allow_partial' from builder
-                total += item.allow_partial ? (val / 2) : val;
-            });
-        });
-        return total || (feeStructureToCollect.total_fee / 2);
-    });
-
-    let amountDue = $derived(feePeriod === 'semester' ? firstSemAmount() : (feeStructureToCollect?.total_fee || 0));
-
-    let totalPaidForStudent = $derived(data.payments.filter(p => 
-        p.applications?.id === actualApplicationId && p.status === 'completed' && p.payment_type === 'tuition_fee'
-    ).reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
-
-    let initialRemainingAmount = $derived(amountDue - totalPaidForStudent); 
-    let totalAmount = $derived(paymentModes.reduce((sum, mode) => sum + (Number(mode.amount) || 0), 0));
-    let currentRemainingAmount = $derived(initialRemainingAmount - totalAmount); 
-
-    let paymentBreakdownJson = $derived(JSON.stringify(paymentModes.filter(m => m.amount > 0).map(m => ({
-        mode: m.type,
-        amount: Number(m.amount) || 0,
-        ref: m.reference
-    }))));
-
-    // SIDE EFFECT (Only for resetting UI state when student changes)
+    let debounceTimer: any;
     $effect(() => {
-        if (selectedAdmissionId && selectedAdmissionId !== lastSetAdmissionId) {
-            const adm = data.admissions.find(a => a.id === selectedAdmissionId);
-            selectedFeeSchemeId = adm?.applications?.assigned_fee_scheme_id || '';
-            lastSetAdmissionId = selectedAdmissionId;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        if (!studentSearchQuery.trim()) {
+            admissionsList = [];
+            return;
         }
+        debounceTimer = setTimeout(async () => {
+            isSearchingAdmissions = true;
+            try {
+                const res = await fetch(`/api/fee-collector/search-admissions?q=${encodeURIComponent(studentSearchQuery)}`);
+                if (res.ok) {
+                    admissionsList = await res.json();
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                isSearchingAdmissions = false;
+            }
+        }, 300);
     });
 
-    let filteredAdmissions = $derived(data.admissions.filter(adm => {
-        if (!studentSearchQuery) return true;
-        const term = studentSearchQuery.toLowerCase();
-        const admNo = adm.admission_number?.toLowerCase() || '';
-        const name = (adm.applications as any)?.student_user?.full_name?.toLowerCase() || '';
-        const email = (adm.applications as any)?.student_user?.email?.toLowerCase() || '';
-        return admNo.includes(term) || name.includes(term) || email.includes(term);
-    }));
-
-    function selectStudent(adm: any) {
-        selectedAdmissionId = adm.id;
-        studentSearchQuery = `${adm.admission_number} - ${(adm.applications as any)?.student_user?.full_name || (adm.applications as any)?.student_user?.email}`;
-        showStudentDropdown = false;
+    function recordStudentPayment(adm: any) {
+        goto(`/fee-collector/payments/collect/${adm.id}`);
     }
 
     function handleWindowClick(event: MouseEvent) {
@@ -157,61 +84,18 @@
         }
     }
 
+    // Resolve non-blocking metadata once at the page level
+    let profileTemplates = $state<any[]>([]);
+    let formTypesMap = $state<any[]>([]);
+    let isMetadataLoaded = $state(false);
 
-    onMount(() => {
-        const admissionIdParam = $page.url.searchParams.get('admissionId');
-        if (admissionIdParam) {
-            goto(`/fee-collector/payments/collect/${admissionIdParam}`);
-        }
+    $effect(() => {
+        Promise.all([data.streamed.profileTemplates, data.streamed.formTypes]).then(([pt, ft]) => {
+            profileTemplates = pt;
+            formTypesMap = ft;
+            isMetadataLoaded = true;
+        });
     });
-
-    async function handleUpdateScheme() {
-        if (!actualApplicationId || !selectedFeeSchemeId) {
-            toastStore.error('Application ID and Fee Scheme are required.');
-            return;
-        }
-
-        startLoading();
-        try {
-            const formData = new FormData();
-            formData.append('application_id', actualApplicationId);
-            formData.append('fee_scheme_id', selectedFeeSchemeId);
-
-            const response = await fetch('?/updateAssignedScheme', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error('Server returned error ' + response.status);
-            }
-
-            await invalidateAll();
-            
-            // After refresh, force re-sync from database if needed, 
-            // but the reactive block should handle it since selectedAdmissionId remains same.
-            lastSetAdmissionId = ''; // Force sync on next reactive cycle
-            
-            showSchemeEdit = false;
-            toastStore.success('Fee scheme updated successfully!');
-        } catch (e) {
-            console.error('Update failed:', e);
-            toastStore.error('Failed to update fee scheme.');
-        } finally {
-            stopLoading();
-        }
-    }
-
-    function openRecordModal() {
-        // Redirect to a student selection flow or just keep the button as a general 'Record' if needed,
-        // but typically we want to search for a student first.
-        // For now, let's keep the button but change it to 'Search Student to Collect'
-        toastStore.info('Search for a student and click their name to record payment.');
-    }
-
-    function recordStudentPayment(adm: any) {
-        goto(`/fee-collector/payments/collect/${adm.id}`);
-    }
 
     async function printReceipt(payment: any) {
         const receiptData = mapPaymentToReceipt(payment);
@@ -228,12 +112,10 @@
         const isTuition = payment.payment_type === 'tuition_fee';
         const feePeriod = payment.fee_period || 'year';
 
-        // Map fee_components_breakdown to ReceiptData.feeBreakdown
         const feeBreakdown = (payment.fee_components_breakdown || []).map((section: any) => ({
             name: section.name || section.section,
             items: (section.items || []).map((item: any) => {
                 const val = Number(item.amount) || 0;
-                // If semester payment, apply 50% to partial items to match displayed total
                 const displayAmt = (feePeriod === 'semester' && item.allow_partial) ? (val / 2) : val;
                 return {
                     name: item.name,
@@ -263,7 +145,7 @@
         if (data.userProfile?.role === 'fee_collector' && isTuition) {
             periodDisplay = (feePeriod === 'year') ? 'ACADEMIC YEAR' : 'SEMESTER';
         } else {
-            periodDisplay = 'ACADEMIC YEAR'; // Default for others
+            periodDisplay = 'ACADEMIC YEAR';
         }
 
         const studentProfiles = payment.applications?.student_user?.student_profiles;
@@ -279,12 +161,12 @@
             courseName: payment.applications?.courses?.name || 'N/A',
             branchName: payment.applications?.branches?.name,
             academicYear: payment.applications?.admission_cycles?.academic_years?.name,
-            semester: periodDisplay, // Add this property
+            semester: periodDisplay,
             paymentType: payment.payment_type,
             isProvisional: isProv,
             transactionId: payment.transaction_id,
             amount: Number(payment.amount),
-            totalStructureFee: Number(payment.amount), // Fallback
+            totalStructureFee: Number(payment.amount),
             feeBreakdown: feeBreakdown.length > 0 ? feeBreakdown : undefined,
             collegeAlias: college?.code || 'SVIT',
             paymentModes: (payment.payment_breakdown || []).map((m: any) => ({
@@ -355,7 +237,13 @@
         </div>
         
         <div class="input-group student-autocomplete-container" style="max-width: 400px;">
-            <span class="input-group-text"><i class="bi bi-person-plus"></i></span>
+            <span class="input-group-text">
+                {#if isSearchingAdmissions}
+                    <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                {:else}
+                    <i class="bi bi-person-plus"></i>
+                {/if}
+            </span>
             <input 
                 type="text" 
                 class="form-control" 
@@ -363,9 +251,9 @@
                 bind:value={studentSearchQuery}
                 onfocus={() => showStudentDropdown = true}
             >
-            {#if showStudentDropdown && filteredAdmissions.length > 0}
+            {#if showStudentDropdown && admissionsList.length > 0}
                 <div class="list-group position-absolute w-100 shadow-lg z-3 top-100 mt-1" style="max-height: 300px; overflow-y: auto;">
-                    {#each filteredAdmissions as adm}
+                    {#each admissionsList as adm}
                         <button 
                             type="button" 
                             class="list-group-item list-group-item-action text-start"
@@ -426,7 +314,6 @@
                                                 <span class="badge bg-info text-dark me-1 text-uppercase">{mode.type || mode.mode || 'N/A'}: {mode.amount}</span>
                                             {/if}
                                         {/each}
-
                                     {:else}
                                         <span class="badge bg-secondary">{payment.transaction_id?.split('-')[0] || 'Unknown'}</span>
                                     {/if}
@@ -438,11 +325,11 @@
                                 </td>
                                 <td>
                                     <div class="btn-group">
-                                        {#if data.profileTemplates && data.profileTemplates.length > 0}
-                                            {@const studentFormTypeId = data.formTypesMap.find(ft => ft.name === payment.applications?.form_type)?.id}
-                                            {@const template = data.profileTemplates.find(t => t.target_form_type_id === studentFormTypeId) || 
-                                                              data.profileTemplates.find(t => !t.target_form_type_id) || 
-                                                              data.profileTemplates[0]}
+                                        {#if isMetadataLoaded}
+                                            {@const studentFormTypeId = formTypesMap.find(ft => ft.name === payment.applications?.form_type)?.id}
+                                            {@const template = profileTemplates.find(t => t.target_form_type_id === studentFormTypeId) || 
+                                                              profileTemplates.find(t => !t.target_form_type_id) || 
+                                                              profileTemplates[0]}
                                             
                                             {#if template}
                                                 <a 
@@ -454,6 +341,10 @@
                                                     <i class="bi bi-person-badge"></i>
                                                 </a>
                                             {/if}
+                                        {:else}
+                                            <button class="btn btn-sm btn-outline-info" disabled>
+                                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                            </button>
                                         {/if}
                                         <a href="/fee-collector/payments/edit/{payment.id}" class="btn btn-sm btn-outline-primary" title="Edit Payment">
                                             <i class="bi bi-pencil"></i>
@@ -464,12 +355,12 @@
                                         <button class="btn btn-sm btn-outline-secondary" title="Download" onclick={() => downloadReceipt(payment)}>
                                             <i class="bi bi-download"></i>
                                         </button>
-                                        </div>
-                                        </td>
+                                    </div>
+                                </td>
                             </tr>
                         {:else}
                             <tr>
-                                <td colspan="9" class="text-center text-muted">No payments found.</td>
+                                <td colspan="10" class="text-center text-muted">No payments found.</td>
                             </tr>
                         {/each}
                     </tbody>
