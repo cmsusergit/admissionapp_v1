@@ -17,7 +17,10 @@
             courseId: string;
             status: string;
             search: string;
+            tab?: string;
+            conversionFilter?: string;
         };
+        conversionReportData: any[];
     }
 
     let { data } = $props<{ data: InquiryPageData }>();
@@ -56,6 +59,8 @@
     let academicYearId = $state(data.filters.academicYearId || '');
     let courseId = $state(data.filters.courseId || '');
     let status = $state(data.filters.status || '');
+    let activeTab = $state(data.filters.tab || 'inquiries');
+    let conversionFilter = $state(data.filters.conversionFilter || '');
 
     function applyFilters() {
         const params = new URLSearchParams($pageStore.url.searchParams);
@@ -64,6 +69,8 @@
         if (academicYearId) params.set('academicYearId', academicYearId); else params.delete('academicYearId');
         if (courseId) params.set('courseId', courseId); else params.delete('courseId');
         if (status) params.set('status', status); else params.delete('status');
+        if (conversionFilter) params.set('conversionFilter', conversionFilter); else params.delete('conversionFilter');
+        if (activeTab) params.set('tab', activeTab);
         
         goto(`?${params.toString()}`, { keepFocus: true });
     }
@@ -71,7 +78,50 @@
     function changePage(newPage: number) {
         const params = new URLSearchParams($pageStore.url.searchParams);
         params.set('page', newPage.toString());
+        if (activeTab) params.set('tab', activeTab);
+        if (conversionFilter) params.set('conversionFilter', conversionFilter);
         goto(`?${params.toString()}`);
+    }
+
+    function selectTab(tabName: string) {
+        activeTab = tabName;
+        const params = new URLSearchParams($pageStore.url.searchParams);
+        params.set('tab', tabName);
+        params.set('page', '1');
+        if (conversionFilter) params.set('conversionFilter', conversionFilter);
+        goto(`?${params.toString()}`, { keepFocus: true });
+    }
+
+    function exportReportCSV() {
+        const headers = ['Inquirer Name', 'Email', 'Phone', 'Inquiry Date', 'Registration Status', 'Prov. App Status', 'Course Interest', 'Provisional ID', 'Provisional Fee Paid', 'Provisional Fee Amount', 'Tuition Fee Paid', 'Tuition Fee Amount'];
+        const rows = (data.conversionReportData || []).map((r: any) => [
+            getDisplayName(r.inquiry),
+            r.inquiry.email || '',
+            r.inquiry.phone || '',
+            new Date(r.inquiry.created_at).toLocaleDateString(),
+            r.is_registered ? 'Registered' : 'Not Registered',
+            r.prov_app_status || 'No Application',
+            r.prov_app_course || '',
+            r.prov_admission_no || '',
+            r.prov_fee_paid ? 'Paid' : 'Unpaid',
+            r.prov_fee_amount !== null ? r.prov_fee_amount : '',
+            r.tuition_fee_paid ? 'Paid' : 'Unpaid',
+            r.tuition_fee_amount !== null ? r.tuition_fee_amount : ''
+        ]);
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map((e: any[]) => e.map((val: any) => `"${String(val).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'inquiries_provisional_conversion_report.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     async function toggleProcessed(inquiry: any) {
@@ -150,22 +200,36 @@
 
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>Public Inquiries</h1>
+        <h1>Public Inquiries & Conversions</h1>
         <div class="d-flex gap-2 align-items-center">
             <span class="badge bg-secondary">Total Inquiries: {data.totalCount}</span>
-            {#if selectedIds.length > 0}
+            {#if selectedIds.length > 0 && activeTab === 'inquiries'}
                 <span class="badge bg-danger">{selectedIds.length} Selected</span>
             {/if}
         </div>
     </div>
 
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <button class="nav-link {activeTab === 'inquiries' ? 'active' : ''}" onclick={() => selectTab('inquiries')}>
+                <i class="bi bi-chat-left-text me-1"></i> Public Inquiries
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link {activeTab === 'report' ? 'active' : ''}" onclick={() => selectTab('report')}>
+                <i class="bi bi-file-earmark-bar-graph me-1"></i> Conversion & Fees Report
+            </button>
+        </li>
+    </ul>
+
     <!-- Filter Bar -->
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <form class="row g-3" onsubmit={(e) => { e.preventDefault(); applyFilters(); }}>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label small fw-bold">Search</label>
-                    <input type="text" class="form-control" placeholder="Name, Email or Phone..." bind:value={search} />
+                    <input type="text" class="form-control" placeholder="Search..." bind:value={search} />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small fw-bold">Academic Year</label>
@@ -193,17 +257,26 @@
                         <option value="processed">Processed</option>
                     </select>
                 </div>
-                <div class="col-md-3 d-flex align-items-end gap-2">
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Conversion</label>
+                    <select class="form-select" bind:value={conversionFilter}>
+                        <option value="">All</option>
+                        <option value="prov_converted">Provisional Conversion</option>
+                        <option value="fees_paid">Admission Fees Paid</option>
+                        <option value="not_converted">Not Converted</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end gap-2">
                     <button type="submit" class="btn btn-primary flex-grow-1">
                         <i class="bi bi-search me-1"></i> Filter
                     </button>
-                    {#if selectedIds.length > 0}
+                    {#if selectedIds.length > 0 && activeTab === 'inquiries'}
                         <button type="button" class="btn btn-danger" onclick={deleteSelectedInquiries} title="Delete Selected">
                             <i class="bi bi-trash"></i>
                         </button>
                     {/if}
                     <button type="button" class="btn btn-outline-secondary" onclick={() => {
-                        search = ''; academicYearId = ''; courseId = ''; status = '';
+                        search = ''; academicYearId = ''; courseId = ''; status = ''; conversionFilter = '';
                         selectedIds = [];
                         applyFilters();
                     }}>Reset</button>
@@ -212,193 +285,321 @@
         </div>
     </div>
 
-    <div class="row">
-        <!-- Inquiry List -->
-        <div class="col-lg-7">
-            <div class="card shadow-sm h-100">
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0 align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width: 40px;">
-                                    <input 
-                                        type="checkbox" 
-                                        class="form-check-input" 
-                                        checked={selectedIds.length === data.inquiries.length && data.inquiries.length > 0}
-                                        onchange={(e) => toggleSelectAll(e.currentTarget.checked)}
-                                    />
-                                </th>
-                                <th>Student Info</th>
-                                <th>Inquiry Date</th>
-                                <th>Academic Year</th>
-                                <th>Status</th>
-                                <th class="text-end">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {#each data.inquiries as inquiry}
-                                <tr class={selectedInquiry?.id === inquiry.id ? 'table-primary' : ''}>
-                                    <td>
+    {#if activeTab === 'inquiries'}
+        <div class="row">
+            <!-- Inquiry List -->
+            <div class="col-lg-7">
+                <div class="card shadow-sm h-100">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 40px;">
                                         <input 
                                             type="checkbox" 
                                             class="form-check-input" 
-                                            checked={selectedIds.includes(inquiry.id)}
-                                            onchange={() => toggleSelect(inquiry.id)}
+                                            checked={selectedIds.length === data.inquiries.length && data.inquiries.length > 0}
+                                            onchange={(e) => toggleSelectAll(e.currentTarget.checked)}
                                         />
-                                    </td>
-                                    <td>
-                                        <div class="fw-bold">{getDisplayName(inquiry)}</div>
-                                        <div class="small text-muted">{inquiry.email}</div>
-                                        <div class="small text-muted">{inquiry.phone || ''}</div>
-                                    </td>
-                                    <td>
-                                        <div class="small fw-medium">{new Date(inquiry.created_at).toLocaleDateString()}</div>
-                                        <div class="smaller text-muted">{new Date(inquiry.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                                    </td>
-                                    <td>
-                                        <span class="small">{inquiry.academic_year?.name || 'N/A'}</span>
-                                    </td>
-                                    <td>
-                                        {#if inquiry.inquiry_data?.conversion_status === 'Converted'}
-                                            <span class="badge bg-success shadow-sm">
-                                                <i class="bi bi-mortarboard-fill me-1"></i> Converted
-                                            </span>
-                                        {:else}
-                                            <span class="badge {inquiry.is_processed ? 'bg-secondary' : 'bg-warning text-dark'}">
-                                                {inquiry.is_processed ? 'Processed' : 'New'}
-                                            </span>
-                                        {/if}
-                                    </td>
-                                    <td class="text-end">
-                                        <div class="btn-group">
-                                            <button class="btn btn-sm btn-outline-primary" onclick={() => viewDetails(inquiry)}>
-                                                Details
-                                            </button>
-                                            <button 
-                                                class="btn btn-sm {inquiry.is_processed ? 'btn-outline-secondary' : 'btn-success'}"
-                                                onclick={() => toggleProcessed(inquiry)}
-                                                title={inquiry.is_processed ? 'Mark as New' : 'Mark as Processed'}
-                                            >
-                                                <i class="bi {inquiry.is_processed ? 'bi-x-circle' : 'bi-check-circle'}"></i>
-                                            </button>
-                                        </div>
-                                    </td>
+                                    </th>
+                                    <th>Student Info</th>
+                                    <th>Inquiry Date</th>
+                                    <th>Academic Year</th>
+                                    <th>Status</th>
+                                    <th class="text-end">Actions</th>
                                 </tr>
-                            {:else}
-                                <tr>
-                                    <td colspan="6" class="text-center py-5 text-muted">
-                                        <i class="bi bi-inbox display-1 d-block mb-3 opacity-25"></i>
-                                        No inquiries matching your criteria.
-                                    </td>
-                                </tr>
-                            {/each}
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Pagination -->
-                {#if totalPages > 1}
-                    <div class="card-footer bg-white d-flex justify-content-between align-items-center">
-                        <div class="small text-muted">
-                            Showing {(data.filters.page - 1) * data.filters.pageSize + 1} to {Math.min(data.filters.page * data.filters.pageSize, data.totalCount)} of {data.totalCount}
-                        </div>
-                        <nav>
-                            <ul class="pagination pagination-sm mb-0">
-                                <li class="page-item {data.filters.page === 1 ? 'disabled' : ''}">
-                                    <button class="page-link" onclick={() => changePage(data.filters.page - 1)}>Previous</button>
-                                </li>
-                                {#each Array(totalPages) as _, i}
-                                    <li class="page-item {data.filters.page === i + 1 ? 'active' : ''}">
-                                        <button class="page-link" onclick={() => changePage(i + 1)}>{i + 1}</button>
-                                    </li>
+                            </thead>
+                            <tbody>
+                                {#each data.inquiries as inquiry}
+                                    <tr class={selectedInquiry?.id === inquiry.id ? 'table-primary' : ''}>
+                                        <td>
+                                            <input 
+                                                type="checkbox" 
+                                                class="form-check-input" 
+                                                checked={selectedIds.includes(inquiry.id)}
+                                                onchange={() => toggleSelect(inquiry.id)}
+                                            />
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold">{getDisplayName(inquiry)}</div>
+                                            <div class="small text-muted">{inquiry.email}</div>
+                                            <div class="small text-muted">{inquiry.phone || ''}</div>
+                                        </td>
+                                        <td>
+                                            <div class="small fw-medium">{new Date(inquiry.created_at).toLocaleDateString()}</div>
+                                            <div class="smaller text-muted">{new Date(inquiry.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                                        </td>
+                                        <td>
+                                            <span class="small">{inquiry.academic_year?.name || 'N/A'}</span>
+                                        </td>
+                                        <td>
+                                            {#if inquiry.inquiry_data?.conversion_status === 'Converted'}
+                                                <span class="badge bg-success shadow-sm">
+                                                    <i class="bi bi-mortarboard-fill me-1"></i> Converted
+                                                </span>
+                                            {:else}
+                                                <span class="badge {inquiry.is_processed ? 'bg-secondary' : 'bg-warning text-dark'}">
+                                                    {inquiry.is_processed ? 'Processed' : 'New'}
+                                                </span>
+                                            {/if}
+                                        </td>
+                                        <td class="text-end">
+                                            <div class="btn-group">
+                                                <button class="btn btn-sm btn-outline-primary" onclick={() => viewDetails(inquiry)}>
+                                                    Details
+                                                </button>
+                                                <button 
+                                                    class="btn btn-sm {inquiry.is_processed ? 'btn-outline-secondary' : 'btn-success'}"
+                                                    onclick={() => toggleProcessed(inquiry)}
+                                                    title={inquiry.is_processed ? 'Mark as New' : 'Mark as Processed'}
+                                                >
+                                                    <i class="bi {inquiry.is_processed ? 'bi-x-circle' : 'bi-check-circle'}"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {:else}
+                                    <tr>
+                                        <td colspan="6" class="text-center py-5 text-muted">
+                                            <i class="bi bi-inbox display-1 d-block mb-3 opacity-25"></i>
+                                            No inquiries matching your criteria.
+                                        </td>
+                                    </tr>
                                 {/each}
-                                <li class="page-item {data.filters.page === totalPages ? 'disabled' : ''}">
-                                    <button class="page-link" onclick={() => changePage(data.filters.page + 1)}>Next</button>
-                                </li>
-                            </ul>
-                        </nav>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {#if totalPages > 1}
+                        <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+                            <div class="small text-muted">
+                                Showing {(data.filters.page - 1) * data.filters.pageSize + 1} to {Math.min(data.filters.page * data.filters.pageSize, data.totalCount)} of {data.totalCount}
+                            </div>
+                            <nav>
+                                <ul class="pagination pagination-sm mb-0">
+                                    <li class="page-item {data.filters.page === 1 ? 'disabled' : ''}">
+                                        <button class="page-link" onclick={() => changePage(data.filters.page - 1)}>Previous</button>
+                                    </li>
+                                    {#each Array(totalPages) as _, i}
+                                        <li class="page-item {data.filters.page === i + 1 ? 'active' : ''}">
+                                            <button class="page-link" onclick={() => changePage(i + 1)}>{i + 1}</button>
+                                        </li>
+                                    {/each}
+                                    <li class="page-item {data.filters.page === totalPages ? 'disabled' : ''}">
+                                        <button class="page-link" onclick={() => changePage(data.filters.page + 1)}>Next</button>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+
+            <!-- Detail View -->
+            <div class="col-lg-5">
+                {#if selectedInquiry}
+                    <div class="card shadow-sm sticky-top" style="top: 80px;">
+                        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Inquiry Details</h5>
+                            <button class="btn-close btn-close-white" onclick={() => selectedInquiry = null}></button>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-4">
+                                <h6 class="text-uppercase text-muted small fw-bold mb-3 border-bottom pb-1">Personal Info</h6>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-4 text-muted small">Name:</div>
+                                    <div class="col-8 fw-bold">{getDisplayName(selectedInquiry)}</div>
+                                    
+                                    <div class="col-4 text-muted small">Email:</div>
+                                    <div class="col-8"><a href="mailto:{selectedInquiry.email}">{selectedInquiry.email}</a></div>
+                                    
+                                    {#if selectedInquiry.phone}
+                                        <div class="col-4 text-muted small">Phone:</div>
+                                        <div class="col-8">{selectedInquiry.phone}</div>
+                                    {/if}
+                                    
+                                    <div class="col-4 text-muted small">Submitted:</div>
+                                    <div class="col-8 small">{new Date(selectedInquiry.created_at).toLocaleString()}</div>
+                                </div>
+                            </div>
+
+                            {#if selectedInquiry.preferences && selectedInquiry.preferences.length > 0}
+                                <div class="mb-4">
+                                    <h6 class="text-uppercase text-muted small fw-bold mb-3 border-bottom pb-1">Course Preferences</h6>
+                                    <div class="list-group list-group-flush border rounded overflow-hidden">
+                                        {#each selectedInquiry.preferences as pref}
+                                            <div class="list-group-item d-flex align-items-center py-2">
+                                                <span class="badge bg-secondary me-3">#{pref.priority}</span>
+                                                <div>
+                                                    <div class="fw-bold small">{pref.course?.name}</div>
+                                                    {#if pref.branch?.name}
+                                                        <div class="text-muted" style="font-size: 0.75rem;">{pref.branch?.name}</div>
+                                                    {/if}
+                                                </div>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <div>
+                                <h6 class="text-uppercase text-muted small fw-bold mb-3 border-bottom pb-1">Additional Data</h6>
+                                <div class="bg-light p-3 rounded border">
+                                    {#each Object.entries(selectedInquiry.inquiry_data) as [key, value]}
+                                        <div class="mb-2">
+                                            <div class="small text-muted text-capitalize">{key.replace(/_/g, ' ')}:</div>
+                                            <div class="fw-medium small">{value}</div>
+                                        </div>
+                                    {:else}
+                                        <div class="text-muted small italic">No additional data provided.</div>
+                                    {/each}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white p-3">
+                            <a href="mailto:{selectedInquiry.email}?subject=Regarding your inquiry for {selectedInquiry.form?.name}" class="btn btn-sm btn-primary w-100">
+                                <i class="bi bi-envelope me-2"></i> Contact via Email
+                            </a>
+                        </div>
+                    </div>
+                {:else}
+                    <div class="card shadow-sm h-100 d-flex align-items-center justify-content-center border-dashed p-5 text-muted">
+                        <div class="text-center opacity-50">
+                            <i class="bi bi-person-lines-fill display-4"></i>
+                            <p class="mt-3">Select an inquiry to view preferences and form data.</p>
+                        </div>
                     </div>
                 {/if}
             </div>
         </div>
+    {:else}
+        <!-- Conversion & Fees Report View -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold text-primary">Provisional Admission & Fees Status</h5>
+                <button type="button" class="btn btn-success btn-sm" onclick={exportReportCSV}>
+                    <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export Report CSV
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Student Info</th>
+                            <th>Inquiry Date</th>
+                            <th>Registration</th>
+                            <th>Prov. Application</th>
+                            <th>Course Interested</th>
+                            <th>Provisional ID</th>
+                            <th>Provisional Fee</th>
+                            <th>Tuition Fee</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each data.conversionReportData || [] as row}
+                            <tr>
+                                <td>
+                                    <div class="fw-bold">{getDisplayName(row.inquiry)}</div>
+                                    <div class="small text-muted">{row.email}</div>
+                                    <div class="small text-muted">{row.phone || ''}</div>
+                                </td>
+                                <td>
+                                    <div class="small fw-medium">{new Date(row.inquiry.created_at).toLocaleDateString()}</div>
+                                </td>
+                                <td>
+                                    {#if row.is_registered}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                            <i class="bi bi-person-check-fill me-1"></i> Registered
+                                        </span>
+                                    {:else}
+                                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                            Not Registered
+                                        </span>
+                                    {/if}
+                                </td>
+                                <td>
+                                    {#if row.prov_app_status}
+                                        <span class="badge bg-info-subtle text-info border border-info-subtle text-capitalize">
+                                            {row.prov_app_status}
+                                        </span>
+                                    {:else}
+                                        <span class="badge bg-light text-muted border">No Application</span>
+                                    {/if}
+                                </td>
+                                <td>
+                                    <span class="small">{row.prov_app_course || '-'}</span>
+                                </td>
+                                <td>
+                                    {#if row.prov_admission_no}
+                                        <span class="badge bg-dark fw-mono">{row.prov_admission_no}</span>
+                                    {:else}
+                                        <span class="text-muted">-</span>
+                                    {/if}
+                                </td>
+                                <td>
+                                    {#if row.prov_fee_paid}
+                                        <span class="badge bg-success text-white" title="TX: {row.prov_fee_tx || 'N/A'}">
+                                            <i class="bi bi-check-circle-fill me-1"></i> Paid: ₹{row.prov_fee_amount || ''}
+                                        </span>
+                                    {:else if row.is_registered && row.prov_app_status}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="bi bi-exclamation-triangle-fill me-1"></i> Unpaid
+                                        </span>
+                                    {:else}
+                                        <span class="text-muted">-</span>
+                                    {/if}
+                                </td>
+                                <td>
+                                    {#if row.tuition_fee_paid}
+                                        <span class="badge bg-success text-white" title="TX: {row.tuition_fee_tx || 'N/A'}">
+                                            <i class="bi bi-check-circle-fill me-1"></i> Paid: ₹{row.tuition_fee_amount || ''}
+                                        </span>
+                                    {:else if row.is_registered && row.prov_app_status}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="bi bi-exclamation-triangle-fill me-1"></i> Unpaid
+                                        </span>
+                                    {:else}
+                                        <span class="text-muted">-</span>
+                                    {/if}
+                                </td>
+                            </tr>
+                        {:else}
+                            <tr>
+                                <td colspan="8" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox display-1 d-block mb-3 opacity-25"></i>
+                                    No records to report.
+                                </td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
 
-        <!-- Detail View -->
-        <div class="col-lg-5">
-            {#if selectedInquiry}
-                <div class="card shadow-sm sticky-top" style="top: 80px;">
-                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Inquiry Details</h5>
-                        <button class="btn-close btn-close-white" onclick={() => selectedInquiry = null}></button>
+            {#if totalPages > 1}
+                <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+                    <div class="small text-muted">
+                        Showing {(data.filters.page - 1) * data.filters.pageSize + 1} to {Math.min(data.filters.page * data.filters.pageSize, data.totalCount)} of {data.totalCount}
                     </div>
-                    <div class="card-body">
-                        <div class="mb-4">
-                            <h6 class="text-uppercase text-muted small fw-bold mb-3 border-bottom pb-1">Personal Info</h6>
-                            <div class="row g-2 mb-2">
-                                <div class="col-4 text-muted small">Name:</div>
-                                <div class="col-8 fw-bold">{getDisplayName(selectedInquiry)}</div>
-                                
-                                <div class="col-4 text-muted small">Email:</div>
-                                <div class="col-8"><a href="mailto:{selectedInquiry.email}">{selectedInquiry.email}</a></div>
-                                
-                                {#if selectedInquiry.phone}
-                                    <div class="col-4 text-muted small">Phone:</div>
-                                    <div class="col-8">{selectedInquiry.phone}</div>
-                                {/if}
-                                
-                                <div class="col-4 text-muted small">Submitted:</div>
-                                <div class="col-8 small">{new Date(selectedInquiry.created_at).toLocaleString()}</div>
-                            </div>
-                        </div>
-
-                        {#if selectedInquiry.preferences && selectedInquiry.preferences.length > 0}
-                            <div class="mb-4">
-                                <h6 class="text-uppercase text-muted small fw-bold mb-3 border-bottom pb-1">Course Preferences</h6>
-                                <div class="list-group list-group-flush border rounded overflow-hidden">
-                                    {#each selectedInquiry.preferences as pref}
-                                        <div class="list-group-item d-flex align-items-center py-2">
-                                            <span class="badge bg-secondary me-3">#{pref.priority}</span>
-                                            <div>
-                                                <div class="fw-bold small">{pref.course?.name}</div>
-                                                {#if pref.branch?.name}
-                                                    <div class="text-muted" style="font-size: 0.75rem;">{pref.branch?.name}</div>
-                                                {/if}
-                                            </div>
-                                        </div>
-                                    {/each}
-                                </div>
-                            </div>
-                        {/if}
-
-                        <div>
-                            <h6 class="text-uppercase text-muted small fw-bold mb-3 border-bottom pb-1">Additional Data</h6>
-                            <div class="bg-light p-3 rounded border">
-                                {#each Object.entries(selectedInquiry.inquiry_data) as [key, value]}
-                                    <div class="mb-2">
-                                        <div class="small text-muted text-capitalize">{key.replace(/_/g, ' ')}:</div>
-                                        <div class="fw-medium small">{value}</div>
-                                    </div>
-                                {:else}
-                                    <div class="text-muted small italic">No additional data provided.</div>
-                                {/each}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-footer bg-white p-3">
-                        <a href="mailto:{selectedInquiry.email}?subject=Regarding your inquiry for {selectedInquiry.form?.name}" class="btn btn-sm btn-primary w-100">
-                            <i class="bi bi-envelope me-2"></i> Contact via Email
-                        </a>
-                    </div>
-                </div>
-            {:else}
-                <div class="card shadow-sm h-100 d-flex align-items-center justify-content-center border-dashed p-5 text-muted">
-                    <div class="text-center opacity-50">
-                        <i class="bi bi-person-lines-fill display-4"></i>
-                        <p class="mt-3">Select an inquiry to view preferences and form data.</p>
-                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item {data.filters.page === 1 ? 'disabled' : ''}">
+                                <button class="page-link" onclick={() => changePage(data.filters.page - 1)}>Previous</button>
+                            </li>
+                            {#each Array(totalPages) as _, i}
+                                <li class="page-item {data.filters.page === i + 1 ? 'active' : ''}">
+                                    <button class="page-link" onclick={() => changePage(i + 1)}>{i + 1}</button>
+                                </li>
+                            {/each}
+                            <li class="page-item {data.filters.page === totalPages ? 'disabled' : ''}">
+                                <button class="page-link" onclick={() => changePage(data.filters.page + 1)}>Next</button>
+                            </li>
+                        </ul>
+                    </nav>
                 </div>
             {/if}
         </div>
-    </div>
+    {/if}
 </div>
 
 <style>
