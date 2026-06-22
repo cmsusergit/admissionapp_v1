@@ -1,30 +1,24 @@
-import { fail, redirect } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
-import type { PageServerLoad, Actions } from './$types';
+import type { RequestHandler } from './$types';
 
-export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthenticatedUser, userProfile } }) => {
+export const GET: RequestHandler = async ({ url, locals: { getAuthenticatedUser, userProfile } }) => {
+    // 1. Authorize user
     const user = await getAuthenticatedUser();
     if (!user || !['admin', 'adm_officer', 'university_auth', 'college_auth', 'deo'].includes(userProfile?.role || '')) {
-        throw redirect(303, '/login');
+        return new Response('Unauthorized', { status: 401 });
     }
 
-    // 1. Get filter parameters
-    const page = parseInt(url.searchParams.get('page') || '1');
-    const pageSize = parseInt(url.searchParams.get('pageSize') || '100');
+    const supabase = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // 2. Get filter parameters
     const academicYearId = url.searchParams.get('academicYearId') || '';
     const courseId = url.searchParams.get('courseId') || '';
     const status = url.searchParams.get('status') || '';
     const search = url.searchParams.get('search') || '';
-    const activeTab = url.searchParams.get('tab') || 'inquiries';
     const conversionFilter = url.searchParams.get('conversionFilter') || '';
-
-    // 2. Fetch Helper Data (Filters)
-    const [yearsRes, coursesRes] = await Promise.all([
-        supabase.from('academic_years').select('id, name').order('name', { ascending: false }),
-        supabase.from('courses').select('id, name').order('name')
-    ]);
 
     // 3. Build Inquiry Query
     let query = supabase
@@ -38,7 +32,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 course:courses(id, name),
                 branch:branches(name)
             )
-        `, { count: 'exact' });
+        `);
 
     // Apply Filters
     if (academicYearId) query = query.eq('academic_year_id', academicYearId);
@@ -59,37 +53,28 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         if (ids.length > 0) {
             query = query.in('id', ids);
         } else {
-            return {
-                inquiries: [],
-                totalCount: 0,
-                academicYears: yearsRes.data || [],
-                courses: coursesRes.data || [],
-                filters: { page, pageSize, academicYearId, courseId, status, search, tab: activeTab, conversionFilter },
-                conversionReportData: []
-            };
+            return json([]);
         }
     }
 
-    let inquiries: any[] = [];
-    let totalCount = 0;
+    // 4. Fetch all matching inquiries (no range limit for export)
+    const { data: allInquiries, error: inqError } = await query.order('created_at', { ascending: false });
+    if (inqError) {
+        console.error('Error fetching inquiries for export:', inqError);
+        return json([], { status: 500 });
+    }
 
+    let inquiries = allInquiries || [];
+
+    // 5. Apply conversion filters in memory if selected
     if (conversionFilter) {
-        // Fetch all matching inquiries (without range) so we can filter in memory
-        const { data: allInquiries, error } = await query
-            .order('created_at', { ascending: false });
-
-        if (error) console.error('Error fetching inquiries for filtering:', error);
-        
-        const rawInquiries = allInquiries || [];
-
-        // 1. Fetch form types
+        // Fetch form types
         const { data: provFormTypes } = await supabase
             .from('form_types')
             .select('name')
             .eq('is_prov', true);
         const provNames = provFormTypes?.map(f => f.name) || [];
 
-        // 2. Fetch converted/paid emails
         if (conversionFilter === 'prov_converted' || conversionFilter === 'not_converted') {
             const { data: apps } = await supabase
                 .from('applications')
@@ -102,9 +87,9 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
             }).filter(Boolean));
 
             if (conversionFilter === 'prov_converted') {
-                inquiries = rawInquiries.filter(i => i.email && emails.has(i.email.toLowerCase()));
+                inquiries = inquiries.filter(i => i.email && emails.has(i.email.toLowerCase()));
             } else {
-                inquiries = rawInquiries.filter(i => !i.email || !emails.has(i.email.toLowerCase()));
+                inquiries = inquiries.filter(i => !i.email || !emails.has(i.email.toLowerCase()));
             }
         } else if (conversionFilter === 'fees_paid') {
             const { data: payments } = await supabase
@@ -124,54 +109,57 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                     .filter(Boolean)
             );
 
-            inquiries = rawInquiries.filter(i => i.email && emails.has(i.email.toLowerCase()));
+            inquiries = inquiries.filter(i => i.email && emails.has(i.email.toLowerCase()));
         }
-
-        totalCount = inquiries.length;
-        // Paginate in memory
-        const from = (page - 1) * pageSize;
-        inquiries = inquiries.slice(from, from + pageSize);
-    } else {
-        // Standard database-level pagination
-        const from = (page - 1) * pageSize;
-        const to = from + pageSize - 1;
-        const { data, count, error } = await query
-            .order('created_at', { ascending: false })
-            .range(from, to);
-
-        if (error) console.error('Error fetching inquiries:', error);
-        inquiries = data || [];
-        totalCount = count || 0;
     }
 
+    // 6. Build report data for the full list of filtered inquiries
     let conversionReportData: any[] = [];
-    if (activeTab === 'report' && inquiries && inquiries.length > 0) {
+    if (inquiries.length > 0) {
         const emails = inquiries.map(i => i.email).filter(Boolean);
         if (emails.length > 0) {
-            const { data: usersData } = await supabase
-                .from('users')
-                .select('id, email')
-                .in('email', emails);
+            // Chunk email queries to prevent header overflow
+            const chunkSize = 100;
+            const emailChunks: string[][] = [];
+            for (let i = 0; i < emails.length; i += chunkSize) {
+                emailChunks.push(emails.slice(i, i + chunkSize));
+            }
 
-            const userMap = new Map(usersData?.map(u => [(u.email || '').toLowerCase(), u]) || []);
-            const userIds = usersData?.map(u => u.id) || [];
+            const userResults = await Promise.all(
+                emailChunks.map(chunk => supabase
+                    .from('users')
+                    .select('id, email')
+                    .in('email', chunk)
+                )
+            );
+            const usersData = userResults.flatMap(r => r.data || []);
+            const userMap = new Map(usersData.map(u => [(u.email || '').toLowerCase(), u]));
+            const userIds = usersData.map(u => u.id);
 
             let appsData: any[] = [];
             if (userIds.length > 0) {
-                const { data } = await supabase
-                    .from('applications')
-                    .select(`
-                        id,
-                        student_id,
-                        status,
-                        submitted_at,
-                        form_type,
-                        course:courses(id, name),
-                        account_admissions(admission_number),
-                        payments(id, amount, status, payment_type, transaction_id)
-                    `)
-                    .in('student_id', userIds);
-                appsData = data || [];
+                const userIdChunks: string[][] = [];
+                for (let i = 0; i < userIds.length; i += chunkSize) {
+                    userIdChunks.push(userIds.slice(i, i + chunkSize));
+                }
+
+                const appResults = await Promise.all(
+                    userIdChunks.map(chunk => supabase
+                        .from('applications')
+                        .select(`
+                            id,
+                            student_id,
+                            status,
+                            submitted_at,
+                            form_type,
+                            course:courses(id, name),
+                            account_admissions(admission_number),
+                            payments(id, amount, status, payment_type, transaction_id)
+                        `)
+                        .in('student_id', chunk)
+                    )
+                );
+                appsData = appResults.flatMap(r => r.data || []);
             }
 
             const { data: formTypes } = await supabase
@@ -213,50 +201,5 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         }
     }
 
-    return {
-        inquiries: inquiries || [],
-        totalCount: totalCount,
-        academicYears: yearsRes.data || [],
-        courses: coursesRes.data || [],
-        filters: { page, pageSize, academicYearId, courseId, status, search, tab: activeTab, conversionFilter },
-        conversionReportData
-    };
-};
-
-export const actions: Actions = {
-    deleteInquiries: async ({ request, locals: { getAuthenticatedUser, userProfile } }) => {
-        const user = await getAuthenticatedUser();
-        if (!user || !['admin', 'adm_officer'].includes(userProfile?.role || '')) {
-            return fail(403, { message: 'Unauthorized: Only Admin and Admission Officers can delete inquiries.' });
-        }
-
-        const formData = await request.formData();
-        const idsRaw = formData.get('ids') as string;
-        
-        if (!idsRaw) return fail(400, { message: 'No IDs provided' });
-        
-        let ids: string[] = [];
-        try {
-            ids = JSON.parse(idsRaw);
-        } catch (e) {
-            return fail(400, { message: 'Invalid format for IDs' });
-        }
-
-        if (!Array.isArray(ids) || ids.length === 0) return fail(400, { message: 'No records selected' });
-
-        // Bypass RLS for admin deletion using Service Role
-        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-        const { error } = await supabaseAdmin
-            .from('inquiries')
-            .delete()
-            .in('id', ids);
-
-        if (error) {
-            console.error('Admin Delete Error:', error);
-            return fail(500, { message: 'Failed to delete records: ' + error.message });
-        }
-
-        return { success: true };
-    }
+    return json(conversionReportData);
 };

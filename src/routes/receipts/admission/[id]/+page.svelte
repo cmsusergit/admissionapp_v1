@@ -81,7 +81,7 @@
                 </div>
             </div>
             <div class="badge bg-dark px-4 py-2 text-uppercase" style="font-size: 1rem; letter-spacing: 1px;">
-                Admission Slip
+                Provisional Admission Slip
             </div>
         </div>
 
@@ -133,11 +133,7 @@
         </div>
 
         <div class="receipt-footer mt-auto pt-5">
-            <div class="d-flex justify-content-between align-items-end">
-                <div class="signature-box text-center">
-                    <div class="sig-line"></div>
-                    <p class="small m-0">Student's Signature</p>
-                </div>
+            <div class="d-flex justify-content-between align-items-end">                
                 <div class="signature-box text-center">
                     <div class="sig-line"></div>
                     <p class="small m-0">Authorized Signature</p>

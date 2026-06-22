@@ -4,6 +4,7 @@
     import { deserialize } from '$app/forms';
     import { supabase } from '$lib/supabase';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
+    import * as XLSX from 'xlsx';
 
     interface InquiryPageData {
         inquiries: any[];
@@ -61,6 +62,7 @@
     let status = $state(data.filters.status || '');
     let activeTab = $state(data.filters.tab || 'inquiries');
     let conversionFilter = $state(data.filters.conversionFilter || '');
+    let pageSize = $state(data.filters.pageSize || 100);
 
     function applyFilters() {
         const params = new URLSearchParams($pageStore.url.searchParams);
@@ -71,6 +73,7 @@
         if (status) params.set('status', status); else params.delete('status');
         if (conversionFilter) params.set('conversionFilter', conversionFilter); else params.delete('conversionFilter');
         if (activeTab) params.set('tab', activeTab);
+        if (pageSize) params.set('pageSize', pageSize.toString()); else params.delete('pageSize');
         
         goto(`?${params.toString()}`, { keepFocus: true });
     }
@@ -80,6 +83,7 @@
         params.set('page', newPage.toString());
         if (activeTab) params.set('tab', activeTab);
         if (conversionFilter) params.set('conversionFilter', conversionFilter);
+        if (pageSize) params.set('pageSize', pageSize.toString());
         goto(`?${params.toString()}`);
     }
 
@@ -89,39 +93,81 @@
         params.set('tab', tabName);
         params.set('page', '1');
         if (conversionFilter) params.set('conversionFilter', conversionFilter);
+        if (pageSize) params.set('pageSize', pageSize.toString());
         goto(`?${params.toString()}`, { keepFocus: true });
     }
 
-    function exportReportCSV() {
-        const headers = ['Inquirer Name', 'Email', 'Phone', 'Inquiry Date', 'Registration Status', 'Prov. App Status', 'Course Interest', 'Provisional ID', 'Provisional Fee Paid', 'Provisional Fee Amount', 'Tuition Fee Paid', 'Tuition Fee Amount'];
-        const rows = (data.conversionReportData || []).map((r: any) => [
-            getDisplayName(r.inquiry),
-            r.inquiry.email || '',
-            r.inquiry.phone || '',
-            new Date(r.inquiry.created_at).toLocaleDateString(),
-            r.is_registered ? 'Registered' : 'Not Registered',
-            r.prov_app_status || 'No Application',
-            r.prov_app_course || '',
-            r.prov_admission_no || '',
-            r.prov_fee_paid ? 'Paid' : 'Unpaid',
-            r.prov_fee_amount !== null ? r.prov_fee_amount : '',
-            r.tuition_fee_paid ? 'Paid' : 'Unpaid',
-            r.tuition_fee_amount !== null ? r.tuition_fee_amount : ''
-        ]);
+    async function exportReportExcel() {
+        startLoading();
+        try {
+            const apiParams = new URLSearchParams();
+            if (search) apiParams.set('search', search);
+            if (academicYearId) apiParams.set('academicYearId', academicYearId);
+            if (courseId) apiParams.set('courseId', courseId);
+            if (status) apiParams.set('status', status);
+            if (conversionFilter) apiParams.set('conversionFilter', conversionFilter);
 
-        const csvContent = [
-            headers.join(','),
-            ...rows.map((e: any[]) => e.map((val: any) => `"${String(val).replace(/"/g, '""')}"`).join(','))
-        ].join('\n');
+            const res = await fetch(`/api/inquiry/export-report?${apiParams.toString()}`);
+            if (!res.ok) throw new Error('Failed to fetch export data');
+            const reportData = await res.json();
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'inquiries_provisional_conversion_report.csv');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+            const headers = [
+                'Inquirer Name', 
+                'Email', 
+                'Phone', 
+                'Inquiry Date', 
+                'Interested Branches', 
+                'Registration Status', 
+                'Prov. App Status', 
+                'Course Interest', 
+                'Provisional Fee Paid', 
+                'Provisional Fee Amount', 
+                'Tuition Fee Paid', 
+                'Tuition Fee Amount'
+            ];
+            
+            const rows = (reportData || []).map((r: any) => {
+                const branchList = Array.from(new Set(
+                    (r.inquiry.preferences || [])
+                        .map((p: any) => p.branch?.name)
+                        .filter(Boolean)
+                )).join(', ');
+
+                return [
+                    getDisplayName(r.inquiry),
+                    r.inquiry.email || '',
+                    r.inquiry.phone || '',
+                    new Date(r.inquiry.created_at).toLocaleDateString(),
+                    branchList || '-',
+                    r.is_registered ? 'Registered' : 'Not Registered',
+                    r.prov_app_status || 'No Application',
+                    r.prov_app_course || '',
+                    r.prov_fee_paid ? 'Paid' : 'Unpaid',
+                    r.prov_fee_amount !== null ? r.prov_fee_amount : '',
+                    r.tuition_fee_paid ? 'Paid' : 'Unpaid',
+                    r.tuition_fee_amount !== null ? r.tuition_fee_amount : ''
+                ];
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Conversion Report");
+            
+            // Auto-size columns
+            const maxCols = headers.length;
+            ws['!cols'] = Array(maxCols).fill(null).map((_, colIndex) => {
+                const colData = [headers[colIndex], ...rows.map(row => String(row[colIndex] || ''))];
+                const maxLength = Math.max(...colData.map(val => val.length));
+                return { wch: Math.min(Math.max(maxLength + 2, 10), 40) };
+            });
+
+            XLSX.writeFile(wb, `inquiries_provisional_conversion_report_${new Date().toISOString().split('T')[0]}.xlsx`);
+        } catch (err: any) {
+            console.error(err);
+            alert('Export failed: ' + err.message);
+        } finally {
+            stopLoading();
+        }
     }
 
     async function toggleProcessed(inquiry: any) {
@@ -278,6 +324,7 @@
                     <button type="button" class="btn btn-outline-secondary" onclick={() => {
                         search = ''; academicYearId = ''; courseId = ''; status = ''; conversionFilter = '';
                         selectedIds = [];
+                        pageSize = 100;
                         applyFilters();
                     }}>Reset</button>
                 </div>
@@ -371,11 +418,24 @@
                     </div>
 
                     <!-- Pagination -->
-                    {#if totalPages > 1}
-                        <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+                    <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-3">
                             <div class="small text-muted">
-                                Showing {(data.filters.page - 1) * data.filters.pageSize + 1} to {Math.min(data.filters.page * data.filters.pageSize, data.totalCount)} of {data.totalCount}
+                                Showing {data.totalCount > 0 ? (data.filters.page - 1) * data.filters.pageSize + 1 : 0} to {Math.min(data.filters.page * data.filters.pageSize, data.totalCount)} of {data.totalCount}
                             </div>
+                            <div class="d-flex align-items-center gap-1">
+                                <span class="small text-muted">Show:</span>
+                                <select class="form-select form-select-sm" style="width: auto;" bind:value={pageSize} onchange={applyFilters}>
+                                    <option value={10}>10</option>
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                    <option value={200}>200</option>
+                                    <option value={500}>500</option>
+                                </select>
+                            </div>
+                        </div>
+                        {#if totalPages > 1}
                             <nav>
                                 <ul class="pagination pagination-sm mb-0">
                                     <li class="page-item {data.filters.page === 1 ? 'disabled' : ''}">
@@ -391,8 +451,8 @@
                                     </li>
                                 </ul>
                             </nav>
-                        </div>
-                    {/if}
+                        {/if}
+                    </div>
                 </div>
             </div>
 
@@ -478,8 +538,8 @@
         <div class="card shadow-sm">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-bold text-primary">Provisional Admission & Fees Status</h5>
-                <button type="button" class="btn btn-success btn-sm" onclick={exportReportCSV}>
-                    <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export Report CSV
+                <button type="button" class="btn btn-success btn-sm" onclick={exportReportExcel}>
+                    <i class="bi bi-file-earmark-excel me-1"></i> Export Report Excel
                 </button>
             </div>
             <div class="table-responsive">
@@ -487,11 +547,13 @@
                     <thead class="table-light">
                         <tr>
                             <th>Student Info</th>
+                            <th>Email</th>
+                            <th>Contact No</th>
                             <th>Inquiry Date</th>
+                            <th>Interested Branches</th>
                             <th>Registration</th>
                             <th>Prov. Application</th>
                             <th>Course Interested</th>
-                            <th>Provisional ID</th>
                             <th>Provisional Fee</th>
                             <th>Tuition Fee</th>
                         </tr>
@@ -501,11 +563,18 @@
                             <tr>
                                 <td>
                                     <div class="fw-bold">{getDisplayName(row.inquiry)}</div>
-                                    <div class="small text-muted">{row.email}</div>
-                                    <div class="small text-muted">{row.phone || ''}</div>
+                                </td>
+                                <td>
+                                    <span class="small">{row.inquiry.email || '-'}</span>
+                                </td>
+                                <td>
+                                    <span class="small">{row.inquiry.phone || '-'}</span>
                                 </td>
                                 <td>
                                     <div class="small fw-medium">{new Date(row.inquiry.created_at).toLocaleDateString()}</div>
+                                </td>
+                                <td>
+                                    <span class="small">{Array.from(new Set((row.inquiry.preferences || []).map(p => p.branch?.name).filter(Boolean))).join(', ') || '-'}</span>
                                 </td>
                                 <td>
                                     {#if row.is_registered}
@@ -529,13 +598,6 @@
                                 </td>
                                 <td>
                                     <span class="small">{row.prov_app_course || '-'}</span>
-                                </td>
-                                <td>
-                                    {#if row.prov_admission_no}
-                                        <span class="badge bg-dark fw-mono">{row.prov_admission_no}</span>
-                                    {:else}
-                                        <span class="text-muted">-</span>
-                                    {/if}
                                 </td>
                                 <td>
                                     {#if row.prov_fee_paid}
@@ -576,11 +638,24 @@
                 </table>
             </div>
 
-            {#if totalPages > 1}
-                <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+            <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-3">
                     <div class="small text-muted">
-                        Showing {(data.filters.page - 1) * data.filters.pageSize + 1} to {Math.min(data.filters.page * data.filters.pageSize, data.totalCount)} of {data.totalCount}
+                        Showing {data.totalCount > 0 ? (data.filters.page - 1) * data.filters.pageSize + 1 : 0} to {Math.min(data.filters.page * data.filters.pageSize, data.totalCount)} of {data.totalCount}
                     </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="small text-muted">Show:</span>
+                        <select class="form-select form-select-sm" style="width: auto;" bind:value={pageSize} onchange={applyFilters}>
+                            <option value={10}>10</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value={200}>200</option>
+                            <option value={500}>500</option>
+                        </select>
+                    </div>
+                </div>
+                {#if totalPages > 1}
                     <nav>
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item {data.filters.page === 1 ? 'disabled' : ''}">
@@ -596,8 +671,8 @@
                             </li>
                         </ul>
                     </nav>
-                </div>
-            {/if}
+                {/if}
+            </div>
         </div>
     {/if}
 </div>

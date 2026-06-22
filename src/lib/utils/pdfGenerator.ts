@@ -454,7 +454,7 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
     });
 
     content.push({
-        text: "ADMISSION SLIP",
+        text: "PROVISIONAL ADMISSION SLIP",
         fontSize: 14,
         bold: true,
         alignment: "center",
@@ -519,14 +519,7 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
 
     // Footer Signatures
     content.push({
-        columns: [
-            {
-                width: 150,
-                stack: [
-                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 150, y2: 0, lineWidth: 0.5 }], margin: [0, 40, 0, 5] },
-                    { text: "Student's Signature", fontSize: 8, alignment: "center" }
-                ]
-            },
+        columns: [          
             { width: "*", text: "" },
             {
                 width: 150,
