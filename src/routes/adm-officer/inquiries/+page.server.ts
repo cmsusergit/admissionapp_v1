@@ -10,6 +10,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         throw redirect(303, '/login');
     }
 
+    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
     // 1. Get filter parameters
     const page = parseInt(url.searchParams.get('page') || '1');
     const pageSize = parseInt(url.searchParams.get('pageSize') || '100');
@@ -50,14 +52,14 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
     }
 
     if (conversionFilter) {
-        const { data: provFormTypes } = await supabase
+        const { data: provFormTypes } = await supabaseAdmin
             .from('form_types')
             .select('name')
             .eq('is_prov', true);
         const provNames = provFormTypes?.map(f => f.name) || [];
 
         if (conversionFilter === 'prov_converted') {
-            const { data: apps } = await supabase
+            const { data: apps } = await supabaseAdmin
                 .from('applications')
                 .select('student_user:users!student_id(email)')
                 .in('form_type', provNames);
@@ -71,7 +73,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 query = query.in('email', ['non_existent_email@prevent_results.com']);
             }
         } else if (conversionFilter === 'fees_paid') {
-            const { data: payments } = await supabase
+            const { data: payments } = await supabaseAdmin
                 .from('payments')
                 .select('application:applications(form_type, student_user:users!student_id(email))')
                 .eq('payment_type', 'tuition_fee')
@@ -93,7 +95,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 query = query.in('email', ['non_existent_email@prevent_results.com']);
             }
         } else if (conversionFilter === 'not_converted') {
-            const { data: apps } = await supabase
+            const { data: apps } = await supabaseAdmin
                 .from('applications')
                 .select('student_user:users!student_id(email)')
                 .in('form_type', provNames);
@@ -141,7 +143,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         const rawInquiries = allInquiries || [];
 
         // 1. Fetch form types
-        const { data: provFormTypes } = await supabase
+        const { data: provFormTypes } = await supabaseAdmin
             .from('form_types')
             .select('name')
             .eq('is_prov', true);
@@ -149,7 +151,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
 
         // 2. Fetch converted/paid emails
         if (conversionFilter === 'prov_converted' || conversionFilter === 'not_converted') {
-            const { data: apps } = await supabase
+            const { data: apps } = await supabaseAdmin
                 .from('applications')
                 .select('student_user:users!student_id(email)')
                 .in('form_type', provNames);
@@ -165,7 +167,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 inquiries = rawInquiries.filter(i => !i.email || !emails.has(i.email.toLowerCase()));
             }
         } else if (conversionFilter === 'fees_paid') {
-            const { data: payments } = await supabase
+            const { data: payments } = await supabaseAdmin
                 .from('payments')
                 .select('application:applications(form_type, student_user:users!student_id(email))')
                 .eq('payment_type', 'tuition_fee')
@@ -206,7 +208,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
     if (activeTab === 'report' && inquiries && inquiries.length > 0) {
         const emails = inquiries.map(i => i.email).filter(Boolean);
         if (emails.length > 0) {
-            const { data: usersData } = await supabase
+            const { data: usersData } = await supabaseAdmin
                 .from('users')
                 .select('id, email')
                 .in('email', emails);
@@ -216,7 +218,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
 
             let appsData: any[] = [];
             if (userIds.length > 0) {
-                const { data } = await supabase
+                const { data } = await supabaseAdmin
                     .from('applications')
                     .select(`
                         id,
@@ -232,7 +234,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 appsData = data || [];
             }
 
-            const { data: formTypes } = await supabase
+            const { data: formTypes } = await supabaseAdmin
                 .from('form_types')
                 .select('name, is_prov');
             const isProvMap = new Map(formTypes?.map(ft => [ft.name, ft.is_prov]) || []);
