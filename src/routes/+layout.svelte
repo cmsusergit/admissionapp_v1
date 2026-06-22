@@ -92,7 +92,8 @@
   // Determine if we are on a print route (no header, footer, or sidebar)
   let isPrintRoute = $derived(
     $page.url.pathname.includes("/print-profile") ||
-      $page.url.pathname.includes("/receipts/print"),
+      $page.url.pathname.includes("/receipts/print") ||
+      $page.url.pathname.includes("/receipts/admission"),
   );
 
   let isSidebarCollapsed = $state(data.userProfile?.role === "student");

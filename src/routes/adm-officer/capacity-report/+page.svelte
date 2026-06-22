@@ -8,11 +8,11 @@
 
     let viewMode = $state<'detailed' | 'simple'>('simple');
     let selectedMetric = $state<'all' | 'submitted' | 'approved' | 'paid' | 'admitted' | 'admitted_id' | 'admitted_paid'>('paid');
-    let includeUnassigned = $state(false);
+    let includeUnassigned = $state(true);
 
     // Derived filtered data
     let filteredCapacityData = $derived(
-        data.capacityData.map(college => ({
+        data.capacityData.map((college: any) => ({
             ...college,
             courses: college.courses.map((course: any) => ({
                 ...course,
@@ -26,33 +26,33 @@
     function branchTotal(branches: any[], field: string): number {
         const filtered = includeUnassigned ? branches : (branches || []).filter(b => b.name !== 'Unassigned/Other');
         
-        if (field === 'capacity') return filtered.reduce((sum, branch) => sum + (branch.capacity || 0), 0);
+        if (field === 'capacity') return filtered.reduce((sum: number, branch: any) => sum + (branch.capacity || 0), 0);
         if (field === 'metric_total') {
-            return filtered.reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.total || 0), 0);
+            return filtered.reduce((sum: number, branch: any) => sum + (branch.metrics?.[selectedMetric]?.total || 0), 0);
         }
-        return filtered.reduce((sum, branch) => sum + (branch?.[field] || 0), 0);
+        return filtered.reduce((sum: number, branch: any) => sum + (branch?.[field] || 0), 0);
     }
 
     function courseMetricTotal(branches: any[], fType: string): number {
         const filtered = includeUnassigned ? branches : (branches || []).filter(b => b.name !== 'Unassigned/Other');
-        return filtered.reduce((sum, branch) => sum + (branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0), 0);
+        return filtered.reduce((sum: number, branch: any) => sum + (branch.metrics?.[selectedMetric]?.formTypes?.[fType] || 0), 0);
     }
 
     let grandTotalCapacity = $derived(
-        filteredCapacityData.reduce((acc, college) => {
+        filteredCapacityData.reduce((acc: number, college: any) => {
             return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'capacity'), 0);
         }, 0)
     );
 
     let grandTotalMetricTotal = $derived(
-        filteredCapacityData.reduce((acc, college) => {
+        filteredCapacityData.reduce((acc: number, college: any) => {
             return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + branchTotal(course.filteredBranches, 'metric_total'), 0);
         }, 0)
     );
 
     let grandMetricTotals = $derived(
-        (data.globalUniqueFormTypes || []).map(fType => {
-            return filteredCapacityData.reduce((acc, college) => {
+        (data.globalUniqueFormTypes || []).map((fType: string) => {
+            return filteredCapacityData.reduce((acc: number, college: any) => {
                 return acc + college.courses.reduce((cAcc: number, course: any) => cAcc + courseMetricTotal(course.filteredBranches, fType), 0);
             }, 0);
         })
@@ -107,11 +107,11 @@
             
             // Header
             const headerRow = ['COURSE / BRANCH', 'INTAKE'];
-            data.globalUniqueFormTypes.forEach(f => headerRow.push(f.toUpperCase()));
+            data.globalUniqueFormTypes.forEach((f: string) => headerRow.push(f.toUpperCase()));
             tableBody.push(headerRow.map(text => ({ text, style: 'tableHeader' })));
 
             // Data Rows
-            filteredCapacityData.forEach(college => {
+            filteredCapacityData.forEach((college: any) => {
                 college.courses.forEach((course: any) => {
                     // Course Header Row
                     tableBody.push([
@@ -145,8 +145,50 @@
                 });
             });
 
+            // Dynamically scale options based on row count to ensure single-page A4 fit
+            const rowCount = tableBody.length;
+            let dynamicFontSize = 7.0;
+            let dynamicHeaderSize = 11;
+            let dynamicSubheaderSize = 7.5;
+            let dynamicCourseHeaderSize = 7.5;
+            let dynamicTableHeaderSize = 7.5;
+            let dynamicMargin = 12;
+            let dynamicPaddingTopBottom = 1.2;
+            let dynamicPaddingLeftRight = 2.5;
+
+            if (rowCount > 25) {
+                dynamicFontSize = 4.8;
+                dynamicHeaderSize = 8;
+                dynamicSubheaderSize = 5.5;
+                dynamicCourseHeaderSize = 5.5;
+                dynamicTableHeaderSize = 5.5;
+                dynamicMargin = 8;
+                dynamicPaddingTopBottom = 0.8;
+                dynamicPaddingLeftRight = 1.5;
+            } else if (rowCount > 15) {
+                dynamicFontSize = 5.5;
+                dynamicHeaderSize = 9;
+                dynamicSubheaderSize = 6;
+                dynamicCourseHeaderSize = 6.5;
+                dynamicTableHeaderSize = 6;
+                dynamicMargin = 10;
+                dynamicPaddingTopBottom = 1.0;
+                dynamicPaddingLeftRight = 2.0;
+            } else if (rowCount > 10) {
+                dynamicFontSize = 6.2;
+                dynamicHeaderSize = 10;
+                dynamicSubheaderSize = 7;
+                dynamicCourseHeaderSize = 7.0;
+                dynamicTableHeaderSize = 7;
+                dynamicMargin = 10;
+                dynamicPaddingTopBottom = 1.1;
+                dynamicPaddingLeftRight = 2.2;
+            }
+
+            const grandTotalFontSize = dynamicFontSize + 2;
+
             // Grand Total
-            const grandTotalRow = [{ text: 'GRAND Total :-', alignment: 'right', bold: true, fontSize: 12 }, grandTotalCapacity.toString()];
+            const grandTotalRow = [{ text: 'GRAND Total :-', alignment: 'right', bold: true, fontSize: grandTotalFontSize }, grandTotalCapacity.toString()];
             grandMetricTotals.forEach((total: number) => {
                 grandTotalRow.push(total.toString());
             });
@@ -156,7 +198,7 @@
                 return { 
                     ...cellObj, 
                     bold: true, 
-                    fontSize: 12, 
+                    fontSize: grandTotalFontSize, 
                     fillColor: '#e9ecef',
                     color: 'black',
                     alignment: idx === 0 ? 'right' : 'center'
@@ -166,7 +208,7 @@
             const docDefinition = {
                 pageSize: 'A4',
                 pageOrientation: data.globalUniqueFormTypes.length > 5 ? 'landscape' : 'portrait',
-                pageMargins: [20, 20, 20, 20],
+                pageMargins: [dynamicMargin, dynamicMargin, dynamicMargin, dynamicMargin],
                 content: [
                     { text: `CAPACITY REPORT - ${metricLabel}`, style: 'header' },
                     { text: `Report Date: ${new Date().toLocaleDateString('en-GB')}`, style: 'subheader' },
@@ -189,21 +231,21 @@
                             vLineColor: function (i: number) {
                                 return '#dddddd';
                             },
-                            paddingLeft: function(i: number) { return 4; },
-                            paddingRight: function(i: number) { return 4; },
-                            paddingTop: function(i: number) { return 2; },
-                            paddingBottom: function(i: number) { return 2; }
+                            paddingLeft: function(i: number) { return dynamicPaddingLeftRight; },
+                            paddingRight: function(i: number) { return dynamicPaddingLeftRight; },
+                            paddingTop: function(i: number) { return dynamicPaddingTopBottom; },
+                            paddingBottom: function(i: number) { return dynamicPaddingTopBottom; }
                         }
                     }
                 ],
                 styles: {
-                    header: { fontSize: 13, bold: true, alignment: 'center', margin: [0, 0, 0, 2] },
-                    subheader: { fontSize: 8, alignment: 'center', margin: [0, 0, 0, 10], color: '#666666' },
-                    tableHeader: { bold: true, fontSize: 8.5, color: 'black', fillColor: '#f1f1f1', alignment: 'center', margin: [0, 2, 0, 2] },
-                    courseHeader: { bold: true, fontSize: 9, fillColor: '#f8f9fa', margin: [2, 2, 2, 2] }
+                    header: { fontSize: dynamicHeaderSize, bold: true, alignment: 'center', margin: [0, 0, 0, 1] },
+                    subheader: { fontSize: dynamicSubheaderSize, alignment: 'center', margin: [0, 0, 0, 4], color: '#666666' },
+                    tableHeader: { bold: true, fontSize: dynamicTableHeaderSize, color: 'black', fillColor: '#f1f1f1', alignment: 'center', margin: [0, 1, 0, 1] },
+                    courseHeader: { bold: true, fontSize: dynamicCourseHeaderSize, fillColor: '#f8f9fa', margin: [2, 1, 2, 1] }
                 },
                 defaultStyle: {
-                    fontSize: 8
+                    fontSize: dynamicFontSize
                 }
             };
 
@@ -285,8 +327,31 @@
     }
 </script>
 
+<svelte:head>
+    <title>Capacity Report - Admission System</title>
+    {#if data.globalUniqueFormTypes && data.globalUniqueFormTypes.length > 5}
+        <style>
+            @media print {
+                @page {
+                    size: A4 landscape;
+                    margin: 5mm 6mm;
+                }
+            }
+        </style>
+    {:else}
+        <style>
+            @media print {
+                @page {
+                    size: A4 portrait;
+                    margin: 5mm 6mm;
+                }
+            }
+        </style>
+    {/if}
+</svelte:head>
+
 <div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
         <div>
             <h1 class="mb-1">Capacity Report</h1>
             <p class="text-muted mb-2">
@@ -482,18 +547,18 @@
                                                         <td>
                                                             <div class="d-flex flex-column align-items-center">
                                                                 <span>{branchTotal(course.filteredBranches, 'approved')}</span>
-                                                                <span class="text-secondary" style="font-size: 0.75rem;">(ID: {course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)})</span>
+                                                                <span class="text-secondary" style="font-size: 0.75rem;">(ID: {course.filteredBranches.reduce((sum: number, b: any) => sum + (b.metrics.admitted_id.total || 0), 0)})</span>
                                                             </div>
                                                         </td>
                                                         <td>
                                                             <div class="d-flex flex-column align-items-center">
-                                                                <span>{course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)}</span>
-                                                                <span class="text-primary" style="font-size: 0.75rem;">(Paid: {course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_paid.total || 0), 0)})</span>
+                                                                <span>{course.filteredBranches.reduce((sum: number, b: any) => sum + (b.metrics.admitted_id.total || 0), 0)}</span>
+                                                                <span class="text-primary" style="font-size: 0.75rem;">(Paid: {course.filteredBranches.reduce((sum: number, b: any) => sum + (b.metrics.admitted_paid.total || 0), 0)})</span>
                                                             </div>
                                                         </td>
                                                         <td>
-                                                            <span class="badge {calculateVacancy(branchTotal(course.filteredBranches, 'capacity'), course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0)) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
-                                                                {calculateVacancy(branchTotal(course.filteredBranches, 'capacity'), course.filteredBranches.reduce((sum, b) => sum + (b.metrics.admitted_id.total || 0), 0))}
+                                                            <span class="badge {calculateVacancy(branchTotal(course.filteredBranches, 'capacity'), course.filteredBranches.reduce((sum: number, b: any) => sum + (b.metrics.admitted_id.total || 0), 0)) > 0 ? 'bg-warning text-dark' : 'bg-success'}">
+                                                                {calculateVacancy(branchTotal(course.filteredBranches, 'capacity'), course.filteredBranches.reduce((sum: number, b: any) => sum + (b.metrics.admitted_id.total || 0), 0))}
                                                             </span>
                                                         </td>
                                                     </tr>
@@ -581,5 +646,114 @@
     .x-small { font-size: 0.75rem; }
     .table-responsive {
         border-radius: 0 0 0.375rem 0.375rem;
+    }
+    
+    /* Modern, premium table styles */
+    .simple-report {
+        font-size: 0.875rem;
+    }
+    
+    .simple-report th {
+        background-color: #f8f9fa;
+        color: #212529;
+        font-weight: 600;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+    }
+    
+    @media print {
+        :global(header),
+        :global(.sidebar-container),
+        :global(footer),
+        :global(.no-print) {
+            display: none !important;
+        }
+        
+        :global(.main-layout-content-wrapper) {
+            padding-top: 0 !important;
+            margin: 0 !important;
+            display: block !important;
+        }
+        
+        :global(main) {
+            padding: 0 !important;
+            margin: 0 !important;
+            background: white !important;
+        }
+        
+        .container-fluid {
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        
+        .card {
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .card-body {
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        
+        .table-responsive {
+            overflow: visible !important;
+            border: none !important;
+        }
+        
+        .simple-report {
+            width: 100% !important;
+            font-size: 7.2pt !important;
+            border-collapse: collapse !important;
+        }
+        
+        .simple-report th,
+        .simple-report td {
+            padding: 1.5px 3px !important;
+            line-height: 1.05 !important;
+            border: 1px solid #000 !important;
+        }
+        
+        .simple-report th {
+            background-color: #f1f1f1 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        .simple-report tr.bg-light {
+            background-color: #f8f9fa !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        .simple-report tfoot tr {
+            background-color: #e9ecef !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        .simple-report tr {
+            page-break-inside: avoid !important;
+        }
+        
+        :global(.text-center.mb-4) {
+            margin-bottom: 0.25rem !important;
+        }
+        
+        :global(.text-center.mb-4 h4) {
+            font-size: 10pt !important;
+            margin: 0 !important;
+            font-weight: bold !important;
+        }
+        
+        :global(.text-center.mb-4 p) {
+            font-size: 7pt !important;
+            margin: 0 !important;
+        }
     }
 </style>

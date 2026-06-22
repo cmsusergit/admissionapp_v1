@@ -1,20 +1,11 @@
-import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
-import { createClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_URL } from '$env/static/public';
-import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
+const { createClient } = require('@supabase/supabase-js');
+const dotenv = require('dotenv');
+dotenv.config();
 
-export const load: PageServerLoad = async ({ url, locals: { getSession, userProfile } }) => {
-    const session = await getSession();
-    if (!session) {
-        throw redirect(303, '/login');
-    }
+const supabaseAdmin = createClient(process.env.PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    if (!userProfile || (userProfile.role !== 'adm_officer' && userProfile.role !== 'admin')) {
-        throw redirect(303, '/login');
-    }
-
-    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+async function runLoader(userProfile, urlParams = {}) {
+    console.log(`\n--- Running Loader as Role: ${userProfile.role}, College ID: ${userProfile.college_id || 'All'} ---`);
 
     // 1. Fetch Metadata
     const [{ data: academicYears }, { data: activeYear }, { data: formTypes }] = await Promise.all([
@@ -23,8 +14,8 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         supabaseAdmin.from('form_types').select('name, is_prov, direct_admission_on_submit, is_government_quota')
     ]);
 
-    const selectedYearId = url.searchParams.get('academic_year_id') || activeYear?.id || (academicYears && academicYears[0]?.id);
-    const includeRejected = url.searchParams.get('include_rejected') === 'true';
+    const selectedYearId = urlParams.academic_year_id || activeYear?.id || (academicYears && academicYears[0]?.id);
+    const includeRejected = urlParams.include_rejected === 'true';
     const provFormTypes = new Set((formTypes || []).filter(ft => ft.is_prov).map(ft => ft.name));
     const bypassFormTypes = new Set((formTypes || []).filter(ft => ft.direct_admission_on_submit || ft.is_government_quota).map(ft => ft.name));
 
@@ -39,10 +30,11 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
     const { data: courses, error: coursesError } = await coursesQuery;
     if (coursesError) {
-        console.error('Capacity Report - courses fetch error:', coursesError.message);
+        console.error('Courses fetch error:', coursesError.message);
+        return;
     }
 
-    // 3. Fetch Applications with Filtering
+    // 3. Fetch Applications
     let appQuery = supabaseAdmin
         .from('applications')
         .select(`
@@ -78,17 +70,16 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         appQuery = appQuery.eq('courses.college_id', userProfile.college_id);
     }
 
-    // Sort by status to ensure 'approved' apps are processed first for deduplication
     const { data: allApps, error: appError } = await appQuery
-        .order('status', { ascending: true }) // 'approved' comes before 'submitted' alphabetically, but let's be more robust in JS
+        .order('status', { ascending: true })
         .limit(20000); 
 
     if (appError) {
-        console.error('Capacity Report - applications fetch error:', appError.message);
+        console.error('Applications fetch error:', appError.message);
+        return;
     }
 
-    // Status priority for deduplication (lower is better)
-    const statusPriority: Record<string, number> = {
+    const statusPriority = {
         'approved': 1,
         'verified': 2,
         'submitted': 3,
@@ -99,31 +90,22 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         'removed': 8
     };
 
-    // Sort raw data to ensure the most important application for a student is seen first
     const sortedApps = (allApps || []).sort((a, b) => {
         const pA = statusPriority[(a.status || '').toLowerCase()] || 99;
         const pB = statusPriority[(b.status || '').toLowerCase()] || 99;
-        
         if (pA !== pB) return pA - pB;
-
-        // If status is same, prioritize Provisional over Bypass types
         const isProvA = provFormTypes.has(a.form_type || '');
         const isProvB = provFormTypes.has(b.form_type || '');
         if (isProvA && !isProvB) return -1;
         if (!isProvA && isProvB) return 1;
-
-        // Then prioritize Bypass types (GCAS, ACPC, etc.) over others
         const isBypassA = bypassFormTypes.has(a.form_type || '');
         const isBypassB = bypassFormTypes.has(b.form_type || '');
         if (isBypassA && !isBypassB) return -1;
         if (!isBypassA && isBypassB) return 1;
-
         return 0;
     });
 
-    // Deduplicate by student, branch AND form_type to avoid counting the same person twice for capacity
-    // However, for MQ, NRI, and Provisional types, we allow all applications to be counted separately
-    const seenStudentBranchType = new Set<string>();
+    const seenStudentBranchType = new Set();
     const uniqueApps = sortedApps.filter(app => {
         const type = (app.form_type || '').trim();
         const isProv = provFormTypes.has(type);
@@ -134,10 +116,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         const branchKey = app.branch_id || `unassigned_${app.course_id}`;
         const key = `${app.student_id}_${branchKey}_${type || 'Unknown'}`;
         
-        // If not a "Multiple Allowed" type, check deduplication
         if (!isProv && seenStudentBranchType.has(key)) return false;
-
-        // Strictly exclude drafts from all capacity calculations
         if (app.status === 'draft') return false;
 
         const isExcludedStatus = app.status === 'cancelled' || app.status === 'removed' || app.status === 'rejected';
@@ -145,18 +124,14 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             return false;
         }
 
-        // Only track "seen" for types that require deduplication
         if (!isProv) {
             seenStudentBranchType.add(key);
         }
         return true;
     });
 
-    // New Structure: branch_id -> { [metric]: { total: number, formTypes: { [type]: count } }, students: Set }
-    const branchStats: Record<string, any> = {};
-
-    // Helper to ensure a branch has its stats initialized
-    const ensureBranch = (branchId: string) => {
+    const branchStats = {};
+    const ensureBranch = (branchId) => {
         if (!branchStats[branchId]) {
             branchStats[branchId] = {
                 all: { total: 0, formTypes: {} },
@@ -174,19 +149,15 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
     uniqueApps.forEach((app) => {
         let bId = app.branch_id;
-        
-        // If branch_id is null, use a course-specific "unassigned" ID
         if (!bId && app.course_id) {
             bId = `unassigned_${app.course_id}`;
         }
-
         if (!bId) return;
         
         const stats = ensureBranch(bId);
         const type = (app.form_type || 'Unknown').trim();
 
-        // Helper to increment
-        const increment = (metric: string) => {
+        const increment = (metric) => {
             stats[metric].total += 1;
             stats[metric].formTypes[type] = (stats[metric].formTypes[type] || 0) + 1;
         };
@@ -196,85 +167,64 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         const isBypassType = bypassFormTypes.has(app.form_type || '');
         const isNonProvBypass = isBypassType && !isProv;
 
-        const payments = app.payments as any || [];
+        const payments = app.payments || [];
         
         let hasPaidTargetFee = false;
         if (isProv) {
-            hasPaidTargetFee = payments.some((p: any) => p.payment_type === 'provisional_fee' && p.status === 'completed');
+            hasPaidTargetFee = payments.some(p => p.payment_type === 'provisional_fee' && p.status === 'completed');
         } else {
-            hasPaidTargetFee = payments.some((p: any) => 
+            hasPaidTargetFee = payments.some(p => 
                 (p.payment_type === 'application_fee' || p.payment_type === 'tuition_fee') && p.status === 'completed'
             ) || app.application_fee_status === 'paid';
         }
 
         const hasAdmissionNumber = !!(Array.isArray(app.account_admissions) 
             ? app.account_admissions[0]?.admission_number 
-            : (app.account_admissions as any)?.admission_number);
+            : app.account_admissions?.admission_number);
 
-        // Extract enrollment number from nested join users -> student_profiles
-        const studentProfile = (app.users as any)?.student_profiles;
+        const studentProfile = app.users?.student_profiles;
         const enrollmentNumber = Array.isArray(studentProfile)
             ? studentProfile[0]?.enrollment_number
             : studentProfile?.enrollment_number;
         
-        // A student has an enrollment number if they are admitted in ANY application.
-        // To avoid overcounting, we only consider it "Admitted" for THIS application if it is also APPROVED.
         const isApprovedStatus = (app.status || '').toLowerCase() === 'approved';
         const hasEnrollmentForThisApp = !!enrollmentNumber && isApprovedStatus;
 
-        const hasTuitionFee = (app.payments as any || []).some(
-            (p: any) => p.payment_type === 'tuition_fee' && p.status === 'completed'
+        const hasTuitionFee = payments.some(
+            p => p.payment_type === 'tuition_fee' && p.status === 'completed'
         );
         
-        // Final Admission = Enrollment Number Generated OR Admission ID Generated OR (Bypass Type + Tuition Paid)
         const isAdmitted = hasEnrollmentForThisApp || hasAdmissionNumber || (isNonProvBypass && hasTuitionFee);
 
-        // Logic branching: Bypass types (GCAS/ACPC/Direct)
         if (isBypassType) {
-            // For bypass types, we show the count if it's submitted (it bypasses verification/approval)
             if (!isCancelledOrRemoved) {
-                // 1. All Applications
                 increment('all');
                 increment('submitted');
-
-                // For bypass, if it's submitted, we count it as approved (since it bypasses verification)
                 increment('approved');
-
                 if (hasPaidTargetFee) increment('paid');
-
                 if (isAdmitted) {
                     increment('admitted_id');
                     increment('admitted');
                     if (hasTuitionFee) increment('admitted_paid');
                 }
-
-                // Unique student tracking for Detailed View
                 if (app.student_id) {
                     if (!stats.students[app.student_id]) stats.students[app.student_id] = new Set();
                     stats.students[app.student_id].add(type);
                 }
             }
         } else {
-            // Standard Logic for Provisional/MQ/NRI
-            
-            // 1. All Applications
             increment('all');
-
-            // 2. Submitted Apps
             if (app.status !== 'draft' && !isCancelledOrRemoved) {
                 increment('submitted');
             }
 
-            // 3. Approved Apps
-            // Logic: For strictly 'Provisional' form type, count ONLY status='approved'
-            // For MQ/NRI and Vacant, count as per user request (status='submitted' and application_fee_status='paid')
             let isMetricApproved = false;
             if (isProv) {
                 isMetricApproved = app.status === 'approved';
             } else if (type === 'MQ/NRI' || type === 'MNNQ/NRI' || type === 'Vacant') {
                 isMetricApproved = app.status === 'submitted' && app.application_fee_status === 'paid';
             } else {
-                const isPaidProv = isProv && hasPaidTargetFee; // Note: isProv check is redundant here but safe
+                const isPaidProv = isProv && hasPaidTargetFee;
                 isMetricApproved = isApprovedStatus || hasEnrollmentForThisApp || isPaidProv;
             }
             
@@ -282,23 +232,19 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                 increment('approved');
             }
             
-            // 4. Paid: Application/Provisional fee paid
             if (hasPaidTargetFee && !isCancelledOrRemoved) {
                 increment('paid');
             }
 
-            // 5. Admitted
             if (isAdmitted && !isCancelledOrRemoved) {
                 increment('admitted_id');
                 increment('admitted');
             }
 
-            // 6. Admitted & Paid
             if (hasTuitionFee && isAdmitted && !isCancelledOrRemoved) {
                 increment('admitted_paid');
             }
 
-            // Unique student tracking for Detailed View
             if (app.student_id && !isCancelledOrRemoved) {
                 if (!stats.students[app.student_id]) stats.students[app.student_id] = new Set();
                 stats.students[app.student_id].add(type);
@@ -306,19 +252,16 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         }
     });
 
-    const globalFormTypesSet = new Set<string>();
+    const globalFormTypesSet = new Set();
 
-    const capacityDataGrouped = (courses || []).reduce((acc: any, course: any) => {
+    const capacityDataGrouped = (courses || []).reduce((acc, course) => {
         const collegeName = course.colleges?.name || 'Unknown College';
         if (!acc[collegeName]) {
-            acc[collegeName] = { courses: [], formTypesSet: new Set<string>() };
+            acc[collegeName] = { courses: [], formTypesSet: new Set() };
         }
 
-        // Add regular branches
-        const mappedBranches = (course.branches || []).map((branch: any) => {
+        const mappedBranches = (course.branches || []).map((branch) => {
             const stats = branchStats[branch.id];
-            let uniqueCount = 0;
-            let commonCount = 0;
             
             if (stats) {
                 ['all', 'submitted', 'approved', 'paid', 'admitted', 'admitted_id', 'admitted_paid'].forEach(metric => {
@@ -327,11 +270,9 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                         globalFormTypesSet.add(ft);
                     });
                 });
-                uniqueCount = Object.keys(stats.students).length;
-                commonCount = Object.values(stats.students).filter((s: any) => s.size > 1).length;
             }
 
-            const legacyFormTypes: Record<string, { total: number, approved: number }> = {};
+            const legacyFormTypes = {};
             if (stats) {
                 Object.keys(stats.all.formTypes).forEach(ft => {
                     legacyFormTypes[ft] = {
@@ -342,57 +283,11 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             }
 
             return {
-                id: branch.id,
                 name: branch.name,
                 capacity: branch.intake_capacity || 0,
-                approved: stats?.approved?.total || 0,
-                admissions: stats?.admitted?.total || 0,
-                formTypes: legacyFormTypes,
-                metrics: stats || {
-                    all: { total: 0, formTypes: {} },
-                    submitted: { total: 0, formTypes: {} },
-                    approved: { total: 0, formTypes: {} },
-                    paid: { total: 0, formTypes: {} },
-                    admitted: { total: 0, formTypes: {} },
-                    admitted_id: { total: 0, formTypes: {} },
-                    admitted_paid: { total: 0, formTypes: {} }
-                },
-                uniqueCount,
-                commonCount,
-                paidApps: stats?.paid?.total || 0,
-                paidFormTypes: stats?.paid?.formTypes || {},
-                admissionsFormTypes: stats?.admitted?.formTypes || {}
+                metrics: stats
             };
         });
-
-        // Add "Unassigned" branch if there are applications
-        const unassignedStats = branchStats[`unassigned_${course.id}`];
-        if (unassignedStats) {
-            const legacyFormTypes: Record<string, { total: number, approved: number }> = {};
-            Object.keys(unassignedStats.all.formTypes).forEach(ft => {
-                legacyFormTypes[ft] = {
-                    total: unassignedStats.all.formTypes[ft] || 0,
-                    approved: unassignedStats.approved.formTypes[ft] || 0
-                };
-                acc[collegeName].formTypesSet.add(ft);
-                globalFormTypesSet.add(ft);
-            });
-
-            mappedBranches.push({
-                id: `unassigned_${course.id}`,
-                name: 'Unassigned/Other',
-                capacity: 0,
-                approved: unassignedStats.approved.total,
-                admissions: unassignedStats.admitted.total,
-                formTypes: legacyFormTypes,
-                metrics: unassignedStats,
-                uniqueCount: Object.keys(unassignedStats.students).length,
-                commonCount: Object.values(unassignedStats.students).filter((s: any) => s.size > 1).length,
-                paidApps: unassignedStats.paid.total,
-                paidFormTypes: unassignedStats.paid.formTypes,
-                admissionsFormTypes: unassignedStats.admitted.formTypes
-            });
-        }
 
         acc[collegeName].courses.push({
             courseName: course.name,
@@ -403,19 +298,32 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     }, {});
 
     const globalUniqueFormTypes = Array.from(globalFormTypesSet).sort();
+    console.log('Global Unique Form Types:', globalUniqueFormTypes);
 
-    const capacityData = Object.keys(capacityDataGrouped).map(collegeName => ({
-        collegeName,
-        courses: capacityDataGrouped[collegeName].courses,
-        uniqueFormTypes: Array.from(capacityDataGrouped[collegeName].formTypesSet).sort()
-    }));
+    // Let's print SARDAR VALLABHBHAI PATEL INSTITUTE OF TECHNOLOGY details
+    const svpit = capacityDataGrouped['SARDAR VALLABHBHAI PATEL INSTITUTE OF TECHNOLOGY'];
+    if (svpit) {
+        svpit.courses.forEach(course => {
+            if (course.courseName.includes('BACHELOR OF ENGINEERING')) {
+                console.log(`\nCourse: ${course.courseName}`);
+                course.branches.forEach(branch => {
+                    console.log(`\nBranch: ${branch.name}`);
+                    console.log(` - Capacity: ${branch.capacity}`);
+                    if (branch.metrics) {
+                        console.log(` - metrics.paid:`, branch.metrics.paid);
+                        console.log(` - metrics.approved:`, branch.metrics.approved);
+                    } else {
+                        console.log(` - No metrics`);
+                    }
+                });
+            }
+        });
+    }
+}
 
-    return {
-        capacityData,
-        globalUniqueFormTypes,
-        academicYears: academicYears || [],
-        selectedYearId,
-        includeRejected,
-        activeYearId: activeYear?.id
-    };
-};
+async function main() {
+    // Test as Admin
+    await runLoader({ role: 'admin' });
+}
+
+main();
