@@ -51,63 +51,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
     }
 
-    if (conversionFilter) {
-        const { data: provFormTypes } = await supabaseAdmin
-            .from('form_types')
-            .select('name')
-            .eq('is_prov', true);
-        const provNames = provFormTypes?.map(f => f.name) || [];
 
-        if (conversionFilter === 'prov_converted') {
-            const { data: apps } = await supabaseAdmin
-                .from('applications')
-                .select('student_user:users!student_id(email)')
-                .in('form_type', provNames);
-            const emails = Array.from(new Set((apps || []).map(a => {
-                const userObj = (a as any).student_user;
-                return Array.isArray(userObj) ? userObj[0]?.email : userObj?.email;
-            }).filter(Boolean)));
-            if (emails.length > 0) {
-                query = query.in('email', emails);
-            } else {
-                query = query.in('email', ['non_existent_email@prevent_results.com']);
-            }
-        } else if (conversionFilter === 'fees_paid') {
-            const { data: payments } = await supabaseAdmin
-                .from('payments')
-                .select('application:applications(form_type, student_user:users!student_id(email))')
-                .eq('payment_type', 'tuition_fee')
-                .eq('status', 'completed');
-            
-            const emails = Array.from(new Set(
-                (payments || [])
-                    .map(p => (p as any).application)
-                    .filter((app: any) => app && provNames.includes(app.form_type))
-                    .map((app: any) => {
-                        const userObj = app.student_user;
-                        return Array.isArray(userObj) ? userObj[0]?.email : userObj?.email;
-                    })
-                    .filter(Boolean)
-            ));
-            if (emails.length > 0) {
-                query = query.in('email', emails);
-            } else {
-                query = query.in('email', ['non_existent_email@prevent_results.com']);
-            }
-        } else if (conversionFilter === 'not_converted') {
-            const { data: apps } = await supabaseAdmin
-                .from('applications')
-                .select('student_user:users!student_id(email)')
-                .in('form_type', provNames);
-            const emails = Array.from(new Set((apps || []).map(a => {
-                const userObj = (a as any).student_user;
-                return Array.isArray(userObj) ? userObj[0]?.email : userObj?.email;
-            }).filter(Boolean)));
-            if (emails.length > 0) {
-                query = query.not('email', 'in', `(${emails.map(e => `"${e}"`).join(',')})`);
-            }
-        }
-    }
 
     if (courseId) {
         const { data: prefIds } = await supabase
