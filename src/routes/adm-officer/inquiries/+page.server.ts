@@ -271,68 +271,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         }
     }
 
-    let conversionReportData: any[] = [];
-    if (activeTab === 'report' && inquiries && inquiries.length > 0) {
-        const emails = inquiries.map(i => i.email).filter(Boolean);
-        if (emails.length > 0) {
-            const { data: usersData } = await supabase
-                .from('users')
-                .select('id, email')
-                .in('email', emails);
 
-            const userMap = new Map(usersData?.map(u => [(u.email || '').toLowerCase(), u]) || []);
-            const userIds = usersData?.map(u => u.id) || [];
-
-            let appsData: any[] = [];
-            if (userIds.length > 0) {
-                const { data } = await supabase
-                    .from('applications')
-                    .select(`
-                        id,
-                        student_id,
-                        status,
-                        submitted_at,
-                        form_type,
-                        course:courses(id, name),
-                        account_admissions(admission_number),
-                        payments(id, amount, status, payment_type, transaction_id)
-                    `)
-                    .in('student_id', userIds);
-                appsData = data || [];
-            }
-
-            const { data: formTypes } = await supabase
-                .from('form_types')
-                .select('name, is_prov');
-            const isProvMap = new Map(formTypes?.map(ft => [ft.name, ft.is_prov]) || []);
-
-            conversionReportData = inquiries.map(inquiry => {
-                const emailKey = (inquiry.email || '').toLowerCase();
-                const matchedUser = userMap.get(emailKey);
-                const userApps = matchedUser ? appsData.filter(app => app.student_id === matchedUser.id) : [];
-                const provApp = userApps.find(app => isProvMap.get(app.form_type) === true);
-
-                const allPayments = userApps.flatMap(app => app.payments || []);
-                const provFeePayment = allPayments.find(p => p.payment_type === 'provisional_fee' && p.status === 'completed');
-                const tuitionFeePayment = allPayments.find(p => p.payment_type === 'tuition_fee' && p.status === 'completed');
-
-                return {
-                    inquiry,
-                    is_registered: !!matchedUser,
-                    prov_app_id: provApp?.id || null,
-                    prov_app_status: provApp?.status || null,
-                    prov_app_course: provApp?.course?.name || null,
-                    prov_admission_no: provApp?.account_admissions?.[0]?.admission_number || null,
-                    prov_fee_paid: !!provFeePayment,
-                    prov_fee_amount: provFeePayment?.amount || null,
-                    prov_fee_tx: provFeePayment?.transaction_id || null,
-                    tuition_fee_paid: !!tuitionFeePayment,
-                    tuition_fee_amount: tuitionFeePayment?.amount || null,
-                    tuition_fee_tx: tuitionFeePayment?.transaction_id || null,
-                };
-            });
-        }
-    }
 
     return {
         inquiries: inquiries || [],
