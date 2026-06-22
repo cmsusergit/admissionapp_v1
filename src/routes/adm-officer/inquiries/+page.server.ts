@@ -49,6 +49,64 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
     }
 
+    if (conversionFilter) {
+        const { data: provFormTypes } = await supabase
+            .from('form_types')
+            .select('name')
+            .eq('is_prov', true);
+        const provNames = provFormTypes?.map(f => f.name) || [];
+
+        if (conversionFilter === 'prov_converted') {
+            const { data: apps } = await supabase
+                .from('applications')
+                .select('student_user:users!student_id(email)')
+                .in('form_type', provNames);
+            const emails = Array.from(new Set((apps || []).map(a => {
+                const userObj = (a as any).student_user;
+                return Array.isArray(userObj) ? userObj[0]?.email : userObj?.email;
+            }).filter(Boolean)));
+            if (emails.length > 0) {
+                query = query.in('email', emails);
+            } else {
+                query = query.in('email', ['non_existent_email@prevent_results.com']);
+            }
+        } else if (conversionFilter === 'fees_paid') {
+            const { data: payments } = await supabase
+                .from('payments')
+                .select('application:applications(form_type, student_user:users!student_id(email))')
+                .eq('payment_type', 'tuition_fee')
+                .eq('status', 'completed');
+            
+            const emails = Array.from(new Set(
+                (payments || [])
+                    .map(p => (p as any).application)
+                    .filter((app: any) => app && provNames.includes(app.form_type))
+                    .map((app: any) => {
+                        const userObj = app.student_user;
+                        return Array.isArray(userObj) ? userObj[0]?.email : userObj?.email;
+                    })
+                    .filter(Boolean)
+            ));
+            if (emails.length > 0) {
+                query = query.in('email', emails);
+            } else {
+                query = query.in('email', ['non_existent_email@prevent_results.com']);
+            }
+        } else if (conversionFilter === 'not_converted') {
+            const { data: apps } = await supabase
+                .from('applications')
+                .select('student_user:users!student_id(email)')
+                .in('form_type', provNames);
+            const emails = Array.from(new Set((apps || []).map(a => {
+                const userObj = (a as any).student_user;
+                return Array.isArray(userObj) ? userObj[0]?.email : userObj?.email;
+            }).filter(Boolean)));
+            if (emails.length > 0) {
+                query = query.not('email', 'in', `(${emails.map(e => `"${e}"`).join(',')})`);
+            }
+        }
+    }
+
     if (courseId) {
         const { data: prefIds } = await supabase
             .from('inquiry_preferences')
@@ -201,6 +259,69 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                     prov_app_id: provApp?.id || null,
                     prov_app_status: provApp?.status || null,
                     prov_app_course: provApp?.course?.name || anyApp?.course?.name || inquiryCourseList || null,
+                    prov_admission_no: provApp?.account_admissions?.[0]?.admission_number || null,
+                    prov_fee_paid: !!provFeePayment,
+                    prov_fee_amount: provFeePayment?.amount || null,
+                    prov_fee_tx: provFeePayment?.transaction_id || null,
+                    tuition_fee_paid: !!tuitionFeePayment,
+                    tuition_fee_amount: tuitionFeePayment?.amount || null,
+                    tuition_fee_tx: tuitionFeePayment?.transaction_id || null,
+                };
+            });
+        }
+    }
+
+    let conversionReportData: any[] = [];
+    if (activeTab === 'report' && inquiries && inquiries.length > 0) {
+        const emails = inquiries.map(i => i.email).filter(Boolean);
+        if (emails.length > 0) {
+            const { data: usersData } = await supabase
+                .from('users')
+                .select('id, email')
+                .in('email', emails);
+
+            const userMap = new Map(usersData?.map(u => [(u.email || '').toLowerCase(), u]) || []);
+            const userIds = usersData?.map(u => u.id) || [];
+
+            let appsData: any[] = [];
+            if (userIds.length > 0) {
+                const { data } = await supabase
+                    .from('applications')
+                    .select(`
+                        id,
+                        student_id,
+                        status,
+                        submitted_at,
+                        form_type,
+                        course:courses(id, name),
+                        account_admissions(admission_number),
+                        payments(id, amount, status, payment_type, transaction_id)
+                    `)
+                    .in('student_id', userIds);
+                appsData = data || [];
+            }
+
+            const { data: formTypes } = await supabase
+                .from('form_types')
+                .select('name, is_prov');
+            const isProvMap = new Map(formTypes?.map(ft => [ft.name, ft.is_prov]) || []);
+
+            conversionReportData = inquiries.map(inquiry => {
+                const emailKey = (inquiry.email || '').toLowerCase();
+                const matchedUser = userMap.get(emailKey);
+                const userApps = matchedUser ? appsData.filter(app => app.student_id === matchedUser.id) : [];
+                const provApp = userApps.find(app => isProvMap.get(app.form_type) === true);
+
+                const allPayments = userApps.flatMap(app => app.payments || []);
+                const provFeePayment = allPayments.find(p => p.payment_type === 'provisional_fee' && p.status === 'completed');
+                const tuitionFeePayment = allPayments.find(p => p.payment_type === 'tuition_fee' && p.status === 'completed');
+
+                return {
+                    inquiry,
+                    is_registered: !!matchedUser,
+                    prov_app_id: provApp?.id || null,
+                    prov_app_status: provApp?.status || null,
+                    prov_app_course: provApp?.course?.name || null,
                     prov_admission_no: provApp?.account_admissions?.[0]?.admission_number || null,
                     prov_fee_paid: !!provFeePayment,
                     prov_fee_amount: provFeePayment?.amount || null,
