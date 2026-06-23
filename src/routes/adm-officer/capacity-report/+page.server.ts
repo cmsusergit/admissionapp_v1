@@ -43,48 +43,65 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     }
 
     // 3. Fetch Applications with Filtering
-    let appQuery = supabaseAdmin
-        .from('applications')
-        .select(`
-            branch_id, 
-            course_id,
-            id, 
-            status, 
-            form_type, 
-            student_id,
-            application_fee_status,
-            admission_cycles!inner (
-                academic_year_id
-            ),
-            courses!inner (
-                college_id
-            ),
-            payments (
-                payment_type,
-                status
-            ),
-            account_admissions (
-                admission_number
-            ),
-            users:student_id (
-                student_profiles (
-                    enrollment_number
+    let allApps: any[] = [];
+    let start = 0;
+    const chunkSize = 1000;
+    let hasMore = true;
+    let appError: any = null;
+
+    while (hasMore) {
+        let chunkQuery = supabaseAdmin
+            .from('applications')
+            .select(`
+                branch_id, 
+                course_id,
+                id, 
+                status, 
+                form_type, 
+                student_id,
+                application_fee_status,
+                admission_cycles!inner (
+                    academic_year_id
+                ),
+                courses!inner (
+                    college_id
+                ),
+                payments (
+                    payment_type,
+                    status
+                ),
+                account_admissions (
+                    admission_number
+                ),
+                users:student_id (
+                    student_profiles (
+                        enrollment_number
+                    )
                 )
-            )
-        `)
-        .eq('admission_cycles.academic_year_id', selectedYearId);
+            `)
+            .eq('admission_cycles.academic_year_id', selectedYearId);
 
-    if (userProfile.role === 'adm_officer' && userProfile.college_id) {
-        appQuery = appQuery.eq('courses.college_id', userProfile.college_id);
-    }
+        if (userProfile.role === 'adm_officer' && userProfile.college_id) {
+            chunkQuery = chunkQuery.eq('courses.college_id', userProfile.college_id);
+        }
 
-    // Sort by status to ensure 'approved' apps are processed first for deduplication
-    const { data: allApps, error: appError } = await appQuery
-        .order('status', { ascending: true }) // 'approved' comes before 'submitted' alphabetically, but let's be more robust in JS
-        .limit(20000); 
+        const { data, error } = await chunkQuery
+            .order('status', { ascending: true })
+            .range(start, start + chunkSize - 1);
 
-    if (appError) {
-        console.error('Capacity Report - applications fetch error:', appError.message);
+        if (error) {
+            appError = error;
+            console.error('Capacity Report - applications fetch error:', error.message);
+            break;
+        }
+
+        allApps = allApps.concat(data || []);
+
+        if (!data || data.length < chunkSize) {
+            hasMore = false;
+        } else {
+            start += chunkSize;
+        }
     }
 
     // Status priority for deduplication (lower is better)
@@ -125,18 +142,6 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     // However, for MQ, NRI, and Provisional types, we allow all applications to be counted separately
     const seenStudentBranchType = new Set<string>();
     const uniqueApps = sortedApps.filter(app => {
-        const type = (app.form_type || '').trim();
-        const isProv = provFormTypes.has(type);
-        const isMQorNRI = type === 'MQ' || type === 'NRI' || type === 'MQ/NRI' || type === 'MNNQ/NRI' || type === 'Vacant';
-        
-        if (isMQorNRI) return true;
-        
-        const branchKey = app.branch_id || `unassigned_${app.course_id}`;
-        const key = `${app.student_id}_${branchKey}_${type || 'Unknown'}`;
-        
-        // If not a "Multiple Allowed" type, check deduplication
-        if (!isProv && seenStudentBranchType.has(key)) return false;
-
         // Strictly exclude drafts from all capacity calculations
         if (app.status === 'draft') return false;
 
@@ -145,8 +150,18 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
             return false;
         }
 
+        const type = (app.form_type || '').trim();
+        const isProv = provFormTypes.has(type);
+        const isMQorNRI = type === 'MQ' || type === 'NRI' || type === 'MQ/NRI' || type === 'MNNQ/NRI' || type === 'Vacant';
+        
+        const branchKey = app.branch_id || `unassigned_${app.course_id}`;
+        const key = `${app.student_id}_${branchKey}_${type || 'Unknown'}`;
+        
+        // If not a "Multiple Allowed" type, check deduplication
+        if (!isProv && !isMQorNRI && seenStudentBranchType.has(key)) return false;
+
         // Only track "seen" for types that require deduplication
-        if (!isProv) {
+        if (!isProv && !isMQorNRI) {
             seenStudentBranchType.add(key);
         }
         return true;

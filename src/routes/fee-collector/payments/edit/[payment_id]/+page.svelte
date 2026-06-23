@@ -3,13 +3,17 @@
     import { enhance } from '$app/forms';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
     import { toastStore } from '$lib/stores/toastStore';
-    import { goto } from '$app/navigation';
+    import { goto, invalidateAll } from '$app/navigation';
+    import { generateReceiptPDF, downloadReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
 
     let { data, form } = $props();
 
     let payment = $derived(data.payment);
     let app = $derived(payment.applications as any);
     let student = $derived(app.student_user);
+
+    let isEditingName = $state(false);
+    let editNameValue = $state('');
 
     let paymentDate = $state(payment.payment_date.split('T')[0]);
     let receiptNumber = $state(payment.receipt_number || '');
@@ -59,6 +63,117 @@
         }
     });
 
+    function startEditingName() {
+        editNameValue = student?.full_name || '';
+        isEditingName = true;
+    }
+
+    async function handleUpdateName() {
+        if (!editNameValue.trim()) {
+            toastStore.error('Name cannot be empty.');
+            return;
+        }
+        startLoading();
+        const formData = new FormData();
+        formData.append('student_id', app.student_id);
+        formData.append('full_name', editNameValue);
+        const response = await fetch('?/updateStudentName', { method: 'POST', body: formData });
+        
+        if (response.ok) {
+            toastStore.success('Student name updated!');
+            isEditingName = false;
+            await invalidateAll();
+        } else {
+            toastStore.error('Failed to update name.');
+        }
+        stopLoading();
+    }
+
+    async function printReceipt(payment: any) {
+        const receiptData = mapPaymentToReceipt(payment);
+        await generateReceiptPDF(receiptData);
+    }
+
+    async function downloadReceipt(payment: any) {
+        const receiptData = mapPaymentToReceipt(payment);
+        await downloadReceiptPDF(receiptData);
+    }
+
+    function mapPaymentToReceipt(payment: any): ReceiptData {
+        const isProv = payment.payment_type === 'provisional_fee';
+        const isTuition = payment.payment_type === 'tuition_fee';
+        const feePeriod = payment.fee_period || 'year';
+
+        // Map fee_components_breakdown to ReceiptData.feeBreakdown
+        // If it's tuition_fee, we want the detailed component breakdown
+        const feeBreakdown = (payment.fee_components_breakdown || []).map((section: any) => ({
+            name: section.name || section.section,
+            items: (section.items || []).map((item: any) => {
+                const val = Number(item.amount) || 0;
+                // If semester payment, apply 50% to partial items to match displayed total
+                const displayAmt = (feePeriod === 'semester' && item.allow_partial) ? (val / 2) : val;
+                return {
+                    name: item.name,
+                    amount: displayAmt
+                };
+            })
+        }));
+        
+        let universityData = {
+            name: 'SVIT, Vasad',
+            address: 'Vasad, Gujarat',
+            contactEmail: 'admission@svitvasad.ac.in',
+            logoUrl: undefined
+        };
+
+        const college = app.courses?.colleges;
+        if (college) {
+            universityData = {
+                name: college.name || universityData.name,
+                address: college.address || universityData.address,
+                logoUrl: college.logo_url || college.universities?.logo_url,
+                contactEmail: college.universities?.contact_email || universityData.contactEmail
+            };
+        }
+
+        let periodDisplay: 'SEMESTER' | 'ACADEMIC YEAR';
+        if (data.userProfile?.role === 'fee_collector' && isTuition) {
+            periodDisplay = (feePeriod === 'year') ? 'ACADEMIC YEAR' : 'SEMESTER';
+        } else {
+            periodDisplay = 'ACADEMIC YEAR'; // Default for others
+        }
+        
+        const studentProfiles = student?.student_profiles;
+        const enrollmentNumber = (Array.isArray(studentProfiles) ? studentProfiles[0] : studentProfiles)?.enrollment_number;
+        
+        return {
+            receiptNumber: payment.receipt_number || 'N/A',
+            date: payment.payment_date,
+            studentName: student?.full_name || student?.email || 'N/A',
+            email: student?.email || '',
+            enrollmentNumber: enrollmentNumber,
+            admissionNumber: app.account_admissions?.[0]?.admission_number || app.account_admissions?.admission_number,
+            courseName: app.courses.name || 'N/A',
+            branchName: app.branches?.name,
+            academicYear: app.admission_cycles?.academic_years?.name,
+            semester: periodDisplay, // Add this property
+            paymentType: payment.payment_type,
+            isProvisional: isProv,
+            transactionId: payment.transaction_id,
+            amount: Number(payment.amount),
+            totalStructureFee: Number(payment.amount), // Fallback
+            feeBreakdown: feeBreakdown.length > 0 ? feeBreakdown : undefined,
+            collegeAlias: college?.code || 'SVIT',
+            paymentModes: (payment.payment_breakdown || []).map((m: any) => ({
+                mode: m.type || m.mode,
+                amount: Number(m.amount),
+                ref: m.ref || m.reference,
+                date: payment.payment_date
+            })),
+            university: universityData
+        };
+    }
+
     function goBack() {
         window.history.back();
     }
@@ -67,11 +182,21 @@
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-lg-8">
-            <div class="d-flex align-items-center mb-4">
-                <button class="btn btn-outline-secondary me-3" on:click={goBack}>
-                    <i class="bi bi-arrow-left"></i>
-                </button>
-                <h1 class="h3 mb-0">Edit Payment Record</h1>
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <div class="d-flex align-items-center">
+                    <button class="btn btn-outline-secondary me-3" on:click={goBack}>
+                        <i class="bi bi-arrow-left"></i>
+                    </button>
+                    <h1 class="h3 mb-0">Edit Payment Record</h1>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary px-3" on:click={() => printReceipt(payment)}>
+                        <i class="bi bi-printer me-2"></i>Print Receipt
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary px-3" on:click={() => downloadReceipt(payment)}>
+                        <i class="bi bi-download me-2"></i>Download Receipt
+                    </button>
+                </div>
             </div>
 
             <div class="card shadow-sm border-0 mb-4">
@@ -81,7 +206,24 @@
                             <i class="bi bi-person fs-3"></i>
                         </div>
                         <div>
-                            <h5 class="mb-0 fw-bold">{student?.full_name}</h5>
+                            {#if isEditingName}
+                                <div class="input-group input-group-sm mb-1" style="max-width: 300px;">
+                                    <input type="text" class="form-control" bind:value={editNameValue} placeholder="Full Name" />
+                                    <button class="btn btn-success" type="button" on:click={handleUpdateName}>
+                                        <i class="bi bi-check-lg"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary" type="button" on:click={() => isEditingName = false}>
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            {:else}
+                                <h5 class="mb-0 fw-bold d-flex align-items-center">
+                                    {student?.full_name}
+                                    <button class="btn btn-sm text-muted p-0 ms-2" type="button" on:click={startEditingName} title="Edit student name">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                </h5>
+                            {/if}
                             <p class="text-muted mb-0 small">{student?.email}</p>
                         </div>
                     </div>
