@@ -298,8 +298,8 @@
                                 <td>{new Date(payment.payment_date).toLocaleDateString()}</td>
                                 <td>{Array.isArray(payment.applications?.account_admissions) ? payment.applications?.account_admissions[0]?.admission_number : payment.applications?.account_admissions?.admission_number || '-'}</td>
                                 <td>
-                                    <span class="badge {payment.applications?.student_user?.student_profiles?.enrollment_number ? 'bg-success' : 'bg-light text-muted border'}">
-                                        {payment.applications?.student_user?.student_profiles?.enrollment_number || 'Pending'}
+                                    <span class="badge {(Array.isArray(payment.applications?.student_user?.student_profiles) ? payment.applications?.student_user?.student_profiles[0]?.enrollment_number : payment.applications?.student_user?.student_profiles?.enrollment_number) ? 'bg-success' : 'bg-light text-muted border'}">
+                                        {(Array.isArray(payment.applications?.student_user?.student_profiles) ? payment.applications?.student_user?.student_profiles[0]?.enrollment_number : payment.applications?.student_user?.student_profiles?.enrollment_number) || 'Pending'}
                                     </span>
                                 </td>
                                 <td>

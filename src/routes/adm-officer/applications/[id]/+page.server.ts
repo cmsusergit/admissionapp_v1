@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({
     .select(
       `
             id, status, form_type, admission_type, submitted_at, updated_at, student_id, course_id, cycle_id, branch_id, form_data, application_fee_status, created_by, updated_by, approval_comment,
-            student_user:users!applications_student_id_fkey(id, full_name, email, student_profiles(enrollment_number)),
+            student_user:users!applications_student_id_fkey(id, full_name, email, student_profiles(enrollment_number, admission_status)),
             creator_user:users!applications_created_by_fkey(id, full_name, email),
             updater_user:users!applications_updated_by_fkey(id, full_name, email),
             courses(id, name, code, colleges(id, name, universities(id, name))),
@@ -856,10 +856,12 @@ export const actions: Actions = {
       console.error("Error clearing enrollment number:", profileError.message);
     }
 
-    // c. Delete Account Admission (Releases Admission Number)
+    // c. Flag Account Admission as Cancelled (Do not delete, so original admission number is preserved)
     await supabaseAdmin
       .from("account_admissions")
-      .delete()
+      .update({
+        remarks: `Cancelled: ${reason}`
+      })
       .eq("application_id", application_id);
 
     // d. Update Application Status
@@ -1429,6 +1431,230 @@ export const actions: Actions = {
     } catch (err) {
       console.error('Exception in resetAppFeeStatus:', err);
       return fail(500, { message: 'An unexpected error occurred while resetting fee status.' });
+    }
+  },
+
+  recoverAdmission: async ({
+    request,
+    locals: { getAuthenticatedUser, userProfile },
+  }) => {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (!authenticatedUser) {
+      throw redirect(303, '/login');
+    }
+
+    if (userProfile?.role !== 'adm_officer' && userProfile?.role !== 'admin') {
+      return fail(403, { message: 'Unauthorized. Only admission officers can recover admissions.' });
+    }
+
+    const formData = await request.formData();
+    const application_id = formData.get('application_id') as string;
+
+    if (!application_id) {
+      return fail(400, { message: 'Application ID is required.' });
+    }
+
+    const supabaseAdmin = createClient(
+      PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
+
+    try {
+      // 1. Fetch application details
+      const { data: appData, error: fetchError } = await supabaseAdmin
+        .from('applications')
+        .select('*, courses(college_id, code)')
+        .eq('id', application_id)
+        .single();
+
+      if (fetchError || !appData) {
+        console.error('Error fetching application:', fetchError?.message);
+        return fail(404, { message: 'Application not found.' });
+      }
+
+      // 2. Fetch the previous enrollment number from student_transfer_history
+      const { data: history, error: histError } = await supabaseAdmin
+        .from('student_transfer_history')
+        .select('previous_enrollment_number')
+        .eq('application_id', application_id)
+        .not('previous_enrollment_number', 'is', null)
+        .order('transfer_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (histError) {
+        console.error('Error fetching transfer history:', histError.message);
+        return fail(500, { message: 'Failed to retrieve transfer history.' });
+      }
+
+      const previousEnrollmentNumber = history?.previous_enrollment_number;
+      if (!previousEnrollmentNumber) {
+        return fail(400, {
+          message: 'Could not find a previous enrollment number (College ID) for this student in history.',
+        });
+      }
+
+      // 3. Reconstruct the original Admission Number
+      // Extract sequence number from previous enrollment number (last 3 digits)
+      const seqStr = previousEnrollmentNumber.slice(-3);
+      const seqNum = parseInt(seqStr, 10);
+      if (Number.isNaN(seqNum)) {
+        return fail(400, {
+          message: `Failed to parse sequence number from previous College ID: ${previousEnrollmentNumber}`,
+        });
+      }
+
+      // Fetch Form Type Details
+      const { data: formTypeDetails } = await supabaseAdmin
+        .from('form_types')
+        .select('code, is_prov')
+        .eq('name', appData.form_type)
+        .single();
+
+      const formTypeCode = formTypeDetails?.code || 'ADM';
+      const isProvisional = formTypeDetails?.is_prov || false;
+
+      // Fetch Cycle/Academic Year details
+      const { data: cycleData } = await supabaseAdmin
+        .from('admission_cycles')
+        .select('academic_year_id, academic_years(name, short_code)')
+        .eq('id', appData.cycle_id)
+        .single();
+
+      const firstCycleData = Array.isArray(cycleData) ? cycleData[0] : cycleData;
+      const academicYear = firstCycleData?.academic_years;
+      const yearName = academicYear?.name || new Date().getFullYear().toString();
+      const yearShort = academicYear?.short_code || yearName.substring(0, 4).slice(-2);
+      const courseCode = appData.courses?.code || 'GEN';
+
+      const admissionPrefix = `${formTypeCode}-${yearShort}-${courseCode}-`;
+      let reconstructedAdmissionNumber = `${admissionPrefix}${seqNum.toString().padStart(4, '0')}`;
+
+      // Resolves uniqueness conflicts by checking active admissions and finding the first available sequence gap
+      const { data: activeAdmissions, error: activeErr } = await supabaseAdmin
+        .from('account_admissions')
+        .select('admission_number')
+        .ilike('admission_number', `${admissionPrefix}%`);
+
+      if (activeErr) {
+        console.error('Error fetching active admissions:', activeErr.message);
+      } else if (activeAdmissions && activeAdmissions.length > 0) {
+        const activeSet = new Set(activeAdmissions.map(a => a.admission_number));
+        let tempSeq = seqNum;
+        while (true) {
+          const candidate = `${admissionPrefix}${tempSeq.toString().padStart(4, '0')}`;
+          if (!activeSet.has(candidate)) {
+            reconstructedAdmissionNumber = candidate;
+            break;
+          }
+          tempSeq++;
+        }
+      }
+
+      // 4. Update student profile
+      const { error: profileError } = await supabaseAdmin
+        .from('student_profiles')
+        .update({
+          enrollment_number: previousEnrollmentNumber,
+          admission_status: 'Admitted',
+          active_application_id: application_id,
+        })
+        .eq('user_id', appData.student_id);
+
+      if (profileError) {
+        console.error('Error restoring enrollment number:', profileError.message);
+        return fail(500, { message: 'Failed to restore College ID.' });
+      }
+
+      // Restore college affiliation in users
+      await supabaseAdmin
+        .from('users')
+        .update({ college_id: appData.courses?.college_id })
+        .eq('id', appData.student_id);
+
+      // 5. Restore or Re-create account_admissions entry
+      const { data: existingAA } = await supabaseAdmin
+        .from('account_admissions')
+        .select('id, admission_number')
+        .eq('application_id', application_id)
+        .maybeSingle();
+
+      let accAdmError = null;
+      let restoredAdmissionNumber = reconstructedAdmissionNumber;
+
+      if (existingAA) {
+        restoredAdmissionNumber = existingAA.admission_number;
+        // If it exists (flagged as cancelled in remarks), simply clear the remarks cancellation flag
+        const { error } = await supabaseAdmin
+          .from('account_admissions')
+          .update({
+            remarks: null,
+            enrollment_status: isProvisional ? 'provisional' : 'confirmed'
+          })
+          .eq('application_id', application_id);
+        accAdmError = error;
+      } else {
+        // If it does not exist (legacy cancelled cases like Nistha Suthar/Jagtap where it was deleted), insert it back
+        const { error } = await supabaseAdmin
+          .from('account_admissions')
+          .insert({
+            application_id: application_id,
+            admission_number: reconstructedAdmissionNumber,
+            admission_type: appData.form_type,
+            admission_mode: appData.admission_type || 'Regular',
+            created_by: userProfile.id,
+            enrollment_status: isProvisional ? 'provisional' : 'confirmed',
+          });
+        accAdmError = error;
+      }
+
+      if (accAdmError) {
+        console.error('Error restoring account admission entry:', accAdmError.message);
+        // Rollback profile status
+        await supabaseAdmin
+          .from('student_profiles')
+          .update({ enrollment_number: null, admission_status: 'Cancelled' })
+          .eq('user_id', appData.student_id);
+
+        return fail(500, { message: 'Failed to restore Admission Number. It may already be in use.' });
+      }
+
+      // 6. Restore application status to 'approved' and clear rejection reason
+      const { error: appUpdateError } = await supabaseAdmin
+        .from('applications')
+        .update({
+          status: 'approved',
+          rejection_reason: null,
+          updated_at: new Date().toISOString(),
+          updated_by: userProfile.id,
+          approval_comment: `Admission recovered. Original College ID (${previousEnrollmentNumber}) and Admission Number (${restoredAdmissionNumber}) restored.`,
+        })
+        .eq('id', application_id);
+
+      if (appUpdateError) {
+        console.error('Error recovering application status:', appUpdateError.message);
+        return fail(500, { message: 'Failed to update application status.' });
+      }
+
+      // Log recovery in history
+      await supabaseAdmin
+        .from('student_transfer_history')
+        .insert({
+          application_id: application_id,
+          previous_course_id: appData.course_id,
+          previous_branch_id: appData.branch_id,
+          previous_enrollment_number: null,
+          new_enrollment_number: previousEnrollmentNumber,
+          transferred_by: userProfile.id,
+        });
+
+      return {
+        success: true,
+        message: `Admission successfully recovered! College ID: ${previousEnrollmentNumber}, Admission No: ${restoredAdmissionNumber}`,
+      };
+    } catch (err) {
+      console.error('Exception in recoverAdmission:', err);
+      return fail(500, { message: 'An unexpected error occurred while recovering admission.' });
     }
   },
 };

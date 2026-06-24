@@ -35,6 +35,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
                 student_id,
                 course_id,
                 cycle_id,
+                status,
                 student_user:users!applications_student_id_fkey(full_name, email),
                 courses!inner(name, college_id),
                 admission_cycles(academic_year_id),
@@ -43,6 +44,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         `, { count: 'exact' })
         .eq('account_status', statusFilter) // Apply status filter
         .neq('enrollment_status', 'provisional') // Exclude provisional admissions from this view
+        .neq('applications.status', 'cancelled') // Exclude cancelled admissions
         .range(from, to);
 
     if (courseIdFilter) {

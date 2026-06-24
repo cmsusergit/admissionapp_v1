@@ -390,7 +390,23 @@
                         <i class="bi bi-printer me-1"></i> Print Profile Form
                     </button>
                     
-                    {#if application.status === 'rejected'}
+                    {#if application.status === 'cancelled' || (Array.isArray(application.student_user?.student_profiles) ? application.student_user.student_profiles[0]?.admission_status : application.student_user?.student_profiles?.admission_status) === 'Cancelled'}
+                        <form method="POST" action="?/recoverAdmission" use:enhance>
+                            <input type="hidden" name="application_id" value={application.id} />
+                            <button type="submit" class="btn btn-outline-success w-100">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Admission
+                            </button>
+                        </form>
+                    {:else if application.status === 'rejected'}
+                        {@const hasTuitionPayment = application.payments?.some(p => p.payment_type === 'tuition_fee' && p.status === 'completed')}
+                        {#if hasTuitionPayment}
+                            <form method="POST" action="?/recoverAdmission" use:enhance>
+                                <input type="hidden" name="application_id" value={application.id} />
+                                <button type="submit" class="btn btn-outline-success w-100 mb-2">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Admission
+                                </button>
+                            </form>
+                        {/if}
                         <form method="POST" action="?/revertRejection" use:enhance>
                             <input type="hidden" name="application_id" value={application.id} />
                             <button type="submit" class="btn btn-outline-warning w-100">
@@ -398,7 +414,7 @@
                             </button>
                         </form>
                     {:else}
-                        <button class="btn btn-danger" on:click={() => rejecting = !rejecting} disabled={application.status === 'approved'}>
+                        <button class="btn btn-danger" on:click={() => rejecting = !rejecting} disabled={application.status === 'approved' || application.status === 'cancelled' || (Array.isArray(application.student_user?.student_profiles) ? application.student_user.student_profiles[0]?.admission_status : application.student_user?.student_profiles?.admission_status) === 'Cancelled'}>
                             Reject Application
                         </button>
                     {/if}

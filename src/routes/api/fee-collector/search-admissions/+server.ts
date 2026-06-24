@@ -18,6 +18,7 @@ export const GET: RequestHandler = async ({ locals: { supabase, getAuthenticated
             application_id,
             applications!inner(
                 id,
+                status,
                 student_user:users!applications_student_id_fkey(full_name, email),
                 course_id,
                 cycle_id,
@@ -27,7 +28,8 @@ export const GET: RequestHandler = async ({ locals: { supabase, getAuthenticated
                 courses!inner(name, college_id),
                 admission_cycles(academic_year_id)
             )
-        `);
+        `)
+        .neq('applications.status', 'cancelled');
 
     if (search) {
         query = query.or(`admission_number.ilike.%${search}%,applications.student_user.full_name.ilike.%${search}%,applications.student_user.email.ilike.%${search}%`);
