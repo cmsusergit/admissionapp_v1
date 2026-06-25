@@ -653,7 +653,7 @@
                 <h5 class="modal-title">Edit Application Form Data</h5>
                 <button type="button" class="btn-close btn-close-white" on:click={() => showDataEditModal = false}></button>
             </div>
-            <form method="POST" action="?/saveFormData" use:enhance={() => {
+            <form method="POST" action="?/saveFormData" enctype="multipart/form-data" use:enhance={() => {
                 startLoading();
                 return async ({ result, update }) => {
                     stopLoading();

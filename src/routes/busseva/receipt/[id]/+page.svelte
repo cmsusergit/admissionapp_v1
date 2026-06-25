@@ -232,7 +232,19 @@
                 }
             };
 
-            pdfMake.createPdf(docDefinition).print();
+            let printWindow: Window | null = null;
+            try {
+                printWindow = window.open('', '_blank');
+            } catch (e) {
+                console.warn('Failed to open print tab:', e);
+            }
+
+            if (!printWindow) {
+                toastStore.warning('Pop-up blocked. Please click "Print Receipt" manually.');
+                return;
+            }
+
+            pdfMake.createPdf(docDefinition).print({}, printWindow);
         } catch (error) {
             console.error('Failed to generate receipt PDF:', error);
         }

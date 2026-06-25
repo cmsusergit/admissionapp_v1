@@ -95,7 +95,7 @@
                                 </div>
                             </div>
                         {:else}
-                            <form method="POST" use:enhance={({ cancel }) => {
+                            <form method="POST" enctype="multipart/form-data" use:enhance={({ cancel }) => {
                                 clientError = '';
                                 if (preferences.filter(p => p.course_id).length === 0) {
                                     clientError = 'At least one Course Preference is required.';

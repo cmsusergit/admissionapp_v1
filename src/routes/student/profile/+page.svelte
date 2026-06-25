@@ -114,7 +114,7 @@
                         </div>
                     </div>
 
-                    <form method="POST" action="?/updateProfile" use:enhance={() => {
+                    <form method="POST" action="?/updateProfile" enctype="multipart/form-data" use:enhance={() => {
                         return async ({ result }) => {
                             if (result.type === 'success') {
                                 toastStore.success(isDraft ? 'Profile saved as draft!' : 'Profile submitted successfully!');
