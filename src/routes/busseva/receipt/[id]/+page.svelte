@@ -14,31 +14,21 @@
         if (!base64Str) return null;
         
         const trimmed = base64Str.trim();
-        const match = trimmed.match(/^data:image\/(jpeg|jpg|png);base64,(.*)$/);
+        const match = trimmed.match(/^data:([^;]+);base64,(.*)$/i);
         if (!match) {
-            console.error('Invalid image data URL format or unsupported mime type');
+            console.error('Invalid data URL format');
             return null;
         }
         
-        const mimeType = match[1];
-        const base64Data = match[2];
+        const base64Data = match[2].trim();
         
-        if (mimeType === 'jpeg' || mimeType === 'jpg') {
-            if (base64Data.startsWith('/9j/')) {
-                return trimmed;
-            } else {
-                console.error('Image claims to be jpeg/jpg but does not start with valid JPEG magic prefix');
-                return null;
-            }
-        } else if (mimeType === 'png') {
-            if (base64Data.startsWith('iVBORw') || base64Data.startsWith('iVBOR')) {
-                return trimmed;
-            } else {
-                console.error('Image claims to be png but does not start with valid PNG magic prefix');
-                return null;
-            }
+        if (base64Data.startsWith('/9j/')) {
+            return `data:image/jpeg;base64,${base64Data}`;
+        } else if (base64Data.startsWith('iVBORw') || base64Data.startsWith('iVBOR')) {
+            return `data:image/png;base64,${base64Data}`;
         }
         
+        console.error('Unsupported image format (must be JPEG or PNG magic bytes)');
         return null;
     }
 
@@ -50,10 +40,6 @@
                 return null;
             }
             const blob = await res.blob();
-            if (blob.type !== 'image/jpeg' && blob.type !== 'image/jpg' && blob.type !== 'image/png') {
-                console.error('Fetched file is not a supported image format:', blob.type);
-                return null;
-            }
             return new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.addEventListener('load', () => {
@@ -244,7 +230,7 @@
                 return;
             }
 
-            pdfMake.createPdf(docDefinition).print({}, printWindow);
+            pdfMake.createPdf(docDefinition).print(printWindow);
         } catch (error) {
             console.error('Failed to generate receipt PDF:', error);
         }

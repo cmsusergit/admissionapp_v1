@@ -90,13 +90,16 @@ export const load: PageServerLoad = async ({ params, locals: { getSession, userP
 
             const { data: docs } = await docQuery;
             if (docs && docs.length > 0) {
-                const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(docs[0].file_path, 3600);
-                if (urlData) photoUrl = urlData.signedUrl;
+                const imgDoc = docs.find(d => /\.(jpg|jpeg|png)$/i.test(d.file_path || ''));
+                if (imgDoc) {
+                    const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(imgDoc.file_path, 3600);
+                    if (urlData) photoUrl = urlData.signedUrl;
+                }
             }
         }
 
         // 2. Check profile_data.photo fallback
-        if (!photoUrl && profileData?.photo) {
+        if (!photoUrl && profileData?.photo && /\.(jpg|jpeg|png)$/i.test(profileData.photo)) {
             const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(profileData.photo, 3600);
             if (urlData) photoUrl = urlData.signedUrl;
         }
