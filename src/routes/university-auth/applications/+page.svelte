@@ -1,8 +1,8 @@
 <script lang="ts">
     import type { PageData, ActionData } from './$types';
-    import { enhance } from '$app/forms';
+    import { enhance, deserialize } from '$app/forms';
     import { writable } from 'svelte/store';
-    import { invalidate } from '$app/navigation';
+    import { invalidate, invalidateAll } from '$app/navigation';
     import { toastStore } from '$lib/stores/toastStore';
     import { goto } from '$app/navigation';
     import { page as sveltePage } from '$app/stores';
@@ -52,7 +52,7 @@
         selectedBranchId = app.branch_id || ''; // Pre-select existing branch
         applicationApprovalComment = '';
         
-        const hasBranches = app.courses?.branches && app.courses.branches.length > 0;
+        const hasBranches = (app.courses as any)?.branches && (app.courses as any).branches.length > 0;
 
         if (hasBranches) {
             showApproveModal = true;
@@ -70,19 +70,9 @@
         formData.append('application_id', selectedApplication.id);
         if (selectedBranchId) formData.append('branch_id', selectedBranchId);
         if (applicationApprovalComment) formData.append('approval_comment', applicationApprovalComment);
-
+ 
         const response = await fetch('?/approveApplication', { method: 'POST', body: formData });
-        
-        const text = await response.text();
-        let res;
-        try {
-             const { deserialize } = await import('$app/forms');
-             res = deserialize(text);
-        } catch (e) {
-             console.error('Error deserializing response', e);
-             toastStore.error('Network error');
-             return;
-        }
+        const res = deserialize(await response.text()) as any;
         
         showApproveModal = false;
         if (res.type === 'success') {
@@ -91,9 +81,9 @@
             if (appId && confirm('Application approved successfully! Would you like to print the Admission Slip now?')) {
                 window.open(`/receipts/admission/${appId}?print=1`, '_blank');
             }
-            await invalidate('/university-auth/applications');
+            await invalidateAll();
         } else {
-            const errorMsg = (res.data as any)?.message || 'Error approving.';
+            const errorMsg = res.data?.message || 'Error approving.';
             toastStore.error(errorMsg);
         }
     }
@@ -103,12 +93,12 @@
         const fd = new FormData();
         fd.append('application_id', app.id);
         const res = await fetch('?/waitlistApplication', { method: 'POST', body: fd });
-        const r = await res.json();
-        if (r.success) {
+        const result = deserialize(await res.text()) as any;
+        if (result.type === 'success') {
             toastStore.success('Waitlisted');
-            await invalidate('/university-auth/applications');
+            await invalidateAll();
         } else {
-            toastStore.error(r.message);
+            toastStore.error(result.data?.message || 'Error waitlisting.');
         }
     }
 
@@ -125,13 +115,13 @@
         if (applicationApprovalComment) fd.append('approval_comment', applicationApprovalComment);
         
         const res = await fetch('?/waitlistApplication', { method: 'POST', body: fd });
-        const r = await res.json();
+        const result = deserialize(await res.text()) as any;
         showWaitlistModal = false;
-        if (r.success) {
+        if (result.type === 'success') {
             toastStore.success('Waitlisted');
-            await invalidate('/university-auth/applications');
+            await invalidateAll();
         } else {
-            toastStore.error(r.message);
+            toastStore.error(result.data?.message || 'Error waitlisting.');
         }
     }
 
@@ -148,13 +138,13 @@
         fd.append('rejection_reason', applicationRejectionReason);
         
         const res = await fetch('?/rejectApplication', { method: 'POST', body: fd });
-        const r = await res.json();
+        const result = deserialize(await res.text()) as any;
         showRejectionReasonModal = false;
-        if (r.success) {
+        if (result.type === 'success') {
             toastStore.success('Rejected');
-            await invalidate('/university-auth/applications');
+            await invalidateAll();
         } else {
-            toastStore.error(r.message);
+            toastStore.error(result.data?.message || 'Error rejecting.');
         }
     }
 
@@ -164,12 +154,12 @@
         fd.append('application_id', app.id);
         
         const res = await fetch('?/revertApproval', { method: 'POST', body: fd });
-        const r = await res.json();
-        if (r.type === 'success') {
+        const result = deserialize(await res.text()) as any;
+        if (result.type === 'success') {
             toastStore.success('Reverted');
-            await invalidate('/university-auth/applications');
+            await invalidateAll();
         } else {
-            toastStore.error(r.data?.message || 'Error reverting.');
+            toastStore.error(result.data?.message || 'Error reverting.');
         }
     }
 
@@ -177,7 +167,7 @@
         return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
 
-    function isMeritField(value: any) {
+    function isMeritField(value: any): value is { value: any; max_score: any } {
         return typeof value === 'object' && value !== null && 'value' in value && 'max_score' in value;
     }
 
@@ -290,7 +280,7 @@
                                     <small class="text-muted">{app.users?.email}</small>
                                 </td>
                                 <td>
-                                    {app.courses?.name}
+                                    {(app.courses as any)?.name}
                                     {#if app.branches?.name}
                                         <br><span class="badge bg-secondary text-light">{app.branches.name}</span>
                                     {:else if app.prov_branch_name}
@@ -298,9 +288,9 @@
                                         <span class="text-muted small">{app.prov_branch_name}</span>
                                         <small class="badge bg-light text-dark border ms-1" style="font-size: 0.65rem;" title="Branch from provisional application">Prov</small>
                                     {/if}
-                                    <div class="small text-muted">{app.courses?.colleges?.name}</div>
+                                    <div class="small text-muted">{(app.courses as any)?.colleges?.name}</div>
                                 </td>
-                                <td>{app.admission_cycles?.name}</td>
+                                <td>{Array.isArray(app.admission_cycles) ? (app.admission_cycles as any)[0]?.name : (app.admission_cycles as any)?.name}</td>
                                 <td>{new Date(app.submitted_at).toLocaleDateString()}</td>
                                 <td>
                                     <span class="badge {app.status === 'approved' ? 'bg-success' : 'bg-info'}">
@@ -381,7 +371,7 @@
                         <h6>Status & Course</h6>
                         <p class="mb-1"><strong>Current:</strong> {selectedApplication.status}</p>
                         <p class="mb-1"><strong>Form Type:</strong> {selectedApplication.form_type}</p>
-                        <p class="mb-1"><strong>Course:</strong> {selectedApplication.courses?.name} 
+                        <p class="mb-1"><strong>Course:</strong> {(selectedApplication.courses as any)?.name} 
                             {#if selectedApplication.branches?.name} 
                                 <span class="badge bg-secondary">{selectedApplication.branches.name}</span>
                             {:else if selectedApplication.prov_branch_name}
@@ -467,10 +457,10 @@
             </div>
             <div class="modal-body">
                 <p>Select Branch for {selectedApplication?.users?.full_name}:</p>
-                {#if selectedApplication?.courses?.branches}
+                {#if (selectedApplication?.courses as any)?.branches}
                     <select class="form-select mb-3" bind:value={selectedBranchId}>
                         <option value="">-- Select Branch --</option>
-                        {#each selectedApplication.courses.branches as branch}
+                        {#each (selectedApplication.courses as any).branches as branch}
                             <option value={branch.id}>{branch.name} ({getBranchDisplayCode(branch.name, branch.code)})</option>
                         {/each}
                     </select>
@@ -480,7 +470,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" on:click={() => showApproveModal = false}>Cancel</button>
-                <button class="btn btn-success" on:click={submitApproval} disabled={!selectedBranchId && selectedApplication?.courses?.branches?.length > 0}>Confirm</button>
+                <button class="btn btn-success" on:click={submitApproval} disabled={!selectedBranchId && (selectedApplication?.courses as any)?.branches?.length > 0}>Confirm</button>
             </div>
         </div>
     </div>

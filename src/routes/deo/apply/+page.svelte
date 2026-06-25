@@ -47,6 +47,7 @@
     let selectedAdmissionType = $state('Regular'); // Admission Type Selection
     
     let currentApplicationId = $state<string | null>(null);
+    let currentApplicationStatus = $state('');
     let applicationFormData = $state<Record<string, any>>({});
     
     // Error handling for applicationId loading
@@ -101,6 +102,7 @@
             // Set form data
             applicationFormData = appData.form_data || {};
             currentApplicationId = appData.id;
+            currentApplicationStatus = appData.status || '';
             isEditingExistingApplication = true;
             isLoadedFromApplicationId = true; // Mark as loaded from URL
             
@@ -377,6 +379,7 @@
         loadedStudentProfile = null;
         lastLoadedInquiryData = null; // Clear inquiry buffer too
         applicationFormData = {}; // Reset form data
+        currentApplicationStatus = '';
     }
 
     // Helper to merge profile and inquiry data into form data based on schema
@@ -630,6 +633,7 @@
         } else if (existingApp) {
             console.log('Found existing application:', existingApp.id);
             currentApplicationId = existingApp.id;
+            currentApplicationStatus = existingApp.status || '';
             applicationFormData = mergeProfileData(
                 existingApp.form_data || {}, 
                 currentAdmissionFormSchema, 
@@ -638,6 +642,7 @@
         } else {
             if (currentApplicationId) {
                 currentApplicationId = null;
+                currentApplicationStatus = '';
                 applicationFormData = {}; // Reset form for new entry
             }
             applicationFormData = mergeProfileData(
@@ -734,6 +739,7 @@
         selectedFormType = application.form_type || 'Provisional';
         selectedAdmissionType = application.admission_type || 'Regular';
         applicationFormData = application.form_data || {};
+        currentApplicationStatus = application.status || '';
         isLoadedFromApplicationId = true;
         isEditingExistingApplication = true;
 
@@ -768,12 +774,13 @@
 
         try {
             const response = await fetch('?/saveApplication', { method: 'POST', body: formPayload });
-            const result = deserialize(await response.text());
+            const result = deserialize(await response.text()) as any;
             if (result.type === 'success' && result.data?.success) {
                 toastStore.success('Draft saved successfully.');
                 if (!currentApplicationId && result.data.applicationId) {
                     await goto(`/deo/apply?studentId=${selectedStudentId}&applicationId=${result.data.applicationId}`, { replaceState: true });
                     currentApplicationId = result.data.applicationId;
+                    currentApplicationStatus = 'draft';
                 }
                 return true;
             } else if (result.type === 'failure') {
@@ -808,7 +815,7 @@
             formPayload.append('application_id', currentApplicationId);
 
             const response = await fetch('?/submitApplication', { method: 'POST', body: formPayload });
-            const result = deserialize(await response.text());
+            const result = deserialize(await response.text()) as any;
             if (result.type === 'success' && result.data?.success) {
                 if (result.data.feeStatus === 'pending' && result.data.feeAmount > 0) {
                     if (confirm(`Application Submitted. Fee of ₹${result.data.feeAmount} is pending. Record payment now?`)) {
@@ -848,7 +855,7 @@
 
         try {
             const response = await fetch('?/recordPayment', { method: 'POST', body: formData });
-            const result = deserialize(await response.text());
+            const result = deserialize(await response.text()) as any;
             stopLoading();
 
             if (result.type === 'success') {
@@ -875,7 +882,7 @@
         
         try {
             const response = await fetch('?/deleteDraft', { method: 'POST', body: formData });
-            const result = deserialize(await response.text());
+            const result = deserialize(await response.text()) as any;
             stopLoading();
 
             if (result.type === 'success') {
@@ -913,7 +920,7 @@
                 method: 'POST',
                 body: formData
             });
-            const result = deserialize(await response.text());
+            const result = deserialize(await response.text()) as any;
             
             if (result.type === 'success') {
                 toastStore.success('Profile updated successfully!');
@@ -1189,20 +1196,61 @@
         {#if selectedCourseId && selectedCycleId}
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Application Form ({selectedFormType})</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">Application Form ({selectedFormType})</h5>
+                        {#if ['verified', 'approved'].includes(currentApplicationStatus)}
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="badge bg-success text-uppercase">{currentApplicationStatus}</span>
+                                <div class="form-check form-switch">
+                                    <input 
+                                        class="form-check-input" 
+                                        type="checkbox" 
+                                        id="allow-reupload-switch" 
+                                        bind:checked={applicationFormData.allow_reupload}
+                                    />
+                                    <label class="form-check-label fw-bold text-danger" for="allow-reupload-switch">
+                                        Enable Edit & Re-upload
+                                    </label>
+                                </div>
+                            </div>
+                        {/if}
+                    </div>
                     {#if isLoadingSchema}
                         <div class="text-center p-3"><div class="spinner-border text-primary" role="status"></div></div>
                     {:else if !isSchemaAvailable}
                         <div class="alert alert-warning">{@html schemaErrorMessage}</div>
                     {:else if currentAdmissionFormSchema && currentAdmissionFormSchema.fields && currentAdmissionFormSchema.fields.length > 0}
                         {#key `${currentAdmissionFormSchema.id || selectedCourseId}-${selectedCycleId}-${selectedFormType}`}
-                            <DynamicForm schema={currentAdmissionFormSchema} bind:formData={applicationFormData} bind:this={dynamicForm} />
+                            <DynamicForm 
+                                schema={currentAdmissionFormSchema} 
+                                bind:formData={applicationFormData} 
+                                bind:this={dynamicForm} 
+                                readonly={['verified', 'approved'].includes(currentApplicationStatus) && !applicationFormData.allow_reupload}
+                            />
                         {/key}
                         <div class="mt-3">
-                            <button class="btn btn-secondary me-2" onclick={handleSaveDraft}>Save as Draft</button>
-                            <button class="btn btn-success" onclick={handleSubmitApplication} disabled={!currentApplicationId}>Submit Application</button>
+                            <button 
+                                class="btn btn-secondary me-2" 
+                                onclick={handleSaveDraft}
+                                disabled={['verified', 'approved'].includes(currentApplicationStatus) && !applicationFormData.allow_reupload}
+                            >
+                                Save as Draft
+                            </button>
+                            <button 
+                                class="btn btn-success" 
+                                onclick={handleSubmitApplication} 
+                                disabled={!currentApplicationId || (['verified', 'approved'].includes(currentApplicationStatus) && !applicationFormData.allow_reupload)}
+                            >
+                                Submit Application
+                            </button>
                             {#if currentApplicationId}
-                                <button class="btn btn-danger float-end" onclick={handleDeleteDraft}>Delete Draft</button>
+                                <button 
+                                    class="btn btn-danger float-end" 
+                                    onclick={handleDeleteDraft}
+                                    disabled={currentApplicationStatus !== 'draft'}
+                                >
+                                    Delete Draft
+                                </button>
                             {/if}
                         </div>
                     {/if}

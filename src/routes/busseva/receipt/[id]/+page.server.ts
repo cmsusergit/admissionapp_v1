@@ -20,19 +20,19 @@ export const load: PageServerLoad = async ({ params, locals: { getSession, userP
                 email,
                 student_profiles (
                     enrollment_number,
-                    profile_data,
-                    active_app:applications (
-                        id,
-                        courses (
+                    profile_data
+                ),
+                active_app:applications!applications_student_id_fkey (
+                    id,
+                    courses (
+                        name,
+                        colleges ( 
                             name,
-                            colleges ( 
-                                name,
-                                logo_url,
-                                universities ( name, logo_url )
-                            )
-                        ),
-                        branches ( name )
-                    )
+                            logo_url,
+                            universities ( name, logo_url )
+                        )
+                    ),
+                    branches ( name )
                 )
             ),
             collector:users!fk_busseva_fees_collector (
@@ -68,7 +68,7 @@ export const load: PageServerLoad = async ({ params, locals: { getSession, userP
         const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw;
         const profileData = profile?.profile_data;
         
-        const activeAppRaw = profile?.active_app;
+        const activeAppRaw = record.student?.active_app;
         const activeApp = Array.isArray(activeAppRaw) ? activeAppRaw[0] : activeAppRaw;
         const applicationId = activeApp?.id;
 
@@ -147,5 +147,53 @@ export const load: PageServerLoad = async ({ params, locals: { getSession, userP
         console.error('Error fetching student photo or logo for receipt:', e);
     }
 
-    return { record, photoUrl, logoUrl, collegeName };
+    return { record, photoUrl, logoUrl, collegeName, userRole: userProfile.role };
+};
+
+export const actions = {
+    updateReceipt: async ({ request, params, locals: { getSession, userProfile } }) => {
+        const session = await getSession();
+        if (!session || !userProfile || !['fee_collector', 'deo'].includes(userProfile.role)) {
+            return { success: false, error: 'Unauthorized' };
+        }
+        
+        const formData = await request.formData();
+        const route_name = formData.get('route_name') as string;
+        const location = formData.get('location') as string;
+        const receipt_number = formData.get('receipt_number') as string;
+        const transaction_number = formData.get('transaction_number') as string;
+        const total_amount = Number(formData.get('total_amount'));
+        const payment_date = formData.get('payment_date') as string;
+
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+        // Security check: college_id matching
+        const { data: feeRecord } = await supabaseAdmin
+            .from('busseva_fees')
+            .select('college_id')
+            .eq('id', params.id)
+            .single();
+
+        if (!feeRecord || (userProfile.college_id && feeRecord.college_id !== userProfile.college_id)) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const { error } = await supabaseAdmin
+            .from('busseva_fees')
+            .update({
+                route_name,
+                location,
+                receipt_number,
+                transaction_number,
+                total_amount,
+                payment_date: new Date(payment_date).toISOString()
+            })
+            .eq('id', params.id);
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+
+        return { success: true };
+    }
 };

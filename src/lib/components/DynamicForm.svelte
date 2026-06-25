@@ -71,7 +71,7 @@
         fields: FormField[];
     }
 
-    let { schema = { fields: [] }, formData = $bindable({}), readonly = false }: { schema: FormSchema; formData: Record<string, any>; readonly: boolean } = $props();
+    let { schema = { fields: [] }, formData = $bindable({}), readonly = false }: { schema: FormSchema; formData: Record<string, any>; readonly?: boolean } = $props();
 
     let errors = $state<Record<string, string>>({});
     let uploadingFields = $state<Record<string, boolean>>({});

@@ -96,6 +96,7 @@
         
         // Add common list paths for dynamic tables
         vars.push({ path: 'marks_list', label: 'List > All Board Marks' });
+        vars.push({ path: 'marcs_list', label: 'List > All Board Marks (Spelling Alias)' });
         vars.push({ path: 'merit_marks', label: 'List > Merit Board Marks' });
         vars.push({ path: 'entrance_marks_list', label: 'List > Entrance Exam Marks' });
         vars.push({ path: 'payments', label: 'List > Payment History' });
@@ -161,6 +162,15 @@
     // Suggestions for common list paths and their child fields
     const listSuggestions: Record<string, { label: string, path: string }[]> = {
         'marks_list': [
+            { label: 'Subject', path: 'subject' },
+            { label: 'Theory', path: 'theory_obtained' },
+            { label: 'Theory Max', path: 'theory_max' },
+            { label: 'Practical', path: 'practical_obtained' },
+            { label: 'Practical Max', path: 'practical_max' },
+            { label: 'Total', path: 'score' },
+            { label: 'Total Max', path: 'max_score' }
+        ],
+        'marcs_list': [
             { label: 'Subject', path: 'subject' },
             { label: 'Theory', path: 'theory_obtained' },
             { label: 'Theory Max', path: 'theory_max' },

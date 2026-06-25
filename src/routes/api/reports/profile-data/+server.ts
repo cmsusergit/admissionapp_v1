@@ -169,15 +169,32 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
 
                     if (isEntranceSection) {
                         reconstructedEntranceMarks.push(markItem);
-                    } else if (f.is_merit === true) { // STRICTURE: Only if explicitly merit
+                    } else if (section || f.is_merit === true) { // Include all board subjects from table layout sections, plus any other explicit merit fields
                         reconstructedBoardMarks.push(markItem);
                     }
                 }
             });
         }
 
-        // If DB marks exist, use them as base for board marks, but also keep track of schema-based defaults
-        let baseMarksForEnhancement = marksData.length > 0 ? [...marksData] : reconstructedBoardMarks;
+        // Merge DB marks with reconstructed schema board marks to ensure all subjects are present
+        let baseMarksForEnhancement = [...reconstructedBoardMarks];
+        if (marksData.length > 0) {
+            marksData.forEach((dbMark: any) => {
+                const existingIndex = baseMarksForEnhancement.findIndex(m => 
+                    (m.subject_key && m.subject_key === dbMark.subject_key) || 
+                    (m.subject && m.subject.toLowerCase() === dbMark.subject?.toLowerCase())
+                );
+                if (existingIndex > -1) {
+                    baseMarksForEnhancement[existingIndex] = {
+                        ...baseMarksForEnhancement[existingIndex],
+                        ...dbMark,
+                        subject_key: baseMarksForEnhancement[existingIndex].subject_key || dbMark.subject_key
+                    };
+                } else {
+                    baseMarksForEnhancement.push(dbMark);
+                }
+            });
+        }
         
         // NEW: Map schema defaults by subject key AND lowercased label for easy lookup
         const schemaDefaults: Record<string, any> = {};
@@ -390,8 +407,18 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             branch: appData.branch,
             branches: appData.branch, // Alias
             marks: formattedMarks,
-            marks_list: enhancedMarksData,
-            merit_marks: enhancedMarksData, // Alias for standard names
+            marks_list: enhancedMarksData.filter((m: any) => {
+                const subject = (m.subject || '').toLowerCase();
+                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry');
+            }),
+            marcs_list: enhancedMarksData.filter((m: any) => {
+                const subject = (m.subject || '').toLowerCase();
+                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry');
+            }), // Alias for spelling compatibility
+            merit_marks: enhancedMarksData.filter((m: any) => {
+                const subject = (m.subject || '').toLowerCase();
+                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry');
+            }), // Alias for standard names
             payments: appData.payments || [],
             entrance_marks: entranceMarksObj,
             entrance_marks_list: entranceMarksList,

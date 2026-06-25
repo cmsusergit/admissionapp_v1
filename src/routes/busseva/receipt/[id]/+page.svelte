@@ -1,20 +1,66 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import type { PageData } from './$types';
+    import { enhance } from '$app/forms';
+    import { toastStore } from '$lib/stores/toastStore';
 
     let { data } = $props<{ data: PageData }>();
-    const record = data.record;
+    const record = $derived(data.record);
+    const userRole = $derived(data.userRole);
     let photoBase64: string | null = null;
     let logoBase64: string | null = null;
+
+    function validateImageBase64(base64Str: string | null): string | null {
+        if (!base64Str) return null;
+        
+        const trimmed = base64Str.trim();
+        const match = trimmed.match(/^data:image\/(jpeg|jpg|png);base64,(.*)$/);
+        if (!match) {
+            console.error('Invalid image data URL format or unsupported mime type');
+            return null;
+        }
+        
+        const mimeType = match[1];
+        const base64Data = match[2];
+        
+        if (mimeType === 'jpeg' || mimeType === 'jpg') {
+            if (base64Data.startsWith('/9j/')) {
+                return trimmed;
+            } else {
+                console.error('Image claims to be jpeg/jpg but does not start with valid JPEG magic prefix');
+                return null;
+            }
+        } else if (mimeType === 'png') {
+            if (base64Data.startsWith('iVBORw') || base64Data.startsWith('iVBOR')) {
+                return trimmed;
+            } else {
+                console.error('Image claims to be png but does not start with valid PNG magic prefix');
+                return null;
+            }
+        }
+        
+        return null;
+    }
 
     async function getBase64ImageFromUrl(imageUrl: string): Promise<string | null> {
         try {
             const res = await fetch(imageUrl);
+            if (!res.ok) {
+                console.error('Fetch failed for image URL:', imageUrl);
+                return null;
+            }
             const blob = await res.blob();
-            return new Promise((resolve, reject) => {
+            if (blob.type !== 'image/jpeg' && blob.type !== 'image/jpg' && blob.type !== 'image/png') {
+                console.error('Fetched file is not a supported image format:', blob.type);
+                return null;
+            }
+            return new Promise((resolve) => {
                 const reader = new FileReader();
-                reader.addEventListener('load', () => resolve(reader.result as string));
-                reader.addEventListener('error', () => reject(null));
+                reader.addEventListener('load', () => {
+                    const result = reader.result as string;
+                    resolve(result || null);
+                });
+                reader.addEventListener('error', () => resolve(null));
                 reader.readAsDataURL(blob);
             });
         } catch (error) {
@@ -25,13 +71,13 @@
 
     async function loadAssets() {
         if (data.photoUrl) {
-            photoBase64 = await getBase64ImageFromUrl(data.photoUrl);
+            photoBase64 = validateImageBase64(await getBase64ImageFromUrl(data.photoUrl));
         }
         if (data.logoUrl) {
-            if (data.logoUrl.startsWith('data:')) {
-                logoBase64 = data.logoUrl;
-            } else {
-                logoBase64 = await getBase64ImageFromUrl(data.logoUrl);
+            if (data.logoUrl.startsWith('data:image/')) {
+                logoBase64 = validateImageBase64(data.logoUrl);
+            } else if (!data.logoUrl.startsWith('data:')) {
+                logoBase64 = validateImageBase64(await getBase64ImageFromUrl(data.logoUrl));
             }
         }
     }
@@ -49,7 +95,7 @@
             const profileRaw = record.student?.student_profiles;
             const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw;
             const enrollmentNo = profile?.enrollment_number || record.enrollment_number || 'N/A';
-            const activeAppRaw = profile?.active_app;
+            const activeAppRaw = record.student?.active_app;
             const activeApp = Array.isArray(activeAppRaw) ? activeAppRaw[0] : activeAppRaw;
 
             const collegeName = data.collegeName || activeApp?.courses?.colleges?.name || 'Sardar Vallabhbhai Patel Institute of Technology';
@@ -198,7 +244,7 @@
     });
 </script>
 
-<div class="container text-center mt-5">
+<div class="container text-center mt-5 mb-5">
     <div class="card p-5 shadow-sm mx-auto" style="max-width: 500px;">
         <i class="bi bi-file-earmark-pdf-fill text-danger display-1 mb-3"></i>
         <h3>Generating Printable Receipt</h3>
@@ -206,4 +252,52 @@
         <button class="btn btn-primary btn-lg mt-3" onclick={printReceipt}>Print Receipt</button>
         <a href="/busseva" class="btn btn-outline-secondary btn-lg mt-2">Back to Search</a>
     </div>
+
+    {#if userRole === 'fee_collector' || userRole === 'deo'}
+        <div class="card p-4 shadow-sm mx-auto mt-4 text-start" style="max-width: 500px;">
+            <h4 class="mb-3 text-primary"><i class="bi bi-pencil-square me-2"></i>Edit Receipt Details</h4>
+            <form method="POST" action="?/updateReceipt" use:enhance={() => {
+                return async ({ result }) => {
+                    if (result.type === 'success') {
+                        toastStore.success('Receipt details updated successfully!');
+                        await loadAssets();
+                        printReceipt();
+                    } else if (result.type === 'failure') {
+                        const err = typeof result.data?.error === 'string' ? result.data.error : 'Failed to update details';
+                        toastStore.error(err);
+                    } else if (result.type === 'error') {
+                        toastStore.error('An error occurred while saving.');
+                    }
+                };
+            }} class="needs-validation">
+                <div class="mb-3">
+                    <label for="receipt_number" class="form-label fw-bold">Receipt Number</label>
+                    <input type="text" class="form-control" id="receipt_number" name="receipt_number" value={record.receipt_number} required>
+                </div>
+                <div class="mb-3">
+                    <label for="route_name" class="form-label fw-bold">Route Name</label>
+                    <input type="text" class="form-control" id="route_name" name="route_name" value={record.route_name || ''} required>
+                </div>
+                <div class="mb-3">
+                    <label for="location" class="form-label fw-bold">Location / Stop</label>
+                    <input type="text" class="form-control" id="location" name="location" value={record.location || ''} required>
+                </div>
+                <div class="mb-3">
+                    <label for="transaction_number" class="form-label fw-bold">Transaction Reference Number</label>
+                    <input type="text" class="form-control" id="transaction_number" name="transaction_number" value={record.transaction_number || ''} required>
+                </div>
+                <div class="mb-3">
+                    <label for="total_amount" class="form-label fw-bold">Total Amount (INR)</label>
+                    <input type="number" class="form-control" id="total_amount" name="total_amount" value={record.total_amount} required>
+                </div>
+                <div class="mb-3">
+                    <label for="payment_date" class="form-label fw-bold">Payment Date</label>
+                    <input type="date" class="form-control" id="payment_date" name="payment_date" value={new Date(record.payment_date).toISOString().split('T')[0]} required>
+                </div>
+                <button type="submit" class="btn btn-success w-100 btn-lg mt-2">
+                    <i class="bi bi-save me-2"></i>Save Details
+                </button>
+            </form>
+        </div>
+    {/if}
 </div>

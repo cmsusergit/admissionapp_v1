@@ -691,7 +691,7 @@ export const actions: Actions = {
       // Check application status before update
       const { data: existingAppCheck, error: checkError } = await supabase
         .from("applications")
-        .select("status, application_fee_status")
+        .select("status, application_fee_status, form_data")
         .eq("id", validatedApplicationId)
         .single();
 
@@ -699,7 +699,8 @@ export const actions: Actions = {
         return fail(404, { message: "Application not found.", error: true });
       }
 
-      if (["verified", "approved"].includes(existingAppCheck.status)) {
+      const isReuploadAllowed = existingAppCheck.form_data?.allow_reupload === true || validatedFormData?.allow_reupload === true;
+      if (["verified", "approved"].includes(existingAppCheck.status) && !isReuploadAllowed) {
         return fail(403, {
           message: "Application is locked and cannot be edited.",
           error: true,
@@ -759,7 +760,7 @@ export const actions: Actions = {
       // Check for existing application
       const { data: existingApp, error: existingAppError } = await supabase
         .from("applications")
-        .select("id, status, application_fee_status")
+        .select("id, status, application_fee_status, form_data")
         .eq("student_id", validatedStudentId)
         .eq("course_id", validatedCourseId)
         .eq("cycle_id", validatedCycleId)
@@ -768,7 +769,8 @@ export const actions: Actions = {
 
       if (existingApp) {
         // If it exists, update it instead of creating duplicate
-        if (["verified", "approved"].includes(existingApp.status)) {
+        const isReuploadAllowed = existingApp.form_data?.allow_reupload === true || validatedFormData?.allow_reupload === true;
+        if (["verified", "approved"].includes(existingApp.status) && !isReuploadAllowed) {
             return fail(403, { message: "Application is locked and cannot be edited.", error: true });
         }
 
@@ -923,7 +925,8 @@ export const actions: Actions = {
       return fail(404, { message: "Application not found", error: true });
     }
 
-    if (["verified", "approved"].includes(appData.status)) {
+    const isReuploadAllowed = appData.form_data?.allow_reupload === true;
+    if (["verified", "approved"].includes(appData.status) && !isReuploadAllowed) {
       return fail(403, {
         message:
           "Application is already processed and cannot be submitted again.",
@@ -946,11 +949,22 @@ export const actions: Actions = {
       feeStatusUpdate = { application_fee_status: "pending" };
     }
 
+    // Reset allow_reupload inside form_data when submitting
+    const updatedFormData = { ...appData.form_data };
+    if (updatedFormData.allow_reupload) {
+      delete updatedFormData.allow_reupload;
+    }
+
+    const nextStatus = isReuploadAllowed && ["verified", "approved"].includes(appData.status) 
+      ? appData.status 
+      : "submitted";
+
     const { error } = await supabase
       .from("applications")
       .update({
-        status: "submitted",
+        status: nextStatus,
         submitted_at: new Date().toISOString(),
+        form_data: updatedFormData,
         updated_by: authenticatedUser.id,
         ...feeStatusUpdate,
       })
