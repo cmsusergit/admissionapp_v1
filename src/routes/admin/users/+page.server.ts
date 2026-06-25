@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
-export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticatedUser, userProfile } }) => {
+export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthenticatedUser, userProfile } }) => {
     const authenticatedUser = await getAuthenticatedUser();
 
     if (!authenticatedUser) {
@@ -15,11 +15,41 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         throw redirect(303, '/login');
     }
 
-    // Fetch all users with their details
-    const { data: users, error: usersError } = await supabase
+    // Extract parameters for pagination and search
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+    const pageSize = Math.max(1, parseInt(url.searchParams.get('pageSize') || '25'));
+    const searchEmail = url.searchParams.get('searchEmail') || '';
+    const filterRole = url.searchParams.get('filterRole') || '';
+    const filterUniversity = url.searchParams.get('filterUniversity') || '';
+    const filterCollege = url.searchParams.get('filterCollege') || '';
+
+    // Build the query
+    let query = supabase
         .from('users')
-        .select('*, universities(name), colleges(name)')
-        .order('created_at', { ascending: false });
+        .select('*, universities(name), colleges(name)', { count: 'exact' });
+
+    if (searchEmail) {
+        query = query.or(`email.ilike.%${searchEmail}%,full_name.ilike.%${searchEmail}%`);
+    }
+
+    if (filterRole) {
+        query = query.eq('role', filterRole);
+    }
+
+    if (filterUniversity) {
+        query = query.eq('university_id', filterUniversity);
+    }
+
+    if (filterCollege) {
+        query = query.eq('college_id', filterCollege);
+    }
+
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data: users, count: totalCount, error: usersError } = await query
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
     // Fetch lists for dropdowns
     const { data: universities } = await supabase.from('universities').select('id, name');
@@ -27,13 +57,21 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     if (usersError) {
         console.error('Error fetching users:', usersError.message);
-        return { users: [], universities: [], colleges: [] };
     }
 
     return {
         users: users || [],
+        totalCount: totalCount || 0,
         universities: universities || [],
-        colleges: colleges || []
+        colleges: colleges || [],
+        filters: {
+            page,
+            pageSize,
+            searchEmail,
+            filterRole,
+            filterUniversity,
+            filterCollege
+        }
     };
 };
 

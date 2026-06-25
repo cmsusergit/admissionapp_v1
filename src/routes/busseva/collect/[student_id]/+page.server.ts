@@ -116,7 +116,16 @@ export const load: PageServerLoad = async ({ params, locals: { getSession, userP
         .eq('academic_year_id', activeYear?.id)
         .maybeSingle();
 
-    return { studentProfile, activeApp, activeYear, qrConfig };
+    // Check for existing payment
+    const enrollmentNumber = studentProfile.enrollment_number;
+    const { data: existingFee } = await supabase
+        .from('busseva_fees')
+        .select('id, receipt_number')
+        .eq('academic_year_id', activeYear?.id)
+        .or(`student_id.eq.${params.student_id}${enrollmentNumber ? `,enrollment_number.eq.${enrollmentNumber}` : ''}`)
+        .maybeSingle();
+
+    return { studentProfile, activeApp, activeYear, qrConfig, existingFee };
 };
 
 export const actions: Actions = {
@@ -131,6 +140,8 @@ export const actions: Actions = {
         const academicYearId = formData.get('academic_year_id') as string;
         const enrollmentNumber = formData.get('enrollment_number') as string;
         const collegeId = formData.get('college_id') as string;
+        const routeName = formData.get('route_name') as string;
+        const location = formData.get('location') as string;
 
         if (!transactionNumber || transactionNumber.trim() === '') {
             return fail(400, { message: 'Transaction ID is required.' });
@@ -140,6 +151,12 @@ export const actions: Actions = {
         }
         if (!collegeId) {
             return fail(400, { message: 'College ID is required.' });
+        }
+        if (!routeName || routeName.trim() === '') {
+            return fail(400, { message: 'Route Name is required.' });
+        }
+        if (!location || location.trim() === '') {
+            return fail(400, { message: 'Location/Stop is required.' });
         }
 
         // Bypassing RLS for sequences and insert via admin client
@@ -157,7 +174,9 @@ export const actions: Actions = {
                 total_amount: paidAmount,
                 receipt_number: receiptNumber,
                 transaction_number: transactionNumber.trim(),
-                collected_by: userProfile.id
+                collected_by: userProfile.id,
+                route_name: routeName.trim(),
+                location: location.trim()
             })
             .select()
             .single();

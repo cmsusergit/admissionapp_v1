@@ -1,5 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
 export const load: PageServerLoad = async ({ params, locals: { getSession, userProfile, supabase } }) => {
     const session = await getSession();
@@ -12,14 +15,21 @@ export const load: PageServerLoad = async ({ params, locals: { getSession, userP
         .select(`
             *,
             student:users!fk_busseva_fees_student (
+                id,
                 full_name,
                 email,
                 student_profiles (
                     enrollment_number,
+                    profile_data,
                     active_app:applications (
+                        id,
                         courses (
                             name,
-                            colleges ( name )
+                            colleges ( 
+                                name,
+                                logo_url,
+                                universities ( name, logo_url )
+                            )
                         ),
                         branches ( name )
                     )
@@ -46,5 +56,96 @@ export const load: PageServerLoad = async ({ params, locals: { getSession, userP
         throw redirect(303, '/busseva?error=Unauthorized');
     }
 
-    return { record };
+    // Fetch photo and logo urls using admin client
+    let photoUrl = '';
+    let logoUrl = '';
+    let collegeName = '';
+    try {
+        const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const studentId = record.student_id;
+        
+        const profileRaw = record.student?.student_profiles;
+        const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw;
+        const profileData = profile?.profile_data;
+        
+        const activeAppRaw = profile?.active_app;
+        const activeApp = Array.isArray(activeAppRaw) ? activeAppRaw[0] : activeAppRaw;
+        const applicationId = activeApp?.id;
+
+        // 1. Check documents table first for photo
+        if (studentId || applicationId) {
+            let docQuery = supabaseAdmin
+                .from('documents')
+                .select('file_path')
+                .ilike('document_type', '%photo%')
+                .order('created_at', { ascending: false });
+
+            if (applicationId && studentId) {
+                docQuery = docQuery.or(`application_id.eq.${applicationId},user_id.eq.${studentId}`);
+            } else if (studentId) {
+                docQuery = docQuery.eq('user_id', studentId);
+            } else if (applicationId) {
+                docQuery = docQuery.eq('application_id', applicationId);
+            }
+
+            const { data: docs } = await docQuery;
+            if (docs && docs.length > 0) {
+                const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(docs[0].file_path, 3600);
+                if (urlData) photoUrl = urlData.signedUrl;
+            }
+        }
+
+        // 2. Check profile_data.photo fallback
+        if (!photoUrl && profileData?.photo) {
+            const { data: urlData } = await supabaseAdmin.storage.from('documents').createSignedUrl(profileData.photo, 3600);
+            if (urlData) photoUrl = urlData.signedUrl;
+        }
+
+        // 3. Resolve college details and logo url (college logo or university logo fallback)
+        let rawLogoPath = '';
+        
+        if (record.college_id) {
+            const { data: directCollege } = await supabaseAdmin
+                .from('colleges')
+                .select('name, logo_url, universities(name, logo_url)')
+                .eq('id', record.college_id)
+                .single();
+            if (directCollege) {
+                collegeName = directCollege.name;
+                const university = Array.isArray(directCollege.universities) ? directCollege.universities[0] : directCollege.universities;
+                rawLogoPath = directCollege.logo_url || university?.logo_url || '';
+            }
+        }
+
+        // Fallback to active app join if direct college fetch wasn't successful
+        if (!collegeName || !rawLogoPath) {
+            const collegeRaw = activeApp?.courses?.colleges;
+            const college = Array.isArray(collegeRaw) ? collegeRaw[0] : collegeRaw;
+            
+            const uniRaw = college?.universities;
+            const university = Array.isArray(uniRaw) ? uniRaw[0] : uniRaw;
+            
+            if (!collegeName && college?.name) {
+                collegeName = college.name;
+            }
+            if (!rawLogoPath) {
+                rawLogoPath = college?.logo_url || university?.logo_url || '';
+            }
+        }
+
+        if (rawLogoPath) {
+            if (rawLogoPath.startsWith('http://') || rawLogoPath.startsWith('https://') || rawLogoPath.startsWith('data:')) {
+                logoUrl = rawLogoPath;
+            } else {
+                const { data: publicData } = supabaseAdmin.storage.from('branding').getPublicUrl(rawLogoPath);
+                if (publicData?.publicUrl) {
+                    logoUrl = publicData.publicUrl;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error fetching student photo or logo for receipt:', e);
+    }
+
+    return { record, photoUrl, logoUrl, collegeName };
 };

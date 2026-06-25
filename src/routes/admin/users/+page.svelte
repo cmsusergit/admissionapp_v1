@@ -3,6 +3,8 @@
     import { enhance } from '$app/forms';
     import { writable } from 'svelte/store';
     import { startLoading, stopLoading } from '$lib/stores/loadingStore';
+    import { goto } from '$app/navigation';
+    import { page as pageStore } from '$app/stores';
 
     export let data: PageData;
     export let form: ActionData;
@@ -49,19 +51,23 @@
     ];
 
     // Filter state
-    let searchEmail = '';
-    let filterRole = '';
-    let filterUniversity = '';
-    let filterCollege = '';
+    let searchEmail = data.filters?.searchEmail || '';
+    let filterRole = data.filters?.filterRole || '';
+    let filterUniversity = data.filters?.filterUniversity || '';
+    let filterCollege = data.filters?.filterCollege || '';
+    let pageSize = data.filters?.pageSize || 25;
 
-    // Filtered Users Logic
-    $: filteredUsers = data.users.filter(user => {
-        const matchEmail = user.email.toLowerCase().includes(searchEmail.toLowerCase());
-        const matchRole = filterRole ? user.role === filterRole : true;
-        const matchUniversity = filterUniversity ? user.university_id === filterUniversity : true;
-        const matchCollege = filterCollege ? user.college_id === filterCollege : true;
-        return matchEmail && matchRole && matchUniversity && matchCollege;
-    });
+    // React to data changes to update filters (e.g. back/forward navigation or reset)
+    $: if (data.filters) {
+        searchEmail = data.filters.searchEmail || '';
+        filterRole = data.filters.filterRole || '';
+        filterUniversity = data.filters.filterUniversity || '';
+        filterCollege = data.filters.filterCollege || '';
+        pageSize = data.filters.pageSize || 25;
+    }
+
+    // Filtered Users Logic (Now from server pagination)
+    $: filteredUsers = data.users;
 
     // Reactive college options for filter based on selected university
     $: filterCollegeOptions = filterUniversity
@@ -76,6 +82,61 @@
     $: filteredNewColleges = $newUser.university_id
         ? data.colleges.filter(c => c.university_id === $newUser.university_id)
         : [];
+
+    $: totalPages = Math.ceil(data.totalCount / (data.filters?.pageSize || 25));
+    $: currentPage = data.filters?.page || 1;
+
+    function applyFilters() {
+        const params = new URLSearchParams($pageStore.url.searchParams);
+        params.set('page', '1');
+        if (searchEmail) params.set('searchEmail', searchEmail); else params.delete('searchEmail');
+        if (filterRole) params.set('filterRole', filterRole); else params.delete('filterRole');
+        if (filterUniversity) params.set('filterUniversity', filterUniversity); else params.delete('filterUniversity');
+        if (filterCollege) params.set('filterCollege', filterCollege); else params.delete('filterCollege');
+        params.set('pageSize', pageSize.toString());
+        goto(`?${params.toString()}`, { keepFocus: true });
+    }
+
+    function changePage(newPage: number) {
+        const params = new URLSearchParams($pageStore.url.searchParams);
+        params.set('page', newPage.toString());
+        params.set('pageSize', pageSize.toString());
+        goto(`?${params.toString()}`);
+    }
+
+    function resetFilters() {
+        searchEmail = '';
+        filterRole = '';
+        filterUniversity = '';
+        filterCollege = '';
+        pageSize = 25;
+        goto(`?page=1&pageSize=25`);
+    }
+
+    // Helper for pagination numbers
+    function getPageNumbers(current: number, total: number) {
+        const pages: (number | string)[] = [];
+        if (total <= 7) {
+            for (let i = 1; i <= total; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (current > 3) {
+                pages.push('...');
+            }
+            const start = Math.max(2, current - 1);
+            const end = Math.min(total - 1, current + 1);
+            for (let i = start; i <= end; i++) {
+                pages.push(i);
+            }
+            if (current < total - 2) {
+                pages.push('...');
+            }
+            pages.push(total);
+        }
+        return pages;
+    }
+
+    $: pageNumbers = getPageNumbers(currentPage, totalPages);
 
     function openCreateModal() {
         newUser.set({
@@ -133,37 +194,45 @@
     <!-- Filters -->
     <div class="card mb-3">
         <div class="card-body">
-            <div class="row g-3">
+            <div class="row g-3 align-items-end">
                 <div class="col-md-3">
-                    <label for="filter-email" class="form-label">Search Email</label>
-                    <input type="text" class="form-control" id="filter-email" placeholder="name@example.com" bind:value={searchEmail}>
+                    <label for="filter-email" class="form-label">Search Email/Name</label>
+                    <input type="text" class="form-control" id="filter-email" placeholder="Search email or name..." bind:value={searchEmail} on:keydown={(e) => e.key === 'Enter' && applyFilters()}>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="filter-role" class="form-label">Filter by Role</label>
-                    <select class="form-select" id="filter-role" bind:value={filterRole}>
+                    <select class="form-select" id="filter-role" bind:value={filterRole} on:change={applyFilters}>
                         <option value="">All Roles</option>
                         {#each roles as role}
                             <option value={role}>{role}</option>
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="filter-university" class="form-label">Filter by University</label>
-                    <select class="form-select" id="filter-university" bind:value={filterUniversity}>
+                    <select class="form-select" id="filter-university" bind:value={filterUniversity} on:change={() => { filterCollege = ''; applyFilters(); }}>
                         <option value="">All Universities</option>
                         {#each data.universities as uni}
                             <option value={uni.id}>{uni.name}</option>
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="filter-college" class="form-label">Filter by College</label>
-                    <select class="form-select" id="filter-college" bind:value={filterCollege}>
+                    <select class="form-select" id="filter-college" bind:value={filterCollege} on:change={applyFilters}>
                         <option value="">All Colleges</option>
                         {#each filterCollegeOptions as college}
                             <option value={college.id}>{college.name}</option>
                         {/each}
                     </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="button" class="btn btn-primary flex-grow-1" on:click={applyFilters}>
+                        <i class="bi bi-search me-1"></i> Filter
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" on:click={resetFilters}>
+                        Reset
+                    </button>
                 </div>
             </div>
         </div>
@@ -172,7 +241,7 @@
     <div class="card">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0">
+                <table class="table table-striped table-hover mb-0 align-middle">
                     <thead>
                         <tr>
                             <th>Email</th>
@@ -206,10 +275,54 @@
                                     <button class="btn btn-sm btn-danger" on:click={() => openDeleteModal(user)}>Delete</button>
                                 </td>
                             </tr>
+                        {:else}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">
+                                    No users found matching the search criteria.
+                                </td>
+                            </tr>
                         {/each}
                     </tbody>
                 </table>
             </div>
+        </div>
+        <!-- Card Footer for Pagination -->
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="small text-muted">
+                    Showing {data.totalCount > 0 ? (currentPage - 1) * pageSize + 1 : 0} to {Math.min(currentPage * pageSize, data.totalCount)} of {data.totalCount} entries
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="small text-muted">Show:</span>
+                    <select class="form-select form-select-sm" style="width: auto;" bind:value={pageSize} on:change={applyFilters}>
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                    </select>
+                </div>
+            </div>
+            {#if totalPages > 1}
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item {currentPage === 1 ? 'disabled' : ''}">
+                            <button class="page-link" on:click={() => changePage(currentPage - 1)}>Previous</button>
+                        </li>
+                        {#each pageNumbers as pageNum}
+                            {#if pageNum === '...'}
+                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                            {:else}
+                                <li class="page-item {currentPage === pageNum ? 'active' : ''}">
+                                    <button class="page-link" on:click={() => changePage(Number(pageNum))}>{pageNum}</button>
+                                </li>
+                            {/if}
+                        {/each}
+                        <li class="page-item {currentPage === totalPages ? 'disabled' : ''}">
+                            <button class="page-link" on:click={() => changePage(currentPage + 1)}>Next</button>
+                        </li>
+                    </ul>
+                </nav>
+            {/if}
         </div>
     </div>
 </div>
