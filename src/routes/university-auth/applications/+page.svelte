@@ -29,6 +29,8 @@
     $: totalPages = Math.ceil((data.count || 0) / data.limit);
     $: sortField = data.sortField || 'merit_rank';
     $: sortOrder = data.sortOrder || 'asc';
+    $: formTypeFilter = data.formTypeFilter || 'all';
+    $: offset = ((data.page || 1) - 1) * (data.limit || 50);
 
     // Helpers
     function updateQuery(updates: Record<string, string>) {
@@ -43,6 +45,9 @@
     function triggerSearch() { updateQuery({ search: searchQuery, page: '1' }); }
     function handleKeydown(e: KeyboardEvent) { if (e.key === 'Enter') triggerSearch(); }
     function changePage(p: number) { updateQuery({ page: p.toString() }); }
+    function handleFormTypeChange() {
+        updateQuery({ form_type: formTypeFilter === 'all' ? '' : formTypeFilter, page: '1' });
+    }
     function switchTab(t: string) { updateQuery({ tab: t, page: '1', search: '' }); }
 
     function handleSort(field: string) {
@@ -295,6 +300,16 @@
                         </button>
                     </div>
                 </div>
+                <div class="col-md-3">
+                    <select class="form-select" bind:value={formTypeFilter} on:change={handleFormTypeChange}>
+                        <option value="all">All Form Types</option>
+                        {#if data.formTypesMap}
+                            {#each Object.keys(data.formTypesMap) as type}
+                                <option value={type}>{type}</option>
+                            {/each}
+                        {/if}
+                    </select>
+                </div>
             </div>
         </div>
     </div>
@@ -334,6 +349,7 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead class="bg-light">
                         <tr>
+                            <th>Sr. No.</th>
                             <th>Student</th>
                             <th>Course / Branch</th>
                             <th>Cycle</th>
@@ -354,8 +370,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each data.applications as app}
+                        {#each data.applications as app, i}
                             <tr>
+                                <td class="text-muted fw-semibold">{offset + i + 1}</td>
                                 <td>
                                     <div class="fw-bold">{(app.users as any)?.full_name || 'Unknown'}</div>
                                     <small class="text-muted">{(app.users as any)?.email}</small>
@@ -414,7 +431,7 @@
                             </tr>
                         {:else}
                             <tr>
-                                <td colspan="7" class="text-center py-5 text-muted">No applications found.</td>
+                                <td colspan="8" class="text-center py-5 text-muted">No applications found.</td>
                             </tr>
                         {/each}
                     </tbody>

@@ -29,6 +29,11 @@ export const load: PageServerLoad = async ({
   const sortOrder = url.searchParams.get("order") || "asc";
   const offset = (page - 1) * limit;
 
+  let formTypeFilter = url.searchParams.get("form_type");
+  if (!formTypeFilter && activeTab === "approved") {
+    formTypeFilter = "MQ/NRI";
+  }
+
   const supabaseAdmin = createClient(
     PUBLIC_SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
@@ -36,7 +41,7 @@ export const load: PageServerLoad = async ({
 
   // 1. Get Applications for this university using Service Role and inner joins to flatten query waterfall
   if (!userProfile.university_id) {
-    return { applications: [], count: 0, page, limit, search, activeTab };
+    return { applications: [], count: 0, page, limit, search, activeTab, formTypeFilter };
   }
 
   // Build query using Service Role and filter using nested inner joins
@@ -61,6 +66,11 @@ export const load: PageServerLoad = async ({
     query = query.eq("status", "verified");
   } else if (activeTab === "approved") {
     query = query.eq("status", "approved");
+  }
+
+  // Form Type Filter
+  if (formTypeFilter && formTypeFilter.toLowerCase() !== "all") {
+    query = query.eq("form_type", formTypeFilter);
   }
 
   // Search Filter
@@ -108,6 +118,7 @@ export const load: PageServerLoad = async ({
       limit,
       search,
       activeTab,
+      formTypeFilter,
     };
   }
 
@@ -165,6 +176,7 @@ export const load: PageServerLoad = async ({
     activeTab,
     sortField,
     sortOrder,
+    formTypeFilter,
     message: null,
     printTemplates: printTemplates || [],
     formTypesMap

@@ -27,20 +27,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     const courseId = url.searchParams.get('courseId') || null;
     const search = url.searchParams.get('search') || ''; 
 
-    // 1. Get Course & Form Type Options for Filter Dropdown
-    const [coursesRes, formTypesRes] = await Promise.all([
-        applyRoleBasedCollegeFilter(supabaseAdmin.from('courses').select('id, name, college_id'), userProfile, 'courses'),
-        supabaseAdmin.from('form_types').select('name, is_prov').eq('is_active', true).order('name')
-    ]);
-
-    const courses = coursesRes.data || [];
-    const formTypes = formTypesRes.data || [];
-
-    // Default formType to MQ/NRI if available in list and not explicitly set
-    let formType = url.searchParams.get('formType');
-    if (formType === null && formTypes.some(ft => ft.name === 'MQ/NRI')) {
-        formType = 'MQ/NRI';
-    }
+    // Default formType to MQ/NRI if not explicitly set
+    let formType = url.searchParams.get('formType') ?? 'MQ/NRI';
 
     // Pagination
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -91,7 +79,16 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
 
     console.log(`[BulkLoad] Loading Verification Center. User: ${userProfile.full_name}, Role: ${userProfile.role}, College: ${userProfile.college_id}`);
     
-    const { data: applications, count, error } = await query;
+    // Run all database fetches in parallel
+    const [coursesRes, formTypesRes, appRes] = await Promise.all([
+        applyRoleBasedCollegeFilter(supabaseAdmin.from('courses').select('id, name, college_id'), userProfile, 'courses'),
+        supabaseAdmin.from('form_types').select('name, is_prov').eq('is_active', true).order('name'),
+        query
+    ]);
+
+    const courses = coursesRes.data || [];
+    const formTypes = formTypesRes.data || [];
+    const { data: applications, count, error } = appRes;
 
     if (error) {
         console.error('[BulkLoad] Query Error:', error.message);

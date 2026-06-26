@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({
     throw redirect(303, "/login");
   }
 
-  // Fetch simple stats for DEO
+  // 1. Setup individual queries
   let draftQuery = supabase
     .from("applications")
     .select("id, courses!inner(college_id)", { count: "exact", head: true })
@@ -26,7 +26,6 @@ export const load: PageServerLoad = async ({
     userProfile,
     "applications",
   );
-  const { count: draftCount } = await draftQuery;
 
   let submittedQuery = supabase
     .from("applications")
@@ -37,7 +36,6 @@ export const load: PageServerLoad = async ({
     userProfile,
     "applications",
   );
-  const { count: submittedCount } = await submittedQuery;
 
   let verifiedQuery = supabase
     .from("applications")
@@ -48,16 +46,12 @@ export const load: PageServerLoad = async ({
     userProfile,
     "applications",
   );
-  const { count: verifiedCount } = await verifiedQuery;
 
   // Pagination and Filtering
   const page = parseInt(url.searchParams.get("page") || "1");
   const limit = parseInt(url.searchParams.get("limit") || "10");
   const formType = url.searchParams.get("form_type") || "all";
   const offset = (page - 1) * limit;
-
-  // Fetch available form types for filter
-  const { data: formTypes } = await supabase.from("form_types").select("name").order("name");
 
   // Fetch incomplete applications (draft or needs_correction)
   let incompleteQuery = supabase
@@ -85,18 +79,6 @@ export const load: PageServerLoad = async ({
 
   if (formType !== "all") {
     incompleteQuery = incompleteQuery.eq("form_type", formType);
-  }
-
-  const {
-    data: incompleteApplications,
-    count: incompleteCount,
-    error: incompleteError,
-  } = await incompleteQuery
-    .order("updated_at", { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (incompleteError) {
-    console.error("Error fetching incomplete apps:", incompleteError);
   }
 
   // Fetch recent SUBMITTED/VERIFIED applications to list separately
@@ -134,9 +116,40 @@ export const load: PageServerLoad = async ({
     recentQuery = recentQuery.eq("form_type", formType);
   }
 
-  const { data: recentApplications, error: recentError } = await recentQuery
-    .order("updated_at", { ascending: false })
-    .limit(10);
+  // 2. Fetch all data in parallel
+  const [
+    draftRes,
+    submittedRes,
+    verifiedRes,
+    formTypesRes,
+    incompleteRes,
+    recentRes
+  ] = await Promise.all([
+    draftQuery,
+    submittedQuery,
+    verifiedQuery,
+    supabase.from("form_types").select("name").order("name"),
+    incompleteQuery
+      .order("updated_at", { ascending: false })
+      .range(offset, offset + limit - 1),
+    recentQuery
+      .order("updated_at", { ascending: false })
+      .limit(10)
+  ]);
+
+  const { count: draftCount } = draftRes;
+  const { count: submittedCount } = submittedRes;
+  const { count: verifiedCount } = verifiedRes;
+  const { data: formTypes } = formTypesRes;
+  const { data: incompleteApplications, count: incompleteCount, error: incompleteError } = incompleteRes;
+  const { data: recentApplications, error: recentError } = recentRes;
+
+  if (incompleteError) {
+    console.error("Error fetching incomplete apps:", incompleteError);
+  }
+  if (recentError) {
+    console.error("Error fetching recent apps:", recentError);
+  }
 
   return {
     stats: {
