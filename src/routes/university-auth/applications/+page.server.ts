@@ -158,20 +158,30 @@ export const load: PageServerLoad = async ({
     }
   }
 
-  // Sign URLs for documents
+  // Sign URLs for documents in parallel
   if (applications && applications.length > 0) {
+    const signPromises: Promise<void>[] = [];
     for (const app of applications) {
       if (app.documents && app.documents.length > 0) {
         for (const doc of app.documents) {
-          const { data: signedData } = await supabaseAdmin.storage
-            .from("documents")
-            .createSignedUrl(doc.file_path, 3600); // 1 hour expiry
-
-          if (signedData) {
-            doc.signed_url = signedData.signedUrl;
-          }
+          signPromises.push(
+            supabaseAdmin.storage
+              .from("documents")
+              .createSignedUrl(doc.file_path, 3600)
+              .then(({ data: signedData }) => {
+                if (signedData) {
+                  doc.signed_url = signedData.signedUrl;
+                }
+              })
+              .catch((err) => {
+                console.error("Error signing document:", doc.file_path, err);
+              })
+          );
         }
       }
+    }
+    if (signPromises.length > 0) {
+      await Promise.all(signPromises);
     }
   }
 
