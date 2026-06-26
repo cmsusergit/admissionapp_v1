@@ -66,7 +66,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     // Execute critical queries in PARALLEL
     const [paymentsRes, coursesRes] = await Promise.all([
-        paymentsQuery.order('payment_date', { ascending: false }).range(from, to),
+        paymentsQuery.order('created_at', { ascending: false }).range(from, to),
         coursesQuery.order('name')
     ]);
 
