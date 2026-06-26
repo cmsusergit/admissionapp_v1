@@ -80,7 +80,12 @@
                         isEditingName = false;
                         invalidateAll();
                     } else {
-                        goto('/fee-collector/payments');
+                        // Reset payment input fields
+                        paymentModes.forEach(m => {
+                            m.amount = m.type === 'acpc' ? 20000 : 0;
+                            m.reference = '';
+                        });
+                        invalidateAll();
                     }
                 }
             }
@@ -214,8 +219,13 @@
             </button>
             <h1 class="h3 mb-0">Collect Admission Fees</h1>
         </div>
-        <div class="badge bg-primary fs-6 px-3 py-2">
-            ID: {admission.admission_number}
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-primary" on:click={() => goto('/fee-collector/payments')}>
+                <i class="bi bi-list-ul me-1"></i> Go to Payments Page
+            </button>
+            <div class="badge bg-primary fs-6 px-3 py-2">
+                ID: {admission.admission_number}
+            </div>
         </div>
     </div>
 
@@ -500,6 +510,12 @@
                 </div>
             </div>
         </div>
+    </div>
+    
+    <div class="d-flex justify-content-center mt-4">
+        <button class="btn btn-primary btn-lg px-5" on:click={() => goto('/fee-collector/payments')}>
+            <i class="bi bi-list-ul me-2"></i> Go to Payments Page
+        </button>
     </div>
 </div>
 
