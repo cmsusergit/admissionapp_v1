@@ -86,6 +86,10 @@
         if (courseStats?.courses.length) {
             const canvas = document.getElementById('course-admission-chart') as HTMLCanvasElement;
             if (canvas) {
+                const existingChart = Chart.getChart(canvas);
+                if (existingChart) {
+                    existingChart.destroy();
+                }
                 const chart = new Chart(canvas, {
                     type: 'bar',
                     data: {
@@ -127,6 +131,10 @@
             const canvasId = `branch-chart-${idx}`;
             const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
             if (canvas) {
+                const existingChart = Chart.getChart(canvas);
+                if (existingChart) {
+                    existingChart.destroy();
+                }
                 const chart = new Chart(canvas, {
                     type: 'bar',
                     data: {
@@ -169,6 +177,10 @@
         // 3. Global Pie Charts (Admitted by College)
         const pieCanvas = document.getElementById('pie-college-global') as HTMLCanvasElement;
         if (pieCanvas && data.admittedByCollegePie?.length) {
+            const existingChart = Chart.getChart(pieCanvas);
+            if (existingChart) {
+                existingChart.destroy();
+            }
             const chart = new Chart(pieCanvas, {
                 type: 'pie',
                 data: {
