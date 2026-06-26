@@ -34,43 +34,27 @@ export const load: PageServerLoad = async ({
     SUPABASE_SERVICE_ROLE_KEY,
   );
 
-  // 1. Get Colleges & Courses for this university to filter safely
+  // 1. Get Applications for this university using Service Role and inner joins to flatten query waterfall
   if (!userProfile.university_id) {
     return { applications: [], count: 0, page, limit, search, activeTab };
   }
 
-  // Get Colleges
-  const { data: colleges } = await supabaseAdmin
-    .from("colleges")
-    .select("id")
-    .eq("university_id", userProfile.university_id);
-
-  const collegeIds = colleges?.map((c) => c.id) || [];
-
-  // Get Courses
-  const { data: courses } = await supabaseAdmin
-    .from("courses")
-    .select("id")
-    .in("college_id", collegeIds);
-
-  const courseIds = courses?.map((c) => c.id) || [];
-
-  // Build query using Service Role
+  // Build query using Service Role and filter using nested inner joins
   let query = supabaseAdmin
     .from("applications")
     .select(
       `
-            id, status, form_type, admission_type, submitted_at, updated_at, student_id, course_id, cycle_id, branch_id, form_data, application_fee_status, created_by, updated_by, approval_comment, rejection_reason,
-            courses(id, name, branches(id, name, code, collegeid_code), colleges(id, name, universities(name))),
-            branches(id, name, code),
-            admission_cycles(id, name, academic_years(id, name)),
-            users!student_id!inner(full_name, email),
-            documents(*),
-            merit_list_entries(merit_score, merit_rank)
-        `,
+             id, status, form_type, admission_type, submitted_at, updated_at, student_id, course_id, cycle_id, branch_id, form_data, application_fee_status, created_by, updated_by, approval_comment, rejection_reason,
+             courses!inner(id, name, branches(id, name, code, collegeid_code), colleges!inner(id, name, university_id, universities(name))),
+             branches(id, name, code),
+             admission_cycles(id, name, academic_years(id, name)),
+             users!student_id!inner(full_name, email),
+             documents(*),
+             merit_list_entries(merit_score, merit_rank)
+         `,
       { count: "exact" },
     )
-    .in("course_id", courseIds);
+    .eq("courses.colleges.university_id", userProfile.university_id);
 
   // Status Filter
   if (activeTab === "verified") {
@@ -96,7 +80,20 @@ export const load: PageServerLoad = async ({
   }
   query = query.range(offset, offset + limit - 1);
 
-  const { data: applications, count, error: appError } = await query;
+  // Fetch applications, form types (including is_prov), and templates concurrently using Promise.all
+  const [appResult, formTypesResult, printTemplatesResult] = await Promise.all([
+    query,
+    supabaseAdmin.from("form_types").select("id, name, is_prov"),
+    supabaseAdmin
+      .from('report_templates')
+      .select('id, name, target_form_type_id')
+      .eq('report_type', 'html_profile')
+      .contains('allowed_roles', [userProfile?.role])
+  ]);
+
+  const { data: applications, count, error: appError } = appResult;
+  const formTypesData = formTypesResult.data;
+  const printTemplates = printTemplatesResult.data;
 
   if (appError) {
     console.error(
@@ -121,12 +118,8 @@ export const load: PageServerLoad = async ({
         .map(app => app.student_id);
 
     if (studentIdsMissingBranch.length > 0) {
-        // We need formTypesData to know which types are provisional
-        const { data: formTypesDataForProv } = await supabaseAdmin
-            .from('form_types')
-            .select('name, is_prov');
-
-        const provFormTypes = formTypesDataForProv
+        // Reuse formTypesData from parallel fetch to identify provisional types
+        const provFormTypes = formTypesData
             ?.filter(ft => ft.is_prov)
             .map(ft => ft.name) || ['Provisional'];
 
@@ -158,43 +151,10 @@ export const load: PageServerLoad = async ({
     }
   }
 
-  // Sign URLs for documents in parallel
-  if (applications && applications.length > 0) {
-    const signPromises: Promise<void>[] = [];
-    for (const app of applications) {
-      if (app.documents && app.documents.length > 0) {
-        for (const doc of app.documents) {
-          signPromises.push(
-            supabaseAdmin.storage
-              .from("documents")
-              .createSignedUrl(doc.file_path, 3600)
-              .then(({ data: signedData }) => {
-                if (signedData) {
-                  doc.signed_url = signedData.signedUrl;
-                }
-              })
-              .catch((err) => {
-                console.error("Error signing document:", doc.file_path, err);
-              })
-          );
-        }
-      }
-    }
-    if (signPromises.length > 0) {
-      await Promise.all(signPromises);
-    }
-  }
+  // NOTE: Document URLs are now signed client-side on-demand to improve loading speed.
 
-  // Fetch Form Type IDs for frontend filtering
-  const { data: formTypesData } = await supabaseAdmin.from("form_types").select("id, name");
+  // Build form types map from parallel fetch results
   const formTypesMap = Object.fromEntries(formTypesData?.map(ft => [ft.name, ft.id]) || []);
-
-  // Fetch Print Profile Templates
-  const { data: printTemplates } = await supabaseAdmin
-    .from('report_templates')
-    .select('id, name, target_form_type_id')
-    .eq('report_type', 'html_profile')
-    .contains('allowed_roles', [userProfile?.role]);
 
   return {
     applications: applications || [],

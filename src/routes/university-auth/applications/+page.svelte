@@ -7,6 +7,7 @@
     import { goto } from '$app/navigation';
     import { page as sveltePage } from '$app/stores';
     import { getBranchDisplayCode } from '$lib/utils/display_helpers';
+    import { supabase } from '$lib/supabase';
 
     export let data: PageData;
     export let form: ActionData;
@@ -54,9 +55,28 @@
         updateQuery({ sort: field, order: newOrder, page: '1' });
     }
 
-    function viewDetails(app: any) {
+    async function viewDetails(app: any) {
         selectedApplication = app;
         showDetailsModal = true;
+        
+        if (selectedApplication && selectedApplication.documents && selectedApplication.documents.length > 0) {
+            const promises = selectedApplication.documents.map(async (doc: any) => {
+                if (!doc.signed_url) {
+                    try {
+                        const { data: signedData, error } = await supabase.storage
+                            .from('documents')
+                            .createSignedUrl(doc.file_path, 3600);
+                        if (signedData) {
+                            doc.signed_url = signedData.signedUrl;
+                        }
+                    } catch (e) {
+                        console.error('Error signing document client-side:', e);
+                    }
+                }
+            });
+            await Promise.all(promises);
+            selectedApplication = selectedApplication;
+        }
     }
 
     function openApproveModal(app: any) {
