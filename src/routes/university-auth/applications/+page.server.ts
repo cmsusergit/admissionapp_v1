@@ -22,9 +22,11 @@ export const load: PageServerLoad = async ({
   }
 
   const page = parseInt(url.searchParams.get("page") || "1");
-  const limit = parseInt(url.searchParams.get("limit") || "10");
+  const limit = parseInt(url.searchParams.get("limit") || "50");
   const search = url.searchParams.get("search") || "";
   const activeTab = url.searchParams.get("tab") || "verified";
+  const sortField = url.searchParams.get("sort") || "merit_rank";
+  const sortOrder = url.searchParams.get("order") || "asc";
   const offset = (page - 1) * limit;
 
   const supabaseAdmin = createClient(
@@ -63,7 +65,8 @@ export const load: PageServerLoad = async ({
             branches(id, name, code),
             admission_cycles(id, name, academic_years(id, name)),
             users!student_id!inner(full_name, email),
-            documents(*)
+            documents(*),
+            merit_list_entries(merit_score, merit_rank)
         `,
       { count: "exact" },
     )
@@ -84,9 +87,14 @@ export const load: PageServerLoad = async ({
   }
 
   // Pagination & Sort
-  query = query
-    .order("submitted_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+  if (sortField === "merit_rank") {
+    query = query
+      .order("merit_list_entries(merit_rank)", { ascending: sortOrder === "asc", nullsFirst: false })
+      .order("submitted_at", { ascending: false });
+  } else {
+    query = query.order(sortField, { ascending: sortOrder === "asc" });
+  }
+  query = query.range(offset, offset + limit - 1);
 
   const { data: applications, count, error: appError } = await query;
 
@@ -185,6 +193,8 @@ export const load: PageServerLoad = async ({
     limit,
     search,
     activeTab,
+    sortField,
+    sortOrder,
     message: null,
     printTemplates: printTemplates || [],
     formTypesMap

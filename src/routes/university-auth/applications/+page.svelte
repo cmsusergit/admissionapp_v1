@@ -26,6 +26,8 @@
     $: activeTab = data.activeTab || 'verified';
     $: searchQuery = data.search || '';
     $: totalPages = Math.ceil((data.count || 0) / data.limit);
+    $: sortField = data.sortField || 'merit_rank';
+    $: sortOrder = data.sortOrder || 'asc';
 
     // Helpers
     function updateQuery(updates: Record<string, string>) {
@@ -41,6 +43,16 @@
     function handleKeydown(e: KeyboardEvent) { if (e.key === 'Enter') triggerSearch(); }
     function changePage(p: number) { updateQuery({ page: p.toString() }); }
     function switchTab(t: string) { updateQuery({ tab: t, page: '1', search: '' }); }
+
+    function handleSort(field: string) {
+        const currentSort = data.sortField || 'merit_rank';
+        const currentOrder = data.sortOrder || 'asc';
+        let defaultOrder = field === 'merit_rank' ? 'asc' : 'desc';
+        const newOrder = currentSort === field
+            ? (currentOrder === 'asc' ? 'desc' : 'asc')
+            : defaultOrder;
+        updateQuery({ sort: field, order: newOrder, page: '1' });
+    }
 
     function viewDetails(app: any) {
         selectedApplication = app;
@@ -58,7 +70,7 @@
             showApproveModal = true;
         } else {
             // Confirm direct approval
-            if(confirm(`Approve application for ${app.users?.full_name}?`)) {
+            if(confirm(`Approve application for ${(app.users as any)?.full_name}?`)) {
                 submitApproval();
             }
         }
@@ -89,7 +101,7 @@
     }
 
     async function waitlistApp(app: any) {
-        if(!confirm(`Waitlist application for ${app.users?.full_name}?`)) return;
+        if(!confirm(`Waitlist application for ${(app.users as any)?.full_name}?`)) return;
         const fd = new FormData();
         fd.append('application_id', app.id);
         const res = await fetch('?/waitlistApplication', { method: 'POST', body: fd });
@@ -149,7 +161,7 @@
     }
 
     async function revertApp(app: any) {
-        if(!confirm(`Revert approval for ${app.users?.full_name}? This will revoke admission.`)) return;
+        if(!confirm(`Revert approval for ${(app.users as any)?.full_name}? This will revoke admission.`)) return;
         const fd = new FormData();
         fd.append('application_id', app.id);
         
@@ -169,6 +181,44 @@
 
     function isMeritField(value: any): value is { value: any; max_score: any } {
         return typeof value === 'object' && value !== null && 'value' in value && 'max_score' in value;
+    }
+
+    function getMeritNumber(app: any): string | number {
+        if (!app) return '-';
+        
+        // Prioritize calculated merit rank from merit_list_entries table (even if unpublished)
+        const meritEntry = Array.isArray((app as any).merit_list_entries) 
+            ? (app as any).merit_list_entries[0] 
+            : (app as any).merit_list_entries;
+        if (meritEntry?.merit_rank !== undefined && meritEntry?.merit_rank !== null && meritEntry?.merit_rank !== '') {
+            return meritEntry.merit_rank;
+        }
+
+        // Fallback to manual/ACPC merit number in form_data
+        const formData = app.form_data;
+        if (!formData) return '-';
+        let data = formData;
+        if (typeof formData === 'string') {
+            try {
+                data = JSON.parse(formData);
+            } catch (e) {
+                return '-';
+            }
+        }
+        if (!data || typeof data !== 'object') return '-';
+        const candidateKeys = ['acpc_merit_number', 'merit_number', 'merit_no', 'merit'];
+        for (const key of candidateKeys) {
+            const val = data[key];
+            if (val !== undefined && val !== null && val !== '') {
+                if (typeof val === 'object' && val !== null) {
+                    if ('value' in val) {
+                        return val.value ?? '-';
+                    }
+                }
+                return val;
+            }
+        }
+        return '-';
     }
 
     // --- Print Profile Logic ---
@@ -267,7 +317,18 @@
                             <th>Student</th>
                             <th>Course / Branch</th>
                             <th>Cycle</th>
-                            <th>Submitted</th>
+                            <th style="cursor: pointer; user-select: none;" on:click={() => handleSort('submitted_at')}>
+                                Submitted
+                                {#if sortField === 'submitted_at'}
+                                    <i class="bi bi-arrow-{sortOrder === 'asc' ? 'up' : 'down'} ms-1"></i>
+                                {/if}
+                            </th>
+                            <th style="cursor: pointer; user-select: none;" on:click={() => handleSort('merit_rank')}>
+                                Merit No
+                                {#if sortField === 'merit_rank'}
+                                    <i class="bi bi-arrow-{sortOrder === 'asc' ? 'up' : 'down'} ms-1"></i>
+                                {/if}
+                            </th>
                             <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -276,22 +337,23 @@
                         {#each data.applications as app}
                             <tr>
                                 <td>
-                                    <div class="fw-bold">{app.users?.full_name || 'Unknown'}</div>
-                                    <small class="text-muted">{app.users?.email}</small>
+                                    <div class="fw-bold">{(app.users as any)?.full_name || 'Unknown'}</div>
+                                    <small class="text-muted">{(app.users as any)?.email}</small>
                                 </td>
                                 <td>
                                     {(app.courses as any)?.name}
-                                    {#if app.branches?.name}
-                                        <br><span class="badge bg-secondary text-light">{app.branches.name}</span>
-                                    {:else if app.prov_branch_name}
+                                    {#if (app.branches as any)?.name}
+                                        <br><span class="badge bg-secondary text-light">{(app.branches as any).name}</span>
+                                    {:else if (app as any).prov_branch_name}
                                         <br>
-                                        <span class="text-muted small">{app.prov_branch_name}</span>
+                                        <span class="text-muted small">{(app as any).prov_branch_name}</span>
                                         <small class="badge bg-light text-dark border ms-1" style="font-size: 0.65rem;" title="Branch from provisional application">Prov</small>
                                     {/if}
                                     <div class="small text-muted">{(app.courses as any)?.colleges?.name}</div>
                                 </td>
                                 <td>{Array.isArray(app.admission_cycles) ? (app.admission_cycles as any)[0]?.name : (app.admission_cycles as any)?.name}</td>
                                 <td>{new Date(app.submitted_at).toLocaleDateString()}</td>
+                                <td>{getMeritNumber(app)}</td>
                                 <td>
                                     <span class="badge {app.status === 'approved' ? 'bg-success' : 'bg-info'}">
                                         {app.status}
@@ -309,7 +371,7 @@
                                     <button class="btn btn-sm btn-outline-secondary me-1" on:click={() => viewDetails(app)} title="View Details">
                                         <i class="bi bi-eye"></i>
                                     </button>
-
+ 
                                     {#if activeTab === 'verified'}
                                         <button class="btn btn-sm btn-success me-1" on:click={() => openApproveModal(app)} title="Approve">
                                             <i class="bi bi-check-lg"></i>
@@ -332,7 +394,7 @@
                             </tr>
                         {:else}
                             <tr>
-                                <td colspan="6" class="text-center py-5 text-muted">No applications found.</td>
+                                <td colspan="7" class="text-center py-5 text-muted">No applications found.</td>
                             </tr>
                         {/each}
                     </tbody>
@@ -364,18 +426,18 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <h6>Student Info</h6>
-                        <p class="mb-1"><strong>Name:</strong> {selectedApplication.users?.full_name}</p>
-                        <p class="mb-1"><strong>Email:</strong> {selectedApplication.users?.email}</p>
+                        <p class="mb-1"><strong>Name:</strong> {(selectedApplication.users as any)?.full_name}</p>
+                        <p class="mb-1"><strong>Email:</strong> {(selectedApplication.users as any)?.email}</p>
                     </div>
                     <div class="col-md-6">
                         <h6>Status & Course</h6>
                         <p class="mb-1"><strong>Current:</strong> {selectedApplication.status}</p>
                         <p class="mb-1"><strong>Form Type:</strong> {selectedApplication.form_type}</p>
                         <p class="mb-1"><strong>Course:</strong> {(selectedApplication.courses as any)?.name} 
-                            {#if selectedApplication.branches?.name} 
-                                <span class="badge bg-secondary">{selectedApplication.branches.name}</span>
-                            {:else if selectedApplication.prov_branch_name}
-                                <span class="badge bg-light text-dark border" title="Branch from provisional application">{selectedApplication.prov_branch_name} <small class="text-muted ms-1">Prov</small></span>
+                            {#if (selectedApplication.branches as any)?.name} 
+                                <span class="badge bg-secondary">{(selectedApplication.branches as any).name}</span>
+                            {:else if (selectedApplication as any).prov_branch_name}
+                                <span class="badge bg-light text-dark border" title="Branch from provisional application">{(selectedApplication as any).prov_branch_name} <small class="text-muted ms-1">Prov</small></span>
                             {/if}
                         </p>
                     </div>
@@ -456,7 +518,7 @@
                 <button type="button" class="btn-close" on:click={() => showApproveModal = false}></button>
             </div>
             <div class="modal-body">
-                <p>Select Branch for {selectedApplication?.users?.full_name}:</p>
+                <p>Select Branch for {(selectedApplication?.users as any)?.full_name}:</p>
                 {#if (selectedApplication?.courses as any)?.branches}
                     <select class="form-select mb-3" bind:value={selectedBranchId}>
                         <option value="">-- Select Branch --</option>
@@ -487,7 +549,7 @@
                 <button type="button" class="btn-close" on:click={() => showWaitlistModal = false}></button>
             </div>
             <div class="modal-body">
-                <p>Waitlist application for {selectedApplication?.users?.full_name}?</p>
+                <p>Waitlist application for {(selectedApplication?.users as any)?.full_name}?</p>
                 <label class="form-label">Comment (Optional)</label>
                 <textarea class="form-control" bind:value={applicationApprovalComment} placeholder="Add a comment..." rows="2"></textarea>
             </div>
