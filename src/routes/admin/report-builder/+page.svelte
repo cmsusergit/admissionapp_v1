@@ -71,8 +71,8 @@
         return path;
     }
 
-    function handleInsertVariable(event: CustomEvent) {
-        let { variable, path } = event.detail;
+    function handleInsertVariable(path: string, label?: string) {
+        let variable = '';
         if (path) variable = `{{${mapPathToVariable(path)}}}`;
         if (!textareaRef) return;
         const start = textareaRef.selectionStart;
@@ -89,6 +89,7 @@
         if (typeof window !== 'undefined' && !(window as any).bootstrap) {
             import('bootstrap');
         }
+        console.log('[ReportBuilder] DEBUG: schema loaded:', $state.snapshot(data.schema));
     });
 
     let selectedTable = $state('');
@@ -111,6 +112,11 @@
     let tableDef = $derived((name: string) => data.schema.find(t => t.name === name));
     let availableColumns = $derived(selectedColumns.map(c => ({ path: c.path, label: c.label })));
 
+    $effect(() => {
+        console.log('[ReportBuilder] DEBUG: selectedColumns updated:', $state.snapshot(selectedColumns));
+        console.log('[ReportBuilder] DEBUG: availableColumns updated:', $state.snapshot(availableColumns));
+    });
+
     function addParameter() {
         if (!newParam.label || !newParam.column) return;
         const paramToAdd: any = { ...newParam, name: newParam.column + '_' + Date.now() };
@@ -126,12 +132,14 @@
     }
 
     function toggleColumn(path: string, label: string) {
+        console.log('[ReportBuilder] toggleColumn called with:', { path, label });
         const idx = selectedColumns.findIndex(c => c.path === path);
         if (idx >= 0) {
             selectedColumns = selectedColumns.filter((_, i) => i !== idx);
         } else {
             selectedColumns = [...selectedColumns, { path, label }];
         }
+        console.log('[ReportBuilder] selectedColumns is now:', JSON.stringify(selectedColumns));
     }
 
     function editTemplate(template: any) {
@@ -259,7 +267,7 @@
                                         tableName={selectedTable} 
                                         schema={data.schema} 
                                         {selectedColumns}
-                                        on:toggle={(e: any) => toggleColumn(e.detail.path, e.detail.label)}
+                                        onToggle={toggleColumn}
                                     />
                                 </div>
 
@@ -358,7 +366,7 @@
                                             tableName={selectedTable} 
                                             schema={data.schema} 
                                             insertMode={true}
-                                            on:insert={handleInsertVariable}
+                                            onInsert={handleInsertVariable}
                                         />
                                     </div>
 

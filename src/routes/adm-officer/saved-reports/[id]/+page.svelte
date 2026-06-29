@@ -37,6 +37,36 @@
         });
         return `/api/reports/generate?${params.toString()}`;
     });
+    // Helper to get filtered options for select parameters
+    function getFilteredOptions(param: any) {
+        if (!param.options) return [];
+        
+        const isBranch = param.column.includes('branches') && param.column.includes('name');
+        if (!isBranch || !data.branchCourseMapping) return param.options;
+
+        const courseParam = data.template.configuration.parameters?.find((p: any) => 
+            p.column.includes('courses') && p.column.includes('name')
+        );
+        const selectedCourse = courseParam ? filterValues[courseParam.name] : null;
+        
+        if (!selectedCourse) return param.options;
+
+        const cleanSelectedCourse = selectedCourse.trim().toLowerCase();
+
+        return param.options.filter((opt: string) => {
+            const mappedCourse = data.branchCourseMapping[opt.trim()];
+            return !mappedCourse || mappedCourse.toLowerCase() === cleanSelectedCourse;
+        });
+    }
+
+    function handleCourseChange() {
+        const branchParam = data.template.configuration.parameters?.find((p: any) => 
+            p.column.includes('branches') && p.column.includes('name')
+        );
+        if (branchParam) {
+            filterValues[branchParam.name] = '';
+        }
+    }
 </script>
 
 <div class="container-fluid mt-4">
@@ -72,13 +102,12 @@
                                     <label class="form-label small fw-bold">{param.label}</label>
                                     
                                     {#if param.type === 'select'}
-                                        <select class="form-select form-select-sm" name={param.name} bind:value={filterValues[param.name]}>
+                                        {@const isCourse = param.column.includes('courses') && param.column.includes('name')}
+                                        <select class="form-select form-select-sm" name={param.name} bind:value={filterValues[param.name]} on:change={() => isCourse && handleCourseChange()}>
                                             <option value="">All</option>
-                                            {#if param.options && Array.isArray(param.options)}
-                                                {#each param.options as opt}
-                                                    <option value={opt}>{opt}</option>
-                                                {/each}
-                                            {/if}
+                                            {#each getFilteredOptions(param) as opt}
+                                                <option value={opt}>{opt}</option>
+                                            {/each}
                                         </select>
                                     {:else if param.type === 'date'}
                                         <input type="date" class="form-control form-control-sm" name={param.name} bind:value={filterValues[param.name]}>

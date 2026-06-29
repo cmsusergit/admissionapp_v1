@@ -65,10 +65,14 @@
                             <li class="mb-2"><strong>Images:</strong> To show the student photo, use: 
                                 <br><code>&lt;img src="&lbrace;&lbrace;student.photo_url&rbrace;&rbrace;" width="100" height="120" /&gt;</code>
                             </li>
-                            <li class="mb-2"><strong>Conditionals:</strong> Only show content if data exists:
-                                <pre class="bg-light p-2 mt-1 border rounded">
-&lbrace;&lbrace;#if student.dob&rbrace;&rbrace;
-  Born: &lbrace;&lbrace;student.dob&rbrace;&rbrace;
+                            <li class="mb-2"><strong>Conditionals & Ladders:</strong> Conditionally render content, perform comparison checks, or search string content (using <code>contains</code>):
+                                <pre class="bg-light p-2 mt-1 border rounded xx-small" style="font-size: 0.7rem; white-space: pre-wrap;">
+&lbrace;&lbrace;#if course.name contains 'engineering'&rbrace;&rbrace;
+  Engineering Block (Label 1)
+&lbrace;&lbrace;else if course.name contains 'architecture'&rbrace;&rbrace;
+  Architecture Block (Label 2)
+&lbrace;&lbrace;else&rbrace;&rbrace;
+  General: &lbrace;&lbrace;course.name&rbrace;&rbrace;
 &lbrace;&lbrace;/if&rbrace;&rbrace;</pre>
                             </li>
                         </ul>

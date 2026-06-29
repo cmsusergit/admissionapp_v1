@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
     import SchemaTree from './SchemaTree.svelte'; 
 
     export let tableName: string;
@@ -8,8 +7,9 @@
     export let selectedColumns: any[] = [];
     export let visitedTables: string[] = []; // Track visited tables to prevent recursion
     export let insertMode = false; // New prop for click-to-insert mode
-
-    const dispatch = createEventDispatcher();
+    export let relationLabel: string = ''; // Relationship label path
+    export let onToggle: (path: string, label: string) => void = () => {};
+    export let onInsert: (path: string, label: string) => void = () => {};
 
     $: tableDef = schema.find(t => t.name === tableName);
     
@@ -25,25 +25,19 @@
     $: nextVisited = [...visitedTables, tableName];
 
     function toggle(path: string, label: string) {
-        dispatch('toggle', { path, label });
+        console.log('[SchemaTree] toggle calling onToggle:', { path, label });
+        onToggle(path, label);
     }
 
     function handleInsert(path: string, label: string) {
-        dispatch('insert', { path, label });
-    }
-    
-    function forwardToggle(event: CustomEvent) {
-        dispatch('toggle', event.detail);
-    }
-
-    function forwardInsert(event: CustomEvent) {
-        dispatch('insert', event.detail);
+        console.log('[SchemaTree] handleInsert calling onInsert:', { path, label });
+        onInsert(path, label);
     }
 </script>
 
 <div class="ms-2 border-start ps-2 mb-2">
     <div class="d-flex align-items-center mb-1">
-        {#if tableDef?.relationships?.some(rel => !nextVisited.includes(rel.targetTable))}
+        {#if tableDef?.relationships?.some((rel: any) => !nextVisited.includes(rel.targetTable))}
             <button class="btn btn-sm btn-link p-0 me-1 text-decoration-none text-dark" style="font-size: 0.8rem; width: 15px;" on:click|preventDefault={() => expanded = !expanded}>
                 {expanded ? '▼' : '▶'}
             </button>
@@ -68,13 +62,13 @@
                 {:else}
                     <span style="width: 12px; display: inline-block;"></span>
                     {#if insertMode}
-                        <button class="btn btn-xs btn-outline-primary py-0 px-1 me-2" on:click={() => handleInsert(fullPath, col.label)} title="Insert variable">
+                        <button class="btn btn-xs btn-outline-primary py-0 px-1 me-2" on:click={() => handleInsert(fullPath, relationLabel ? `${relationLabel} ${col.label}` : col.label)} title="Insert variable">
                             <i class="bi bi-plus-lg"></i>
                         </button>
                     {:else}
                         <input class="form-check-input me-2" type="checkbox" id={fullPath}
                             checked={selectedColumns.some(c => c.path === fullPath)}
-                            on:change={() => toggle(fullPath, col.label)}
+                            on:change={() => toggle(fullPath, relationLabel ? `${relationLabel} ${col.label}` : col.label)}
                         >
                     {/if}
                 {/if}
@@ -83,16 +77,16 @@
                     for={isJson ? undefined : fullPath} 
                     on:click={() => {
                         if (isJson) toggleJson(col.name);
-                        else if (insertMode) handleInsert(fullPath, col.label);
+                        else if (insertMode) handleInsert(fullPath, relationLabel ? `${relationLabel} ${col.label}` : col.label);
                     }}
                     on:keydown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                             if (isJson) toggleJson(col.name);
-                            else if (insertMode) handleInsert(fullPath, col.label);
+                            else if (insertMode) handleInsert(fullPath, relationLabel ? `${relationLabel} ${col.label}` : col.label);
                         }
                     }}
                 >
-                    {col.label}
+                    {relationLabel ? `${relationLabel} ${col.label}` : col.label}
                     {#if isJson}<span class="badge bg-light text-dark border ms-1 fw-normal" style="font-size: 0.6rem;">{col.jsonKeys?.length} fields</span>{/if}
                 </label>
             </div>
@@ -103,16 +97,18 @@
                         {@const nestedPath = `${fullPath}.${jsonKey.key}`}
                         <div class="d-flex align-items-center mb-1">
                             {#if insertMode}
-                                <button class="btn btn-xs btn-outline-info py-0 px-1 me-2" on:click={() => handleInsert(nestedPath, jsonKey.label)} title="Insert variable">
+                                <button class="btn btn-xs btn-outline-info py-0 px-1 me-2" on:click={() => handleInsert(nestedPath, relationLabel ? `${relationLabel} ${col.label} ${jsonKey.label}` : `${col.label} ${jsonKey.label}`)} title="Insert variable">
                                     <i class="bi bi-plus-lg"></i>
                                 </button>
                             {:else}
                                 <input class="form-check-input me-2" type="checkbox" id={nestedPath}
                                     checked={selectedColumns.some(c => c.path === nestedPath)}
-                                    on:change={() => toggle(nestedPath, jsonKey.label)}
+                                    on:change={() => toggle(nestedPath, relationLabel ? `${relationLabel} ${col.label} ${jsonKey.label}` : `${col.label} ${jsonKey.label}`)}
                                 >
                             {/if}
-                            <label class="form-check-label x-small text-muted {insertMode ? 'cursor-pointer' : ''}" for={nestedPath} on:click={() => insertMode && handleInsert(nestedPath, jsonKey.label)}>{jsonKey.label}</label>
+                            <label class="form-check-label x-small text-muted {insertMode ? 'cursor-pointer' : ''}" for={nestedPath} on:click={() => insertMode && handleInsert(nestedPath, relationLabel ? `${relationLabel} ${col.label} ${jsonKey.label}` : `${col.label} ${jsonKey.label}`)}>
+                                {relationLabel ? `${relationLabel} ${col.label} ${jsonKey.label}` : `${col.label} ${jsonKey.label}`}
+                            </label>
                         </div>
                     {/each}
                 </div>
@@ -127,6 +123,7 @@
                         ? `${currentPath}.${rel.targetTable}!${rel.foreignKey}` 
                         : `${rel.targetTable}!${rel.foreignKey}` 
                     }
+                    {@const nextRelationLabel = relationLabel ? `${relationLabel} ${rel.label}` : rel.label}
                     <div class="mt-2 ms-3">
                         <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">via {rel.label}</small>
                         <SchemaTree 
@@ -136,8 +133,9 @@
                             {selectedColumns} 
                             visitedTables={nextVisited}
                             {insertMode}
-                            on:toggle={forwardToggle} 
-                            on:insert={forwardInsert}
+                            relationLabel={nextRelationLabel}
+                            onToggle={onToggle}
+                            onInsert={onInsert}
                         />
                     </div>
                 {/if}

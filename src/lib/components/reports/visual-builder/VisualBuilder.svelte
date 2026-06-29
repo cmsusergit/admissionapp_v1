@@ -261,7 +261,20 @@
                 innerHtml = `<div class="col-${node.width || 12}" style="min-height:10px; ${styleStr}">${node.children.map(compileNode).join('')}</div>`;
                 break;
             case 'text':
-                innerHtml = `<div style="${styleStr}">${node.content || ''}</div>`;
+                if (node.isConditional && node.conditions && node.conditions.length > 0) {
+                    let condStr = '';
+                    node.conditions.forEach((cond: any, idx: number) => {
+                        if (idx === 0) {
+                            condStr += `{{#if ${cond.expr.trim()}}}${cond.value}`;
+                        } else {
+                            condStr += `{{else if ${cond.expr.trim()}}}${cond.value}`;
+                        }
+                    });
+                    condStr += `{{else}}${node.fallbackValue || ''}{{/if}}`;
+                    innerHtml = `<div style="${styleStr}">${condStr}</div>`;
+                } else {
+                    innerHtml = `<div style="${styleStr}">${node.content || ''}</div>`;
+                }
                 break;
             case 'variable':
                 innerHtml = `<span style="${styleStr}">{{${node.variablePath}}}</span>`;

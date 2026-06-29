@@ -230,7 +230,19 @@
             {/each}
         {/if}
     {:else if node.type === 'text'}
-        <div style="white-space: pre-wrap; min-height: 1.2em; pointer-events: none;">{node.content || 'Hello There'}</div>
+        {#if node.isConditional}
+            <div class="border rounded p-1 bg-light text-muted xx-small" style="pointer-events: none;">
+                <div class="fw-bold text-primary mb-1"><i class="bi bi-shuffle"></i> Conditional Text</div>
+                {#each node.conditions || [] as cond}
+                    {#if cond.expr}
+                        <div class="text-truncate"><strong>If:</strong> {cond.expr} ➔ {cond.value || '""'}</div>
+                    {/if}
+                {/each}
+                <div class="text-truncate mt-1 border-top pt-1"><strong>Else:</strong> {node.fallbackValue || '""'}</div>
+            </div>
+        {:else}
+            <div style="white-space: pre-wrap; min-height: 1.2em; pointer-events: none;">{node.content || 'Hello There'}</div>
+        {/if}
     {:else if node.type === 'variable'}
         <div class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 p-2 d-block text-start" style="pointer-events: none;">
             <i class="bi bi-braces me-1"></i> {node.variableLabel || node.variablePath || 'Variable'}

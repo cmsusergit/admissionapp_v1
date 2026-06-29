@@ -76,7 +76,22 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
         }
     }
     
-    return { template };
+    const branchCourseMapping: Record<string, string> = {};
+    try {
+        const { data: branchData } = await supabase.from('branches').select('name, courses(name)');
+        if (branchData) {
+            branchData.forEach((b: any) => {
+                const courseName = b.courses && !Array.isArray(b.courses) ? (b.courses as any).name : null;
+                if (b.name && courseName) {
+                    branchCourseMapping[b.name.trim()] = courseName.trim();
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Failed to fetch branch course mapping:', e);
+    }
+    
+    return { template, branchCourseMapping };
 };
 
 export const actions: Actions = {

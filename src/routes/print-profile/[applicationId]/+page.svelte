@@ -89,9 +89,48 @@
         }
     }
 
+    function preprocessElseIf(html: string): string {
+        if (!html) return '';
+        const tagRegex = /(\{{1,2}\s*(?:#if|else if|else|\/if)\s*(?:[a-zA-Z0-9_.!\[\]\s=><!'"()-]+)?\s*\}{1,2})/g;
+        const parts = html.split(tagRegex);
+        let output = '';
+        const stack: number[] = [];
+        
+        for (const part of parts) {
+            if (tagRegex.test(part)) {
+                const cleanTag = part.replace(/[{}]/g, '').trim();
+                if (cleanTag.startsWith('#if')) {
+                    stack.push(0);
+                    output += part;
+                } else if (cleanTag.startsWith('else if')) {
+                    const condition = cleanTag.substring(7).trim();
+                    output += `{{else}}{{#if ${condition}}}`;
+                    if (stack.length > 0) {
+                        stack[stack.length - 1]++;
+                    }
+                    stack.push(0);
+                } else if (cleanTag === 'else') {
+                    output += part;
+                } else if (cleanTag.startsWith('/if')) {
+                    const count = stack.pop() || 0;
+                    output += part;
+                    if (count > 0) {
+                        output += '{{/if}}'.repeat(count);
+                    }
+                }
+            } else {
+                output += part;
+            }
+        }
+        return output;
+    }
+
     // Recursive interpolation function
     function interpolate(html: string, context: any): string {
         if (!html) return '';
+        
+        // 0. Preprocess 'else if' ladders into nested else/if blocks
+        html = preprocessElseIf(html);
         
         // 1. Handle #each blocks - Supports {{#each}} and {#each}
         let result = html.replace(/\{{1,2}\s*#each\s+([a-zA-Z0-9_.!\[\]\s-]+)\s*\}{1,2}([\s\S]*?)\{{1,2}\s*\/each\s*\}{1,2}/g, (match: string, listPath: string, template: string) => {
@@ -102,7 +141,7 @@
         });
 
         // 2. Handle #if / else blocks - Supports {{#if}} and {#if}
-        result = result.replace(/\{{1,2}\s*#if\s+([a-zA-Z0-9_.!\[\]\s=><!-]+)\s*\}{1,2}([\s\S]*?)(?:\{{1,2}\s*else\s*\}{1,2}([\s\S]*?))?\{{1,2}\s*\/if\s*\}{1,2}/g, (match: string, conditionExpr: string, trueBlock: string, falseBlock?: string) => {
+        result = result.replace(/\{{1,2}\s*#if\s+([a-zA-Z0-9_.!\[\]\s=><!'"()-]+)\s*\}{1,2}([\s\S]*?)(?:\{{1,2}\s*else\s*\}{1,2}([\s\S]*?))?\{{1,2}\s*\/if\s*\}{1,2}/g, (match: string, conditionExpr: string, trueBlock: string, falseBlock?: string) => {
             // Simple comparison support
             let isTrue = false;
             const expr = conditionExpr.trim();
@@ -115,6 +154,15 @@
                 const [path, val] = expr.split(' != ').map(s => s.trim());
                 const actual = getNestedValue(context, path);
                 isTrue = String(actual) !== val.replace(/['"]/g, '');
+            } else if (expr.includes(' contains ')) {
+                const [path, val] = expr.split(' contains ').map(s => s.trim());
+                const actual = getNestedValue(context, path);
+                let searchString = val.replace(/['"]/g, '');
+                const contextVal = getNestedValue(context, val);
+                if (contextVal !== null && contextVal !== undefined) {
+                    searchString = String(contextVal);
+                }
+                isTrue = String(actual || '').toLowerCase().includes(searchString.toLowerCase());
             } else {
                 const val = getNestedValue(context, expr);
                 isTrue = !!(val && val !== 'null' && val !== 'N/A' && val !== '');

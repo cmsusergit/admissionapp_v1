@@ -145,44 +145,71 @@
                 });
             });
 
-            // Dynamically scale options based on row count to ensure single-page A4 fit
+            // Dynamically scale options based on row count and column count to ensure single-page A4 fit
             const rowCount = tableBody.length;
-            let dynamicFontSize = 7.0;
-            let dynamicHeaderSize = 11;
-            let dynamicSubheaderSize = 7.5;
-            let dynamicCourseHeaderSize = 7.5;
-            let dynamicTableHeaderSize = 7.5;
-            let dynamicMargin = 12;
-            let dynamicPaddingTopBottom = 1.2;
-            let dynamicPaddingLeftRight = 2.5;
+            const numFormTypes = data.globalUniqueFormTypes.length;
 
-            if (rowCount > 25) {
-                dynamicFontSize = 4.8;
-                dynamicHeaderSize = 8;
-                dynamicSubheaderSize = 5.5;
-                dynamicCourseHeaderSize = 5.5;
-                dynamicTableHeaderSize = 5.5;
+            let dynamicFontSize = 11.5;
+            let dynamicHeaderSize = 16;
+            let dynamicSubheaderSize = 12;
+            let dynamicCourseHeaderSize = 12;
+            let dynamicTableHeaderSize = 12;
+            let dynamicMargin = 15;
+            let dynamicPaddingTopBottom = 2.5;
+            let dynamicPaddingLeftRight = 4.0;
+            let headerMarginBottom = 2;
+            let subheaderMarginBottom = 6;
+
+            // Adjust based on rows (vertical height constraint)
+            if (rowCount > 50) {
+                dynamicFontSize = 8.5;
+                dynamicHeaderSize = 13;
+                dynamicSubheaderSize = 10.0;
+                dynamicCourseHeaderSize = 9.0;
+                dynamicTableHeaderSize = 9.0;
                 dynamicMargin = 8;
-                dynamicPaddingTopBottom = 0.8;
-                dynamicPaddingLeftRight = 1.5;
-            } else if (rowCount > 15) {
-                dynamicFontSize = 5.5;
-                dynamicHeaderSize = 9;
-                dynamicSubheaderSize = 6;
-                dynamicCourseHeaderSize = 6.5;
-                dynamicTableHeaderSize = 6;
-                dynamicMargin = 10;
                 dynamicPaddingTopBottom = 1.0;
-                dynamicPaddingLeftRight = 2.0;
-            } else if (rowCount > 10) {
-                dynamicFontSize = 6.2;
-                dynamicHeaderSize = 10;
-                dynamicSubheaderSize = 7;
-                dynamicCourseHeaderSize = 7.0;
-                dynamicTableHeaderSize = 7;
+                dynamicPaddingLeftRight = 1.8;
+                headerMarginBottom = 1;
+                subheaderMarginBottom = 3;
+            } else if (rowCount > 35) {
+                dynamicFontSize = 9.5;
+                dynamicHeaderSize = 14;
+                dynamicSubheaderSize = 10.5;
+                dynamicCourseHeaderSize = 10.0;
+                dynamicTableHeaderSize = 10.0;
                 dynamicMargin = 10;
-                dynamicPaddingTopBottom = 1.1;
+                dynamicPaddingTopBottom = 1.4;
                 dynamicPaddingLeftRight = 2.2;
+                headerMarginBottom = 1;
+                subheaderMarginBottom = 4;
+            } else if (rowCount > 25) {
+                dynamicFontSize = 10.5;
+                dynamicHeaderSize = 15;
+                dynamicSubheaderSize = 11.5;
+                dynamicCourseHeaderSize = 11.0;
+                dynamicTableHeaderSize = 11.0;
+                dynamicMargin = 12;
+                dynamicPaddingTopBottom = 1.8;
+                dynamicPaddingLeftRight = 3.0;
+                headerMarginBottom = 2;
+                subheaderMarginBottom = 5;
+            }
+
+            // Adjust based on columns (horizontal width constraint)
+            // Make adjustments milder so font size remains legible even with many columns
+            if (numFormTypes > 10) {
+                dynamicFontSize = Math.min(dynamicFontSize, 8.5);
+                dynamicTableHeaderSize = Math.min(dynamicTableHeaderSize, 8.5);
+                dynamicPaddingLeftRight = Math.min(dynamicPaddingLeftRight, 1.8);
+            } else if (numFormTypes > 7) {
+                dynamicFontSize = Math.min(dynamicFontSize, 9.5);
+                dynamicTableHeaderSize = Math.min(dynamicTableHeaderSize, 9.5);
+                dynamicPaddingLeftRight = Math.min(dynamicPaddingLeftRight, 2.2);
+            } else if (numFormTypes > 5) {
+                dynamicFontSize = Math.min(dynamicFontSize, 10.5);
+                dynamicTableHeaderSize = Math.min(dynamicTableHeaderSize, 10.5);
+                dynamicPaddingLeftRight = Math.min(dynamicPaddingLeftRight, 3.0);
             }
 
             const grandTotalFontSize = dynamicFontSize + 2;
@@ -205,9 +232,23 @@
                 };
             }));
 
+            // Dynamically scale first column width based on number of columns to prevent too much blank space
+            let courseBranchWidth = 180;
+            let intakeWidth = 50;
+            if (numFormTypes > 8) {
+                courseBranchWidth = 140;
+                intakeWidth = 40;
+            } else if (numFormTypes > 5) {
+                courseBranchWidth = 160;
+                intakeWidth = 45;
+            }
+
+            // Distribute remaining space equally to the form type columns
+            const widths = [courseBranchWidth, intakeWidth, ...data.globalUniqueFormTypes.map(() => '*')];
+
             const docDefinition = {
                 pageSize: 'A4',
-                pageOrientation: data.globalUniqueFormTypes.length > 5 ? 'landscape' : 'portrait',
+                pageOrientation: 'portrait',
                 pageMargins: [dynamicMargin, dynamicMargin, dynamicMargin, dynamicMargin],
                 content: [
                     { text: `CAPACITY REPORT - ${metricLabel}`, style: 'header' },
@@ -215,7 +256,7 @@
                     {
                         table: {
                             headerRows: 1,
-                            widths: ['*', 'auto', ...data.globalUniqueFormTypes.map(() => 'auto')],
+                            widths: widths,
                             body: tableBody
                         },
                         layout: {
@@ -239,8 +280,8 @@
                     }
                 ],
                 styles: {
-                    header: { fontSize: dynamicHeaderSize, bold: true, alignment: 'center', margin: [0, 0, 0, 1] },
-                    subheader: { fontSize: dynamicSubheaderSize, alignment: 'center', margin: [0, 0, 0, 4], color: '#666666' },
+                    header: { fontSize: dynamicHeaderSize, bold: true, alignment: 'center', margin: [0, 0, 0, headerMarginBottom] },
+                    subheader: { fontSize: dynamicSubheaderSize, alignment: 'center', margin: [0, 0, 0, subheaderMarginBottom], color: '#666666' },
                     tableHeader: { bold: true, fontSize: dynamicTableHeaderSize, color: 'black', fillColor: '#f1f1f1', alignment: 'center', margin: [0, 1, 0, 1] },
                     courseHeader: { bold: true, fontSize: dynamicCourseHeaderSize, fillColor: '#f8f9fa', margin: [2, 1, 2, 1] }
                 },
@@ -329,25 +370,14 @@
 
 <svelte:head>
     <title>Capacity Report - Admission System</title>
-    {#if data.globalUniqueFormTypes && data.globalUniqueFormTypes.length > 5}
-        <style>
-            @media print {
-                @page {
-                    size: A4 landscape;
-                    margin: 5mm 6mm;
-                }
+    <style>
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 5mm 6mm;
             }
-        </style>
-    {:else}
-        <style>
-            @media print {
-                @page {
-                    size: A4 portrait;
-                    margin: 5mm 6mm;
-                }
-            }
-        </style>
-    {/if}
+        }
+    </style>
 </svelte:head>
 
 <div class="container-fluid mt-4">

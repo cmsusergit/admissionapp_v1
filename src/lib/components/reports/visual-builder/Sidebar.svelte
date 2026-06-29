@@ -512,9 +512,94 @@
                                         rows="4" 
                                         value={selectedNode.content} 
                                         oninput={(e) => onUpdateNode({ content: e.currentTarget.value })}
-                                        placeholder="Enter text or use &#123;&#123;variable&#125;&#125;"></textarea>
+                                        placeholder="Enter text or use &#123;&#123;variable&#125;&#125;"
+                                        disabled={selectedNode.isConditional || false}></textarea>
                                     <div class="d-flex justify-content-between align-items-center">
                                         <span class="xx-small text-muted">Use &#123;&#123;variable&#125;&#125; for dynamic data</span>
+                                    </div>
+                                    
+                                    <!-- Conditional Text Settings -->
+                                    <div class="mt-3 pt-2 border-top">
+                                        <div class="form-check form-switch mb-2">
+                                            <input 
+                                                class="form-check-input" 
+                                                type="checkbox" 
+                                                id="toggle-conditional-text"
+                                                checked={selectedNode.isConditional || false}
+                                                onchange={(e) => onUpdateNode({ 
+                                                    isConditional: e.currentTarget.checked,
+                                                    conditions: selectedNode.conditions || [{ expr: '', value: '' }],
+                                                    fallbackValue: selectedNode.fallbackValue || ''
+                                                })}
+                                            >
+                                            <label class="form-check-label xx-small fw-bold text-muted text-uppercase" for="toggle-conditional-text">
+                                                Enable Conditional Text / Label
+                                            </label>
+                                        </div>
+                                        
+                                        {#if selectedNode.isConditional}
+                                            <div class="bg-light p-2 rounded mb-2 border">
+                                                <span class="xx-small fw-bold text-primary text-uppercase d-block mb-2">Conditions Ladder</span>
+                                                
+                                                {#each selectedNode.conditions || [] as cond, condIdx}
+                                                    <div class="border-bottom pb-2 mb-2 xx-small">
+                                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                                            <span class="fw-bold text-muted">{condIdx === 0 ? 'If' : 'Else If'}</span>
+                                                            {#if (selectedNode.conditions || []).length > 1}
+                                                                <button type="button" class="btn btn-link p-0 text-danger text-decoration-none" onclick={() => {
+                                                                    const updated = (selectedNode.conditions || []).filter((_, i) => i !== condIdx);
+                                                                    onUpdateNode({ conditions: updated });
+                                                                }}>&times; Remove</button>
+                                                            {/if}
+                                                        </div>
+                                                        <div class="mb-1">
+                                                            <input 
+                                                                type="text" 
+                                                                class="form-control form-control-xs xx-small" 
+                                                                placeholder="Condition (e.g. course contains 'eng')" 
+                                                                value={cond.expr}
+                                                                oninput={(e) => {
+                                                                    const updated = [...(selectedNode.conditions || [])];
+                                                                    updated[condIdx] = { ...updated[condIdx], expr: e.currentTarget.value };
+                                                                    onUpdateNode({ conditions: updated });
+                                                                }}
+                                                            >
+                                                        </div>
+                                                        <div>
+                                                            <input 
+                                                                type="text" 
+                                                                class="form-control form-control-xs xx-small" 
+                                                                placeholder="Value (e.g. Label 1 or &#123;&#123;var1&#125;&#125;)" 
+                                                                value={cond.value}
+                                                                oninput={(e) => {
+                                                                    const updated = [...(selectedNode.conditions || [])];
+                                                                    updated[condIdx] = { ...updated[condIdx], value: e.currentTarget.value };
+                                                                    onUpdateNode({ conditions: updated });
+                                                                }}
+                                                            >
+                                                        </div>
+                                                    </div>
+                                                {/each}
+                                                
+                                                <button type="button" class="btn btn-xs btn-outline-secondary w-100 mb-2 py-0" style="font-size: 0.65rem;" onclick={() => {
+                                                    const updated = [...(selectedNode.conditions || []), { expr: '', value: '' }];
+                                                    onUpdateNode({ conditions: updated });
+                                                }}>
+                                                    + Add Else If Branch
+                                                </button>
+                                                
+                                                <div class="xx-small mt-2">
+                                                    <label class="fw-bold text-muted mb-1">Else (Fallback Value)</label>
+                                                    <input 
+                                                        type="text" 
+                                                        class="form-control form-control-xs xx-small" 
+                                                        placeholder="Else Value" 
+                                                        value={selectedNode.fallbackValue || ''}
+                                                        oninput={(e) => onUpdateNode({ fallbackValue: e.currentTarget.value })}
+                                                    >
+                                                </div>
+                                            </div>
+                                        {/if}
                                     </div>
                                 </div>
                             {:else if selectedNode.type === 'image'}
