@@ -151,7 +151,7 @@
                                 <option value="all">All</option>
                                 {#each filteredBranches as branch}
                                     <option value={branch.id}>{branch.name}</option>
-                                }/each}
+                                {/each}
                             {/if}
                         </select>
                     </div>
