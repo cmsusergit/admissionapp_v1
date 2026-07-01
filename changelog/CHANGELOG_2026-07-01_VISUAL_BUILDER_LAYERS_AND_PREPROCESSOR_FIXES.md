@@ -50,3 +50,12 @@ This changelog details updates across report template rendering, visual layout e
 ## 6. Payments Page Default Sorting
 * **File**: [src/routes/fee-collector/payments/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/fee-collector/payments/+page.server.ts)
 * **Fix**: Configured default query sorting to organize payment logs by `created_at` descending.
+
+## 7. Applications Page Course & Branch Filtering
+* **Target Pages**: Admission Officer applications list ([src/routes/adm-officer/applications](file:///workspaces/admissionapp_v1/src/routes/adm-officer/applications)) and University Auth applications list ([src/routes/university-auth/applications](file:///workspaces/admissionapp_v1/src/routes/university-auth/applications)).
+* **Features**:
+  * Added dropdown selection filters for **Course** and **Branch** side-by-side with Search and Form Type controls.
+  * **Dynamic Dependency**: The **Branch** select element is initially disabled. It is enabled only when a valid Course is selected.
+  * **Course-Specific Filtering**: Branch choices are filtered to only display branches corresponding to the selected Course (`branch.course_id === selectedCourseId`), instead of loading all branches.
+  * **Automated Reset**: Changing the Course filter automatically resets the active Branch filter to avoid query state conflicts.
+

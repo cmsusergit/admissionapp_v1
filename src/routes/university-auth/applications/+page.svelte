@@ -48,6 +48,20 @@
     function handleFormTypeChange() {
         updateQuery({ form_type: formTypeFilter === 'all' ? '' : formTypeFilter, page: '1' });
     }
+    
+    function handleCourseChange(e: Event) {
+        const val = (e.currentTarget as HTMLSelectElement).value;
+        updateQuery({ course_id: val === 'all' ? '' : val, branch_id: '', page: '1' });
+    }
+    
+    function handleBranchChange(e: Event) {
+        const val = (e.currentTarget as HTMLSelectElement).value;
+        updateQuery({ branch_id: val === 'all' ? '' : val, page: '1' });
+    }
+
+    $: filteredBranches = (data.courseId && data.courseId !== 'all')
+        ? (data.branches || []).filter((b: any) => b.course_id === data.courseId)
+        : [];
     function switchTab(t: string) { updateQuery({ tab: t, page: '1', search: '' }); }
 
     function handleSort(field: string) {
@@ -291,7 +305,7 @@
     <div class="card mb-4">
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="input-group">
                         <input type="text" class="form-control" placeholder="Search Name, Email..." 
                                bind:value={searchQuery} on:keydown={handleKeydown}>
@@ -306,6 +320,26 @@
                         {#if data.formTypesMap}
                             {#each Object.keys(data.formTypesMap) as type}
                                 <option value={type}>{type}</option>
+                            {/each}
+                        {/if}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" value={data.courseId || 'all'} on:change={handleCourseChange}>
+                        <option value="all">All Courses</option>
+                        {#each data.courses as course}
+                            <option value={course.id}>{course.name} ({course.code})</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" value={data.branchId || 'all'} disabled={!data.courseId || data.courseId === 'all'} on:change={handleBranchChange}>
+                        {#if !data.courseId || data.courseId === 'all'}
+                            <option value="all">Select course first</option>
+                        {:else}
+                            <option value="all">All Branches</option>
+                            {#each filteredBranches as branch}
+                                <option value={branch.id}>{branch.name}</option>
                             {/each}
                         {/if}
                     </select>

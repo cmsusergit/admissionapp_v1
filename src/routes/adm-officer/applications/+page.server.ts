@@ -26,9 +26,11 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     const search = url.searchParams.get('search') || '';
     const statusParam = url.searchParams.get('status') || 'submitted';
     const status = statusParam.toLowerCase();
+    const courseId = url.searchParams.get('course_id') || '';
+    const branchId = url.searchParams.get('branch_id') || '';
 
     // Standard params to exclude from custom filters
-    const standardParams = ['page', 'limit', 'search', 'status', 'form_type', 'sort', 'order'];
+    const standardParams = ['page', 'limit', 'search', 'status', 'form_type', 'sort', 'order', 'course_id', 'branch_id'];
 
     // Default form type filter only if on 'Pending Verification' and not explicitly provided
     let formTypeFilter = url.searchParams.get('form_type');
@@ -81,6 +83,14 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         } else {
             query = query.ilike('form_type', formTypeFilter);
         }
+    }
+
+    // Apply Course & Branch Filters
+    if (courseId && courseId !== 'all') {
+        query = query.eq('course_id', courseId);
+    }
+    if (branchId && branchId !== 'all') {
+        query = query.eq('branch_id', branchId);
     }
 
     // Apply Custom Filters (Case-Insensitive)
@@ -150,6 +160,10 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     // Add ID to formTypesMap for frontend filtering
     const formTypeIdentityMap = Object.fromEntries((formTypesData || []).map(ft => [(ft.name || '').toLowerCase(), (ft as any).id]));
 
+    // Fetch courses and branches for dropdown filters
+    const { data: courses } = await supabaseAdmin.from('courses').select('id, name, code').order('name');
+    const { data: branches } = await supabaseAdmin.from('branches').select('id, name, course_id').order('name');
+
     return {
         applications: finalApplications,
         count: totalCount || 0,
@@ -163,6 +177,10 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
         formTypeIdentityMap,
         sort: sortField,
         order: sortOrder,
-        printTemplates: printTemplates || []
+        printTemplates: printTemplates || [],
+        courses: courses || [],
+        branches: branches || [],
+        courseId,
+        branchId
     };
 };

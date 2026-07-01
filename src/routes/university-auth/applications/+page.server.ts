@@ -28,6 +28,8 @@ export const load: PageServerLoad = async ({
   const sortField = url.searchParams.get("sort") || "merit_rank";
   const sortOrder = url.searchParams.get("order") || "asc";
   const offset = (page - 1) * limit;
+  const courseId = url.searchParams.get("course_id") || "";
+  const branchId = url.searchParams.get("branch_id") || "";
 
   let formTypeFilter = url.searchParams.get("form_type");
   if (!formTypeFilter && activeTab === "approved") {
@@ -73,6 +75,14 @@ export const load: PageServerLoad = async ({
     query = query.eq("form_type", formTypeFilter);
   }
 
+  // Course & Branch Filters
+  if (courseId && courseId !== "all") {
+    query = query.eq("course_id", courseId);
+  }
+  if (branchId && branchId !== "all") {
+    query = query.eq("branch_id", branchId);
+  }
+
   // Search Filter
   if (search) {
     query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`, {
@@ -90,20 +100,31 @@ export const load: PageServerLoad = async ({
   }
   query = query.range(offset, offset + limit - 1);
 
-  // Fetch applications, form types (including is_prov), and templates concurrently using Promise.all
-  const [appResult, formTypesResult, printTemplatesResult] = await Promise.all([
+  // Fetch applications, form types (including is_prov), templates, courses, and branches concurrently using Promise.all
+  const [appResult, formTypesResult, printTemplatesResult, coursesResult, branchesResult] = await Promise.all([
     query,
     supabaseAdmin.from("form_types").select("id, name, is_prov"),
     supabaseAdmin
       .from('report_templates')
       .select('id, name, target_form_type_id')
       .eq('report_type', 'html_profile')
-      .contains('allowed_roles', [userProfile?.role])
+      .contains('allowed_roles', [userProfile?.role]),
+    supabaseAdmin
+      .from("courses")
+      .select("id, name, code, colleges!inner(id, university_id)")
+      .eq("colleges.university_id", userProfile.university_id)
+      .order("name"),
+    supabaseAdmin
+      .from("branches")
+      .select("id, name, code, course_id")
+      .order("name")
   ]);
 
   const { data: applications, count, error: appError } = appResult;
   const formTypesData = formTypesResult.data;
   const printTemplates = printTemplatesResult.data;
+  const coursesData = coursesResult.data;
+  const branchesData = branchesResult.data;
 
   if (appError) {
     console.error(
@@ -179,7 +200,11 @@ export const load: PageServerLoad = async ({
     formTypeFilter,
     message: null,
     printTemplates: printTemplates || [],
-    formTypesMap
+    formTypesMap,
+    courses: coursesData || [],
+    branches: branchesData || [],
+    courseId,
+    branchId
   };
 };
 

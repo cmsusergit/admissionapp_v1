@@ -31,6 +31,18 @@
         updateQuery({ form_type: formType, page: '1' });
     }
 
+    function handleCourseChange(courseId: string) {
+        updateQuery({ course_id: courseId === 'all' ? '' : courseId, branch_id: '', page: '1' });
+    }
+
+    function handleBranchChange(branchId: string) {
+        updateQuery({ branch_id: branchId === 'all' ? '' : branchId, page: '1' });
+    }
+
+    $: filteredBranches = (data.courseId && data.courseId !== 'all')
+        ? (data.branches || []).filter((b: any) => b.course_id === data.courseId)
+        : [];
+
     function handleSort(field: string) {
         const currentSort = data.sort;
         const currentOrder = data.order || 'desc';
@@ -98,7 +110,7 @@
     <div class="card mb-4">
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="input-group">
                         <input type="text" class="form-control" placeholder="Search Name, College ID..." 
                                bind:value={searchQuery} on:keydown={handleKeydown}>
@@ -107,14 +119,40 @@
                         </button>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="d-flex align-items-center gap-2">
-                        <small class="text-muted fw-bold text-nowrap">Filter Type:</small>
+                        <small class="text-muted fw-bold text-nowrap">Type:</small>
                         <select class="form-select" value={data.formTypeFilter || 'all'} on:change={(e) => handleFormTypeChange(e.currentTarget.value)}>
-                            <option value="all">All Form Types</option>
+                            <option value="all">All</option>
                             {#each data.availableFormTypes as ft}
                                 <option value={ft.name}>{ft.name}</option>
                             {/each}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="text-muted fw-bold text-nowrap">Course:</small>
+                        <select class="form-select" value={data.courseId || 'all'} on:change={(e) => handleCourseChange(e.currentTarget.value)}>
+                            <option value="all">All</option>
+                            {#each data.courses as course}
+                                <option value={course.id}>{course.name} ({course.code})</option>
+                            {/each}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="text-muted fw-bold text-nowrap">Branch:</small>
+                        <select class="form-select" value={data.branchId || 'all'} disabled={!data.courseId || data.courseId === 'all'} on:change={(e) => handleBranchChange(e.currentTarget.value)}>
+                            {#if !data.courseId || data.courseId === 'all'}
+                                <option value="all">Select course first</option>
+                            {:else}
+                                <option value="all">All</option>
+                                {#each filteredBranches as branch}
+                                    <option value={branch.id}>{branch.name}</option>
+                                }/each}
+                            {/if}
                         </select>
                     </div>
                 </div>
