@@ -118,6 +118,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     const { data: templates, error: templateError } = await supabaseAdmin
         .from('report_templates')
         .select('id, name, description, base_table, created_by, created_at, report_type, target_form_type_id')
+        .neq('report_type', 'html_profile')
         .contains('allowed_roles', [userProfile?.role || ''])
         .order('created_at', { ascending: false });
         

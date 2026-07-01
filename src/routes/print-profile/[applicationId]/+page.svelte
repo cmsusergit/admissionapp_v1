@@ -91,38 +91,138 @@
 
     function preprocessElseIf(html: string): string {
         if (!html) return '';
-        const tagRegex = /(\{{1,2}\s*(?:#if|else if|else|\/if)\s*(?:[a-zA-Z0-9_.!\[\]\s=><!'"()-]+)?\s*\}{1,2})/g;
+        const tagRegex = /(\{{1,2}\s*(?:[#:/]?if|:?else if|:?elseif|:?elif|:?else|\/if)\s*(?:[a-zA-Z0-9_.!\[\]\s=><!'"()&|-]+)?\s*\}{1,2})/g;
+        const tagTestRegex = /^\{{1,2}\s*(?:[#:/]?if|:?else if|:?elseif|:?elif|:?else|\/if)\s*(?:[a-zA-Z0-9_.!\[\]\s=><!'"()&|-]+)?\s*\}\s*\}?$/;
         const parts = html.split(tagRegex);
         let output = '';
         const stack: number[] = [];
         
         for (const part of parts) {
-            if (tagRegex.test(part)) {
+            if (tagTestRegex.test(part)) {
                 const cleanTag = part.replace(/[{}]/g, '').trim();
-                if (cleanTag.startsWith('#if')) {
-                    stack.push(0);
-                    output += part;
-                } else if (cleanTag.startsWith('else if')) {
-                    const condition = cleanTag.substring(7).trim();
+                if (cleanTag.startsWith('/if')) {
+                    const count = stack.pop() || 0;
+                    output += `{{/if}}`;
+                    if (count > 0) {
+                        output += '{{/if}}'.repeat(count);
+                    }
+                } else if (cleanTag.startsWith('else if') || cleanTag.startsWith(':else if') || 
+                           cleanTag.startsWith('elseif') || cleanTag.startsWith(':elseif') ||
+                           cleanTag.startsWith('elif') || cleanTag.startsWith(':elif')) {
+                    
+                    let condition = '';
+                    if (cleanTag.startsWith(':else if')) condition = cleanTag.substring(8).trim();
+                    else if (cleanTag.startsWith('else if')) condition = cleanTag.substring(7).trim();
+                    else if (cleanTag.startsWith(':elseif')) condition = cleanTag.substring(7).trim();
+                    else if (cleanTag.startsWith('elseif')) condition = cleanTag.substring(6).trim();
+                    else if (cleanTag.startsWith(':elif')) condition = cleanTag.substring(5).trim();
+                    else if (cleanTag.startsWith('elif')) condition = cleanTag.substring(4).trim();
+                    
                     output += `{{else}}{{#if ${condition}}}`;
                     if (stack.length > 0) {
                         stack[stack.length - 1]++;
                     }
                     stack.push(0);
-                } else if (cleanTag === 'else') {
-                    output += part;
-                } else if (cleanTag.startsWith('/if')) {
-                    const count = stack.pop() || 0;
-                    output += part;
-                    if (count > 0) {
-                        output += '{{/if}}'.repeat(count);
-                    }
+                } else if (cleanTag === 'else' || cleanTag === ':else') {
+                    output += `{{else}}`;
+                } else if (cleanTag.startsWith('#if') || cleanTag.startsWith('if') || cleanTag.startsWith(':if')) {
+                    stack.push(0);
+                    const cond = cleanTag.replace(/^[#:]?if/, '').trim();
+                    output += `{{#if ${cond}}}`;
                 }
             } else {
                 output += part;
             }
         }
+        while (stack.length > 0) {
+            stack.pop();
+            output += '{{/if}}';
+        }
         return output;
+    }
+
+    // Evaluates complex conditions with relations, Logical AND (&&), OR (||), and NOT (!)
+    function evaluateCondition(expr: string, context: any): boolean {
+        expr = expr.trim();
+        
+        // 1. Handle logical OR (||)
+        if (expr.includes('||')) {
+            const terms = expr.split('||');
+            return terms.some(t => evaluateCondition(t, context));
+        }
+        
+        // 2. Handle logical AND (&&)
+        if (expr.includes('&&')) {
+            const terms = expr.split('&&');
+            return terms.every(t => evaluateCondition(t, context));
+        }
+        
+        // 3. Parentheses support (can strip matching outer parentheses)
+        if (expr.startsWith('(') && expr.endsWith(')')) {
+            return evaluateCondition(expr.substring(1, expr.length - 1), context);
+        }
+        
+        const trimmed = expr.trim();
+        
+        if (trimmed.includes(' == ')) {
+            const [path, val] = trimmed.split(' == ').map(s => s.trim());
+            const actual = getNestedValue(context, path);
+            return String(actual ?? '') === val.replace(/['"]/g, '');
+        }
+        
+        if (trimmed.includes(' != ')) {
+            const [path, val] = trimmed.split(' != ').map(s => s.trim());
+            const actual = getNestedValue(context, path);
+            return String(actual ?? '') !== val.replace(/['"]/g, '');
+        }
+        
+        if (trimmed.includes(' >= ')) {
+            const [path, val] = trimmed.split(' >= ').map(s => s.trim());
+            const actual = Number(getNestedValue(context, path) ?? 0);
+            const limit = Number(val.replace(/['"]/g, ''));
+            return !isNaN(actual) && !isNaN(limit) && actual >= limit;
+        }
+        
+        if (trimmed.includes(' <= ')) {
+            const [path, val] = trimmed.split(' <= ').map(s => s.trim());
+            const actual = Number(getNestedValue(context, path) ?? 0);
+            const limit = Number(val.replace(/['"]/g, ''));
+            return !isNaN(actual) && !isNaN(limit) && actual <= limit;
+        }
+        
+        if (trimmed.includes(' > ')) {
+            const [path, val] = trimmed.split(' > ').map(s => s.trim());
+            const actual = Number(getNestedValue(context, path) ?? 0);
+            const limit = Number(val.replace(/['"]/g, ''));
+            return !isNaN(actual) && !isNaN(limit) && actual > limit;
+        }
+        
+        if (trimmed.includes(' < ')) {
+            const [path, val] = trimmed.split(' < ').map(s => s.trim());
+            const actual = Number(getNestedValue(context, path) ?? 0);
+            const limit = Number(val.replace(/['"]/g, ''));
+            return !isNaN(actual) && !isNaN(limit) && actual < limit;
+        }
+        
+        if (trimmed.includes(' contains ')) {
+            const [path, val] = trimmed.split(' contains ').map(s => s.trim());
+            const actual = getNestedValue(context, path);
+            let searchString = val.replace(/['"]/g, '');
+            const contextVal = getNestedValue(context, val);
+            if (contextVal !== null && contextVal !== undefined) {
+                searchString = String(contextVal);
+            }
+            return String(actual || '').toLowerCase().includes(searchString.toLowerCase());
+        }
+        
+        // Logical NOT (!)
+        if (trimmed.startsWith('!')) {
+            return !evaluateCondition(trimmed.substring(1), context);
+        }
+        
+        // Simple value truthiness check
+        const val = getNestedValue(context, trimmed);
+        return !!(val && val !== 'null' && val !== 'N/A' && val !== '');
     }
 
     // Recursive interpolation function
@@ -140,34 +240,9 @@
             return list.map(item => interpolate(template, item)).join('');
         });
 
-        // 2. Handle #if / else blocks - Supports {{#if}} and {#if}
-        result = result.replace(/\{{1,2}\s*#if\s+([a-zA-Z0-9_.!\[\]\s=><!'"()-]+)\s*\}{1,2}([\s\S]*?)(?:\{{1,2}\s*else\s*\}{1,2}([\s\S]*?))?\{{1,2}\s*\/if\s*\}{1,2}/g, (match: string, conditionExpr: string, trueBlock: string, falseBlock?: string) => {
-            // Simple comparison support
-            let isTrue = false;
-            const expr = conditionExpr.trim();
-            
-            if (expr.includes(' == ')) {
-                const [path, val] = expr.split(' == ').map(s => s.trim());
-                const actual = getNestedValue(context, path);
-                isTrue = String(actual) === val.replace(/['"]/g, '');
-            } else if (expr.includes(' != ')) {
-                const [path, val] = expr.split(' != ').map(s => s.trim());
-                const actual = getNestedValue(context, path);
-                isTrue = String(actual) !== val.replace(/['"]/g, '');
-            } else if (expr.includes(' contains ')) {
-                const [path, val] = expr.split(' contains ').map(s => s.trim());
-                const actual = getNestedValue(context, path);
-                let searchString = val.replace(/['"]/g, '');
-                const contextVal = getNestedValue(context, val);
-                if (contextVal !== null && contextVal !== undefined) {
-                    searchString = String(contextVal);
-                }
-                isTrue = String(actual || '').toLowerCase().includes(searchString.toLowerCase());
-            } else {
-                const val = getNestedValue(context, expr);
-                isTrue = !!(val && val !== 'null' && val !== 'N/A' && val !== '');
-            }
-            
+        // 2. Handle #if / else blocks - Supports {{#if}} and {#if} with logical operators
+        result = result.replace(/\{{1,2}\s*#if\s+([a-zA-Z0-9_.!\[\]\s=><!'"()&|-]+)\s*\}{1,2}([\s\S]*?)(?:\{{1,2}\s*else\s*\}{1,2}([\s\S]*?))?\{{1,2}\s*\/if\s*\}{1,2}/g, (match: string, conditionExpr: string, trueBlock: string, falseBlock?: string) => {
+            const isTrue = evaluateCondition(conditionExpr, context);
             return isTrue ? interpolate(trueBlock, context) : interpolate(falseBlock || '', context);
         });
 

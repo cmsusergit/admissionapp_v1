@@ -118,8 +118,10 @@
     style:top={node.y !== undefined ? `${node.y}px` : undefined}
     style:width={node.w !== undefined ? `${node.w}px` : (node.type === 'tableCell' ? `${((node.width || 12) / 12) * 100}%` : (node.style?.width || '100%'))}
     style:min-width={node.type === 'layoutTable' && node.w !== undefined ? `${node.w}px` : undefined}
-    style:height={node.type === 'text' ? 'auto' : (node.h !== undefined ? `${node.h}px` : (node.style?.height || 'auto'))}
+    style:height={node.h !== undefined ? `${node.h}px` : (node.style?.height || 'auto')}
     style:min-height={node.type === 'layoutTable' && node.h !== undefined ? `${node.h}px` : undefined}
+    style:overflow={(node.h !== undefined || node.style?.height) ? 'hidden' : undefined}
+    title={node.type === 'text' ? (node.content || '') : undefined}
     style:padding={node.style?.padding || (node.type === 'tableCell' ? '5px' : '0px')}
     style:margin={node.style?.margin || '0'}
     style:border={node.style?.border || (node.type === 'tableCell' ? '1px dashed #eee' : (node.type === 'row' || node.type === 'column' ? '1px dashed #ccc' : 'none'))}
@@ -231,14 +233,9 @@
         {/if}
     {:else if node.type === 'text'}
         {#if node.isConditional}
-            <div class="border rounded p-1 bg-light text-muted xx-small" style="pointer-events: none;">
-                <div class="fw-bold text-primary mb-1"><i class="bi bi-shuffle"></i> Conditional Text</div>
-                {#each node.conditions || [] as cond}
-                    {#if cond.expr}
-                        <div class="text-truncate"><strong>If:</strong> {cond.expr} ➔ {cond.value || '""'}</div>
-                    {/if}
-                {/each}
-                <div class="text-truncate mt-1 border-top pt-1"><strong>Else:</strong> {node.fallbackValue || '""'}</div>
+            <div class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 p-2 d-block text-start" style="pointer-events: none;">
+                <i class="bi bi-shuffle me-1"></i> Conditional Text
+                <div class="x-small text-muted font-monospace mt-1">[{(node.conditions || []).length} branches]</div>
             </div>
         {:else}
             <div style="white-space: pre-wrap; min-height: 1.2em; pointer-events: none;">{node.content || 'Hello There'}</div>

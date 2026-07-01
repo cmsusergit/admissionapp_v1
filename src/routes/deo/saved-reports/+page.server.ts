@@ -14,6 +14,7 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     const { data: templates, error } = await supabase
         .from('report_templates')
         .select('id, name, description, report_type')
+        .neq('report_type', 'html_profile')
         .contains('allowed_roles', [userProfile.role]);
 
     return { templates: templates || [] };

@@ -139,6 +139,7 @@ export const load: PageServerLoad = async ({
   const { data: templates, error: templateError } = await supabaseAdmin
     .from("report_templates")
     .select("*")
+    .neq("report_type", "html_profile")
     .or(`created_by.eq.${session.user.id},is_public.eq.true`)
     .order("name");
 

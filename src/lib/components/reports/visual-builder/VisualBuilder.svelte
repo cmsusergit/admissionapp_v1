@@ -81,9 +81,28 @@
             nodeToProcess = JSON.parse(JSON.stringify(originalNode));
             layout = removeNodeFromLayout(layout, data.nodeId);
         } else {
+            let customName = '';
+            if (type === 'layoutTable') customName = 'Table';
+            else if (type === 'tableCell') customName = 'Cell';
+            else if (type === 'row') customName = 'Row';
+            else if (type === 'column') customName = 'Column';
+            else if (type === 'text') customName = 'Text';
+            else if (type === 'image') customName = 'Image';
+            else if (type === 'variable') {
+                if (data.variableLabel) {
+                    customName = data.variableLabel.replace(/List\s*>\s*/i, '').substring(0, 10).trim();
+                } else {
+                    customName = 'Variable';
+                }
+            } else if (type === 'pageBreak') customName = 'PageBreak';
+            else {
+                customName = type.charAt(0).toUpperCase() + type.slice(1).substring(0, 9);
+            }
+
             nodeToProcess = {
                 id: generateId(),
                 type,
+                customName,
                 children: (type === 'row' || type === 'column') ? [] : undefined,
                 style: {
                     width: '100%',
@@ -114,9 +133,11 @@
                 nodeToProcess.children = [0, 1].map(() => ({
                     id: generateId(),
                     type: 'tableRow',
+                    customName: 'Row',
                     children: [0, 1].map(() => ({
                         id: generateId(),
                         type: 'tableCell',
+                        customName: 'Cell',
                         children: [],
                         style: { padding: '5px', border: '1px dashed #ccc' }
                     }))
@@ -230,6 +251,10 @@
     function compileNode(node: any): string {
         let styleStr = '';
         const combinedStyle = { ...node.style };
+        
+        // Exclude zIndex from compiled HTML style so components are not hidden in rendered template
+        if ('zIndex' in combinedStyle) delete combinedStyle.zIndex;
+        if ('z-index' in combinedStyle) delete combinedStyle['z-index'];
         
         if (node.x !== undefined && node.y !== undefined) {
             combinedStyle.position = 'absolute';
@@ -625,7 +650,7 @@
         <div class="sidebar-drawer border-end bg-light" class:active={showSidebar}>
             <div class="drawer-content p-3">
                 {#if !previewMode}
-                    <Sidebar {schema} {selectedTable} {layout} {selectedNode} {selectedNodes} onUpdateNode={updateSelectedNode} onInsertVariable={(detail: any) => onDrop('root', 'variable', detail)} />
+                    <Sidebar {schema} {selectedTable} {layout} {selectedNode} {selectedNodes} selectedIds={selectedIds} onSelect={handleSelect} onUpdateNode={updateSelectedNode} onInsertVariable={(detail: any) => onDrop('root', 'variable', detail)} />
                 {:else}
                     <div class="text-center text-muted mt-5"><p class="small px-3">Sidebar is hidden in Preview mode.</p></div>
                 {/if}
@@ -663,7 +688,7 @@
     .sidebar-drawer { width: 300px; background: #f8f9fa; border-right: 1px solid #dee2e6; overflow-y: auto; transition: all 0.3s; margin-left: -300px; }
     .sidebar-drawer.active { margin-left: 0; }
     .workspace-viewport { flex: 1; background: #e5e5e5; overflow: auto; padding: 40px; display: flex; justify-content: center; }
-    .canvas-paper { background: white; width: 210mm; min-height: 297mm; position: relative; box-shadow: 0 0 15px rgba(0,0,0,0.1); }
+    .canvas-paper { background: white; width: 210mm; min-height: 297mm; position: relative; box-shadow: 0 0 15px rgba(0,0,0,0.1); z-index: 1; }
     .canvas-paper.show-grid { background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 20px 20px; }
     .page-boundary-indicator { position: absolute; left: 0; right: 0; height: 1px; border-top: 1px dashed red; z-index: 10; pointer-events: none; }
     .guideline { position: absolute; background: magenta; z-index: 1000; pointer-events: none; }

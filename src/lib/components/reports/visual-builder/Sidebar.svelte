@@ -5,6 +5,8 @@
         selectedNode = null,
         selectedNodes = [] as any[],
         layout = [],
+        selectedIds = [] as string[],
+        onSelect = (id: string, e?: MouseEvent) => {},
         onUpdateNode = () => {},
         onInsertVariable = (detail: any) => {}
     } = $props();
@@ -107,11 +109,12 @@
     let varSearch = $state('');
     let gridRows = $state(2);
     let gridCols = $state(2);
-    let activeTab = $state('palette'); // 'palette' or 'props'
+    let activeTab = $state('palette'); // 'palette', 'props', or 'layers'
+    let expandedNodes = $state(new Set<string>());
 
-    // Auto-switch to Properties tab when a node is selected
+    // Auto-switch to Properties tab when a node is selected (only if user is on palette tab)
     $effect(() => {
-        if (selectedNode) {
+        if (selectedNode && activeTab === 'palette') {
             activeTab = 'props';
         }
     });
@@ -286,6 +289,7 @@
             children: [...row.children, {
                 id: Math.random().toString(36).substr(2, 9),
                 type: 'tableCell',
+                customName: 'Cell',
                 children: [],
                 style: { padding: '5px', border: tableToEdit.style?.border || '1px dashed #eee' }
             }]
@@ -317,9 +321,11 @@
                 currentRows.push({
                     id: Math.random().toString(36).substr(2, 9),
                     type: 'tableRow',
+                    customName: 'Row',
                     children: Array(targetCols).fill(0).map(() => ({
                         id: Math.random().toString(36).substr(2, 9),
                         type: 'tableCell',
+                        customName: 'Cell',
                         children: [],
                         style: { padding: '5px', border: tableToEdit.style?.border || '1px dashed #eee' }
                     }))
@@ -338,6 +344,7 @@
                     cells.push({
                         id: Math.random().toString(36).substr(2, 9),
                         type: 'tableCell',
+                        customName: 'Cell',
                         children: [],
                         style: { padding: '5px', border: tableToEdit.style?.border || '1px dashed #eee' }
                     });
@@ -349,6 +356,22 @@
         });
 
         onUpdateNode({ children: currentRows }, tableToEdit.id);
+    }
+
+    function getNodeIcon(type: string): string {
+        switch (type) {
+            case 'row': return 'bi-layout-three-columns';
+            case 'column': return 'bi-layout-sidebar';
+            case 'text': return 'bi-textarea-t';
+            case 'variable': return 'bi-braces';
+            case 'image': return 'bi-image';
+            case 'table': return 'bi-table';
+            case 'layoutTable': return 'bi-grid-3x3';
+            case 'tableRow': return 'bi-list';
+            case 'tableCell': return 'bi-square';
+            case 'divider': return 'bi-dash-lg';
+            default: return 'bi-box';
+        }
     }
 </script>
 
@@ -371,6 +394,15 @@
                 onclick={(e) => { e.stopPropagation(); activeTab = 'props'; }}
             >
                 Properties
+            </button>
+        </li>
+        <li class="nav-item">
+            <button 
+                type="button" 
+                class="nav-link {activeTab === 'layers' ? 'active' : ''} py-2 small" 
+                onclick={(e) => { e.stopPropagation(); activeTab = 'layers'; }}
+            >
+                Layers
             </button>
         </li>
     </ul>
@@ -442,6 +474,21 @@
                         <button type="button" class="btn btn-xs btn-outline-danger border-0" onclick={(e) => { e.stopPropagation(); onUpdateNode({ delete: true }); }} title="Delete Component">
                             <i class="bi bi-trash"></i>
                         </button>
+                    </div>
+
+                    <!-- Custom Name / Label Group -->
+                    <div class="prop-group mb-3">
+                        <label class="x-small fw-bold text-muted text-uppercase d-block mb-1">Component Name</label>
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            placeholder="e.g. Header Title, Footer Text..." 
+                            value={selectedNode.customName || ''} 
+                            oninput={(e) => onUpdateNode({ customName: e.currentTarget.value })} 
+                        />
+                        <div class="xx-small text-muted mt-1">
+                            Set a custom label to easily identify this item in the Layers structure view.
+                        </div>
                     </div>
                     
                     <!-- Sizing Group -->
@@ -957,10 +1004,109 @@
                 </div>
             {/if}
         </div>
+
+        <!-- Layers Tab -->
+        <div class="tab-pane fade {activeTab === 'layers' ? 'show active' : ''}" id="layers-tab">
+            <h6 class="small fw-bold mb-3">Document Structure</h6>
+            {#if layout.length === 0}
+                <p class="x-small text-muted text-center py-4">No elements on the canvas.</p>
+            {:else}
+                <div class="layers-list border rounded p-2 bg-white" style="max-height: 300px; overflow-y: auto;">
+                    {#snippet layerItem(node, depth)}
+                        {@const hasChildren = node.children && node.children.length > 0}
+                        {@const isExpanded = expandedNodes.has(node.id)}
+                        {@const isNodeSelected = selectedIds.includes(node.id)}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <div 
+                            class="d-flex align-items-center justify-content-between p-1 my-1 rounded layer-row {isNodeSelected ? 'bg-primary text-white' : 'hover-bg text-dark'}" 
+                            style="padding-left: {depth * 12 + 6}px !important; cursor: pointer; font-size: 0.75rem;" 
+                            onclick={(e) => { e.stopPropagation(); onSelect(node.id, e); }}
+                        >
+                            <span class="text-truncate d-flex align-items-center">
+                                {#if hasChildren}
+                                    <button 
+                                        type="button" 
+                                        class="btn btn-link p-0 me-1 border-0 d-inline-flex align-items-center justify-content-center {isNodeSelected ? 'text-white' : 'text-muted'}" 
+                                        style="width: 14px; height: 14px; font-size: 0.7rem; text-decoration: none;"
+                                        onclick={(e) => { 
+                                            e.stopPropagation(); 
+                                            if (expandedNodes.has(node.id)) {
+                                                expandedNodes.delete(node.id);
+                                            } else {
+                                                expandedNodes.add(node.id);
+                                            }
+                                            expandedNodes = new Set(expandedNodes);
+                                        }}
+                                    >
+                                        <i class="bi {isExpanded ? 'bi-caret-down-fill' : 'bi-caret-right-fill'}"></i>
+                                    </button>
+                                {:else}
+                                    <span style="width: 14px; display: inline-block;"></span>
+                                {/if}
+                                <i class="bi {getNodeIcon(node.type)} me-1 {isNodeSelected ? 'text-white' : 'text-primary'}"></i>
+                                {node.customName || node.variableLabel || node.variablePath || node.content || node.type}
+                            </span>
+                            {#if node.style?.zIndex !== undefined}
+                                <span class="badge {isNodeSelected ? 'bg-light text-primary' : 'bg-secondary'} xx-small">z: {node.style.zIndex}</span>
+                            {/if}
+                        </div>
+                        {#if hasChildren && isExpanded}
+                            {#each node.children as child (child.id)}
+                                {@render layerItem(child, depth + 1)}
+                            {/each}
+                        {/if}
+                    {/snippet}
+
+                    {#each layout as node (node.id)}
+                        {@render layerItem(node, 0)}
+                    {/each}
+                </div>
+            {/if}
+
+            {#if selectedNode}
+                <hr class="my-3">
+                <h6 class="small fw-bold mb-2">Selected Subtree</h6>
+                <div class="layers-list border rounded p-2 bg-light" style="max-height: 250px; overflow-y: auto;">
+                    {#snippet subItem(node, depth)}
+                        {@const hasChildren = node.children && node.children.length > 0}
+                        {@const isNodeSelected = selectedIds.includes(node.id)}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <div 
+                            class="d-flex align-items-center justify-content-between p-1 my-1 rounded layer-row {isNodeSelected ? 'bg-primary text-white' : 'hover-bg text-dark'}" 
+                            style="padding-left: {depth * 12 + 6}px !important; cursor: pointer; font-size: 0.75rem;" 
+                            onclick={(e) => { e.stopPropagation(); onSelect(node.id, e); }}
+                        >
+                            <span class="text-truncate d-flex align-items-center">
+                                <i class="bi {getNodeIcon(node.type)} me-1 {isNodeSelected ? 'text-white' : 'text-primary'}"></i>
+                                {node.customName || node.variableLabel || node.variablePath || node.content || node.type}
+                            </span>
+                            {#if node.style?.zIndex !== undefined}
+                                <span class="badge {isNodeSelected ? 'bg-light text-primary' : 'bg-secondary'} xx-small">z: {node.style.zIndex}</span>
+                            {/if}
+                        </div>
+                        {#if hasChildren}
+                            {#each node.children as child (child.id)}
+                                {@render subItem(child, depth + 1)}
+                            {/each}
+                        {/if}
+                    {/snippet}
+
+                    {@render subItem(selectedNode, 0)}
+                </div>
+            {/if}
+        </div>
     </div>
 </div>
 
 <style>
+    .layer-row {
+        transition: all 0.15s;
+    }
+    .hover-bg:hover {
+        background-color: #f0f0f0;
+    }
     .component-item {
         cursor: grab;
         transition: all 0.2s;
