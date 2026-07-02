@@ -34,6 +34,7 @@
     // Initialize selected keys with defaults
     let selectedKeys = staticFields.filter(f => f.default).map(f => f.key);
     let availableFields = [...staticFields];
+    let customLabels: Record<string, string> = {};
 
     // Vars for Template UI
     let showSaveModal = false;
@@ -68,8 +69,20 @@
         // Add selected fields
         if (selectedKeys.length > 0) {
             params.set('fields', selectedKeys.join(','));
+            
+            // Build custom labels object
+            const activeLabels: Record<string, string> = {};
+            selectedKeys.forEach(k => {
+                if (customLabels[k]) activeLabels[k] = customLabels[k];
+            });
+            if (Object.keys(activeLabels).length > 0) {
+                params.set('labels', JSON.stringify(activeLabels));
+            } else {
+                params.delete('labels');
+            }
         } else {
             params.delete('fields');
+            params.delete('labels');
         }
 
         return `/adm-officer/export?${params.toString()}`;
@@ -107,9 +120,18 @@
             }
             
             if (template.filters) {
-                filters = { ...filters, ...template.filters };
+                // Restore custom labels
+                customLabels = template.filters.customLabels || {};
+
+                // Exclude customLabels from query parameters
+                const queryFilters = { ...template.filters };
+                delete queryFilters.customLabels;
+
+                filters = { ...filters, ...queryFilters };
                 // Also update URL to reflect loaded filters
                 applyFilters();
+            } else {
+                customLabels = {};
             }
         }
     }
@@ -238,12 +260,32 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted small mb-2">Hold Ctrl (Cmd on Mac) to select multiple columns.</p>
-                    <select multiple class="form-select" size="15" bind:value={selectedKeys}>
-                        {#each availableFields as field (field.key)}
-                            <option value={field.key}>{field.label}</option>
-                        {/each}
-                    </select>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="text-muted small mb-2">Hold Ctrl (Cmd on Mac) to select multiple fields.</p>
+                            <select multiple class="form-select" size="15" bind:value={selectedKeys}>
+                                {#each availableFields as field (field.key)}
+                                    <option value={field.key}>{field.label}</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="text-muted small mb-2">Optional: Customize CSV Column Headers</p>
+                            <div class="border rounded p-2 bg-light" style="max-height: 310px; overflow-y: auto;">
+                                {#each selectedKeys as key (key)}
+                                    {@const field = availableFields.find(f => f.key === key)}
+                                    {#if field}
+                                        <div class="mb-2 pb-2 border-bottom">
+                                            <div class="small fw-bold text-primary mb-1">{field.label}</div>
+                                            <input type="text" class="form-control form-control-sm" placeholder="Default: {field.label.replace('[Form] ', '')}" bind:value={customLabels[key]}>
+                                        </div>
+                                    {/if}
+                                {:else}
+                                    <p class="text-muted small text-center my-5 py-5">Select fields on the left to customize their column headers.</p>
+                                {/each}
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-footer text-end">
                     <button class="btn btn-outline-primary me-2" on:click={openSaveModal}>
@@ -326,7 +368,7 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="columns" value={JSON.stringify(selectedKeys)}>
-                    <input type="hidden" name="filters" value={JSON.stringify(filters)}>
+                    <input type="hidden" name="filters" value={JSON.stringify({ ...filters, customLabels })}>
                     
                     <div class="mb-3">
                         <label class="form-label" for="tplName">Template Name</label>

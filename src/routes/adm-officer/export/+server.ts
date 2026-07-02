@@ -195,7 +195,18 @@ export const GET: RequestHandler = async ({
     if (selectedKeys.length === 0) selectedKeys = Object.keys(fieldMap);
   }
 
+  const labelsParam = url.searchParams.get("labels");
+  let customLabels: Record<string, string> = {};
+  if (labelsParam) {
+    try {
+      customLabels = JSON.parse(labelsParam);
+    } catch (e) {
+      console.error("Failed to parse custom labels:", e);
+    }
+  }
+
   const headers = ['Sr. No', ...selectedKeys.map((k) => {
+    if (customLabels[k]) return customLabels[k];
     if (fieldMap[k]) return fieldMap[k].label;
     if (k.startsWith("dynamic:")) return k.replace("dynamic:", "");
     return k;
