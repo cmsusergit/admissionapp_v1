@@ -1,44 +1,45 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
+    import { untrack } from 'svelte';
     import type { PageData, ActionData } from './$types';
 
     let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
     let filterValues = $state<Record<string, any>>({});
     let deduplicateStudent = $state(false);
-    let visibleColumns = $state<string[]>([]);
+    let visibleColumns = $state<string[]>(data.template.configuration.columns ? data.template.configuration.columns.map((c: any) => c.path) : []);
     let expandColumns = $state<string[]>([]);
     let loading = $state(false);
 
     // Initialize or update filterValues when template or form data changes
     $effect(() => {
-        if (form?.userFilters) {
-            // If we have filters returned from a previous preview, use them
-            filterValues = { ...form.userFilters };
-        } else if (data.template.configuration.parameters) {
-            // Initialize with empty strings if not set
-            const initial: Record<string, any> = {};
-            data.template.configuration.parameters.forEach((p: any) => {
-                if (filterValues[p.name] === undefined) {
-                    initial[p.name] = '';
+        const f = form;
+        untrack(() => {
+            if (f?.userFilters) {
+                // If we have filters returned from a previous preview, use them
+                filterValues = { ...f.userFilters };
+            } else if (data.template.configuration.parameters) {
+                // Initialize with empty strings if not set
+                const initial: Record<string, any> = {};
+                data.template.configuration.parameters.forEach((p: any) => {
+                    if (filterValues[p.name] === undefined) {
+                        initial[p.name] = '';
+                    }
+                });
+                if (Object.keys(initial).length > 0) {
+                    filterValues = { ...filterValues, ...initial };
                 }
-            });
-            if (Object.keys(initial).length > 0) {
-                filterValues = { ...filterValues, ...initial };
             }
-        }
-        if (form?.deduplicateStudent !== undefined) {
-            deduplicateStudent = form.deduplicateStudent;
-        }
-        if (visibleColumns.length === 0 && data.template.configuration.columns) {
-            visibleColumns = data.template.configuration.columns.map((c: any) => c.path);
-        }
-        if (form?.visibleColumns) {
-            visibleColumns = [...form.visibleColumns];
-        }
-        if (form?.expandColumns) {
-            expandColumns = [...form.expandColumns];
-        }
+            if (f?.deduplicateStudent !== undefined) {
+                deduplicateStudent = f.deduplicateStudent;
+            }
+            if (f?.visibleColumns) {
+                visibleColumns = [...f.visibleColumns];
+            }
+            if (f?.expandColumns) {
+                expandColumns = [...f.expandColumns];
+            }
+        });
     });
 
     // Reactive download URL
