@@ -104,11 +104,24 @@
                                     
                                     {#if param.type === 'select'}
                                         {@const isCourse = param.column.includes('courses') && param.column.includes('name')}
-                                        <select class="form-select form-select-sm" name={param.name} bind:value={filterValues[param.name]} on:change={() => isCourse && handleCourseChange()}>
-                                            <option value="">All</option>
-                                            {#each getFilteredOptions(param) as opt}
-                                                <option value={opt}>{opt}</option>
-                                            {/each}
+                                        {@const isBranch = param.column.includes('branches') && param.column.includes('name')}
+                                        {@const courseParamName = data.template.configuration.parameters?.find((p: any) => p.column.includes('courses') && p.column.includes('name'))?.name}
+                                        {@const selectedCourse = courseParamName ? filterValues[courseParamName] : null}
+                                        <select 
+                                            class="form-select form-select-sm" 
+                                            name={param.name} 
+                                            bind:value={filterValues[param.name]} 
+                                            disabled={isBranch && courseParamName && !selectedCourse}
+                                            on:change={() => isCourse && handleCourseChange()}
+                                        >
+                                            {#if isBranch && courseParamName && !selectedCourse}
+                                                <option value="">Select course first</option>
+                                            {:else}
+                                                <option value="">All</option>
+                                                {#each getFilteredOptions(param) as opt}
+                                                    <option value={opt}>{opt}</option>
+                                                {/each}
+                                            {/if}
                                         </select>
                                     {:else if param.type === 'date'}
                                         <input type="date" class="form-control form-control-sm" name={param.name} bind:value={filterValues[param.name]}>
