@@ -8,8 +8,15 @@
 
     let filterValues: Record<string, any> = {};
     let deduplicateStudent = false;
+    let visibleColumns: string[] = [];
+    let expandColumns: string[] = [];
     let loading = false;
 
+    // Initialize visibleColumns if empty
+    $: if (visibleColumns.length === 0 && data.template.configuration.columns) {
+        visibleColumns = data.template.configuration.columns.map((c: any) => c.path);
+    }
+ 
     $: downloadUrl = (() => {
         const params = new URLSearchParams();
         params.append('id', data.template.id);
@@ -19,14 +26,26 @@
         if (deduplicateStudent) {
             params.append('deduplicate_student', 'true');
         }
+        if (visibleColumns.length > 0) {
+            params.append('visible_columns', visibleColumns.join(','));
+        }
+        if (expandColumns.length > 0) {
+            params.append('expand_columns', expandColumns.join(','));
+        }
         return `/api/reports/generate?${params.toString()}`;
     })();
-
+ 
     if (form?.userFilters) {
         filterValues = { ...form.userFilters };
     }
     if (form && form.deduplicateStudent !== undefined) {
         deduplicateStudent = form.deduplicateStudent;
+    }
+    if (form?.visibleColumns) {
+        visibleColumns = [...form.visibleColumns];
+    }
+    if (form?.expandColumns) {
+        expandColumns = [...form.expandColumns];
     }
 
     function getFilteredOptions(param: any) {
@@ -131,6 +150,21 @@
                         {/if}
                         
                         <hr>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-dark mb-2">Columns to Include</label>
+                            <div class="border rounded p-2 bg-white" style="max-height: 180px; overflow-y: auto;">
+                                {#each data.template.configuration.columns || [] as col}
+                                    <div class="form-check py-1">
+                                        <input type="checkbox" class="form-check-input" id="col_{col.path}" value={col.path} bind:group={visibleColumns}>
+                                        <label class="form-check-label small" for="col_{col.path}">
+                                            {col.label}
+                                        </label>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+
+                        <hr>
                         <div class="mb-3 form-check">
                             <input type="checkbox" class="form-check-input" id="dedup" name="deduplicate_student" value="true" bind:checked={deduplicateStudent}>
                             <label class="form-check-label small fw-bold text-dark mb-0" for="dedup">
@@ -140,6 +174,30 @@
                                 Merges multiple applications by same student (combining form types to e.g. Prov, MQ/NRI).
                             </div>
                         </div>
+
+                        {#if deduplicateStudent}
+                            <div class="mb-3 ps-3 border-start border-2 border-primary">
+                                <label class="form-label x-small fw-bold text-dark mb-1">Split fields by Form Type as columns:</label>
+                                <div class="border rounded p-2 bg-white" style="max-height: 150px; overflow-y: auto;">
+                                    {#each data.template.configuration.columns || [] as col}
+                                        {#if visibleColumns.includes(col.path) && col.path !== 'form_type'}
+                                            <div class="form-check py-1">
+                                                <input type="checkbox" class="form-check-input" id="exp_{col.path}" value={col.path} bind:group={expandColumns}>
+                                                <label class="form-check-label x-small" for="exp_{col.path}">
+                                                    {col.label}
+                                                </label>
+                                            </div>
+                                        {/if}
+                                    {/each}
+                                </div>
+                                <div class="form-text x-small text-muted mt-1">
+                                    Creates separate columns for each form type (e.g. Receipt Number (Prov) and Receipt Number (MQ/NRI)).
+                                </div>
+                            </div>
+                        {/if}
+
+                        <input type="hidden" name="visible_columns" value={visibleColumns.join(',')}>
+                        <input type="hidden" name="expand_columns" value={expandColumns.join(',')}>
                         <hr>
                         <div class="d-grid gap-2">
                             <button class="btn btn-primary btn-sm" disabled={loading}>

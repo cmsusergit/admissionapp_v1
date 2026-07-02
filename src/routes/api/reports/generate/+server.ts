@@ -29,25 +29,37 @@ export const GET: RequestHandler = async ({ url, locals: { getAuthenticatedUser,
         throw error(403, 'Forbidden');
     }
 
+    const visibleColsParam = url.searchParams.get('visible_columns');
+    const expandColsParam = url.searchParams.get('expand_columns') || '';
+    const expandColumns = expandColsParam ? expandColsParam.split(',') : [];
+
+    // Filter configuration columns list based on visibility
+    let columns = template.configuration.columns || [];
+    if (visibleColsParam) {
+        const visiblePaths = visibleColsParam.split(',');
+        columns = columns.filter((c: any) => visiblePaths.includes(c.path));
+    }
+    const configCopy = { ...template.configuration, columns };
+
     // Extract filters from query params
     const userFilters: Record<string, any> = {};
     let deduplicate = false;
     url.searchParams.forEach((value, key) => {
         if (key === 'deduplicate_student') {
             deduplicate = value === 'true';
-        } else if (key !== 'id') {
+        } else if (key !== 'id' && key !== 'visible_columns' && key !== 'expand_columns') {
             userFilters[key] = value;
         }
     });
 
     try {
         console.log(`Generating report for template: ${template.name} (${templateId})`);
-        const { data, queryString } = await executeReportQuery(supabaseAdmin, userProfile, template.base_table, template.configuration, { userFilters, deduplicate }); 
+        const { data, columns: outputColumns, queryString } = await executeReportQuery(supabaseAdmin, userProfile, template.base_table, configCopy, { userFilters, deduplicate, expandColumns }); 
         
         const rowCount = data ? data.length : 0;
         console.log(`Report generated. Rows: ${rowCount}. Query: ${queryString}`);
 
-        const csv = generateCSV(data as any[], template.configuration.columns);
+        const csv = generateCSV(data as any[], outputColumns);
 
         return new Response(csv, {
             headers: {

@@ -52,3 +52,17 @@ This changelog details the fix for the duplicate options and missing "COMPUTER E
     * [src/routes/adm-officer/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/adm-officer/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/adm-officer/saved-reports/%5Bid%5D/+page.svelte)
     * [src/routes/deo/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/deo/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/deo/saved-reports/%5Bid%5D/+page.svelte)
     * [src/routes/fee-collector/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/fee-collector/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/fee-collector/saved-reports/%5Bid%5D/+page.svelte)
+
+## 6. Columns Inclusion Selector & Form Type Expansion Columns
+* **Problem**: Users wanted to choose which columns to include in the preview and CSV download, and when student profiles were deduplicated, they wanted to optionally split unique fields (like Receipt Number) into multiple columns per form type (e.g. `Receipt Number (Prov)` and `Receipt Number (MQ/NRI)`) rather than just showing the first matched record's value.
+* **Fix**:
+  * Added a "Columns to Include" checklist in the filters sidebar of all saved report pages. Users can check/uncheck columns to customize reports dynamically.
+  * Added a conditional checklist "Split fields by Form Type as columns" (visible when deduplication is checked).
+  * Updated the query builder `deduplicateStudentRecords` to identify all active form types in the retrieved dataset, expand split columns dynamically into `Column Name (Form Type)` columns, and look up matching values on a per-form-type basis.
+  * Integrated visible columns and expanded columns into the server preview action and the CSV generation endpoint `/api/reports/generate`.
+  * Files modified:
+    * [src/lib/server/reportQueryBuilder.ts](file:///workspaces/admissionapp_v1/src/lib/server/reportQueryBuilder.ts)
+    * [src/routes/api/reports/generate/+server.ts](file:///workspaces/admissionapp_v1/src/routes/api/reports/generate/+server.ts)
+    * [src/routes/adm-officer/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/adm-officer/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/adm-officer/saved-reports/%5Bid%5D/+page.svelte)
+    * [src/routes/deo/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/deo/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/deo/saved-reports/%5Bid%5D/+page.svelte)
+    * [src/routes/fee-collector/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/fee-collector/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/fee-collector/saved-reports/%5Bid%5D/+page.svelte)

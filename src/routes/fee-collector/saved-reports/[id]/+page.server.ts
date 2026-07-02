@@ -121,13 +121,24 @@ export const actions: Actions = {
             }
 
             const deduplicate = formData.get('deduplicate_student') === 'true';
+            const visibleColsParam = formData.get('visible_columns') as string;
+            const expandColsParam = formData.get('expand_columns') as string || '';
+            const expandColumns = expandColsParam ? expandColsParam.split(',') : [];
 
-            const { data: rawData, queryString } = await executeReportQuery(
+            // Filter columns by visibility
+            let columns = template.configuration.columns || [];
+            if (visibleColsParam) {
+                const visiblePaths = visibleColsParam.split(',');
+                columns = columns.filter((c: any) => visiblePaths.includes(c.path));
+            }
+            const configCopy = { ...template.configuration, columns };
+
+            const { data: rawData, columns: outputColumns, queryString } = await executeReportQuery(
                 supabase, 
                 userProfile, 
                 template.base_table, 
-                template.configuration, 
-                { limit: deduplicate ? 50 : 10, userFilters, deduplicate }
+                configCopy, 
+                { limit: deduplicate ? 50 : 10, userFilters, deduplicate, expandColumns }
             );
             
             const finalRawData = deduplicate && rawData ? rawData.slice(0, 10) : rawData;
@@ -135,9 +146,8 @@ export const actions: Actions = {
              // Flatten for preview
             const previewData = (finalRawData as any[]).map((row: any) => {
                 const flatRow: Record<string, string> = {};
-                // Handle potential null/undefined columns array safely
-                if (template.configuration && template.configuration.columns) {
-                    template.configuration.columns.forEach((col: any) => {
+                if (outputColumns) {
+                    outputColumns.forEach((col: any) => {
                         flatRow[col.label] = formatValue(getValueByPath(row, col.path));
                     });
                 }
@@ -147,10 +157,12 @@ export const actions: Actions = {
             return { 
                 success: true, 
                 previewData, 
-                previewColumns: template.configuration.columns ? template.configuration.columns.map((c: any) => c.label) : [], 
+                previewColumns: outputColumns ? outputColumns.map((c: any) => c.label) : [], 
                 queryString,
                 userFilters,
-                deduplicateStudent: deduplicate
+                deduplicateStudent: deduplicate,
+                visibleColumns: visibleColsParam ? visibleColsParam.split(',') : [],
+                expandColumns
             };
         } catch (e: any) {
             console.error(e);

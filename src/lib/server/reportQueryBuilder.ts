@@ -30,12 +30,17 @@ export async function executeReportQuery(
     userProfile: any, 
     baseTable: string, 
     config: ReportConfig,
-    options: { limit?: number; userFilters?: Record<string, any>; deduplicate?: boolean } = {} 
+    options: { limit?: number; userFilters?: Record<string, any>; deduplicate?: boolean; expandColumns?: string[] } = {} 
 ) {
     // 0. Collect all paths from both columns AND active filters to ensure joins are established
     const allPaths = [...(config.columns || []).map(c => c.path)];
-    if (baseTable === 'applications' && !allPaths.includes('student_id')) {
-        allPaths.push('student_id');
+    if (baseTable === 'applications') {
+        if (!allPaths.includes('student_id')) {
+            allPaths.push('student_id');
+        }
+        if (!allPaths.includes('form_type')) {
+            allPaths.push('form_type');
+        }
     }
     const filteredRelations = new Set<string>();
     
@@ -176,11 +181,14 @@ export async function executeReportQuery(
     }
 
     let processedData = data;
-    if (options.deduplicate && data) {
-        processedData = deduplicateStudentRecords(data, config.columns || []);
+    let outputColumns = config.columns || [];
+    if (data) {
+        const result = deduplicateStudentRecords(data, config.columns || [], !!options.deduplicate, options.expandColumns || []);
+        processedData = result.processedData;
+        outputColumns = result.outputColumns;
     }
 
-    return { data: processedData, queryString };
+    return { data: processedData, columns: outputColumns, queryString };
 }
 
 function convertJsonPathToFilter(path: string): string {
@@ -291,10 +299,48 @@ export function buildSelectString(columns: ReportColumn[], currentTable: string,
     return [...new Set(rootFields), ...nestedStrings].join(',');
 }
 
-export function deduplicateStudentRecords(rawData: any[], columns: any[]): any[] {
-    if (!rawData || rawData.length === 0) return rawData;
+export function deduplicateStudentRecords(
+    rawData: any[], 
+    columns: any[], 
+    deduplicate: boolean, 
+    expandColumns: string[] = []
+): { processedData: any[], outputColumns: any[] } {
+    if (!rawData || rawData.length === 0) {
+        return { processedData: rawData, outputColumns: columns };
+    }
 
-    // Group by student_id
+    if (!deduplicate) {
+        return { processedData: rawData, outputColumns: columns };
+    }
+
+    // 1. Identify active form types in the retrieved dataset
+    const activeFormTypes = new Set<string>();
+    rawData.forEach(row => {
+        if (row.form_type) {
+            const val = String(row.form_type).trim();
+            const mappedVal = val === 'Provisional' ? 'Prov' : val;
+            activeFormTypes.add(mappedVal);
+        }
+    });
+    const formTypeList = Array.from(activeFormTypes).sort();
+
+    // 2. Build outputColumns list
+    const outputColumns: any[] = [];
+    columns.forEach(col => {
+        if (expandColumns.includes(col.path)) {
+            // Expand this column into one column per active form type
+            formTypeList.forEach(ft => {
+                outputColumns.push({
+                    path: `${col.path}__expand__${ft}`,
+                    label: `${col.label} (${ft})`
+                });
+            });
+        } else {
+            outputColumns.push(col);
+        }
+    });
+
+    // 3. Group by student_id
     const groups = new Map<string, any[]>();
     rawData.forEach(row => {
         const studentKey = row.student_id || row.student_user?.email || JSON.stringify(row);
@@ -304,17 +350,35 @@ export function deduplicateStudentRecords(rawData: any[], columns: any[]): any[]
         groups.get(studentKey)!.push(row);
     });
 
-    const result: any[] = [];
+    const processedData: any[] = [];
     groups.forEach(groupRows => {
         if (groupRows.length === 1) {
-            result.push(groupRows[0]);
+            const mergedRow = { ...groupRows[0] };
+            
+            // Set expanded column values for this single row
+            columns.forEach(col => {
+                if (expandColumns.includes(col.path)) {
+                    const rowFt = mergedRow.form_type === 'Provisional' ? 'Prov' : mergedRow.form_type;
+                    formTypeList.forEach(ft => {
+                        const val = ft === rowFt ? getValueByPath(mergedRow, col.path) : '';
+                        setValueByPath(mergedRow, `${col.path}__expand__${ft}`, val);
+                    });
+                }
+            });
+            
+            // Map single form type to Prov if needed
+            if (mergedRow.form_type === 'Provisional') {
+                mergedRow.form_type = 'Prov';
+            }
+            
+            processedData.push(mergedRow);
             return;
         }
 
         // Merge groupRows
         const mergedRow = { ...groupRows[0] };
-        
-        // Find if there is a form_type field to merge
+
+        // Combine form types into comma-separated list
         const formTypes = new Set<string>();
         groupRows.forEach(row => {
             if (row.form_type) {
@@ -323,13 +387,73 @@ export function deduplicateStudentRecords(rawData: any[], columns: any[]): any[]
                 formTypes.add(mappedVal);
             }
         });
-
         if (formTypes.size > 0) {
             mergedRow.form_type = Array.from(formTypes).sort().join(', ');
         }
 
-        result.push(mergedRow);
+        // For each column, if it is to be expanded, populate from matching form type
+        columns.forEach(col => {
+            if (expandColumns.includes(col.path)) {
+                formTypeList.forEach(ft => {
+                    // Find application in group matching this form type
+                    const matchedRow = groupRows.find(row => {
+                        const rowFt = row.form_type === 'Provisional' ? 'Prov' : row.form_type;
+                        return rowFt === ft;
+                    });
+                    const val = matchedRow ? getValueByPath(matchedRow, col.path) : '';
+                    setValueByPath(mergedRow, `${col.path}__expand__${ft}`, val);
+                });
+            }
+        });
+
+        processedData.push(mergedRow);
     });
 
-    return result;
+    return { processedData, outputColumns };
+}
+
+function getValueByPath(obj: any, path: string): any {
+    if (!obj) return null;
+    const parts = path.split('.');
+    let current = obj;
+    for (const part of parts) {
+        if (current === null || current === undefined) return null;
+        const propName = part.split('!')[0].split(':')[0];
+        if (current[propName] !== undefined) {
+            current = current[propName];
+        } else {
+            const foundKey = Object.keys(current).find(k => k.toLowerCase() === propName.toLowerCase());
+            if (foundKey) {
+                current = current[foundKey];
+            } else {
+                return null;
+            }
+        }
+        if (Array.isArray(current)) {
+            current = current.length > 0 ? current[0] : null;
+        }
+    }
+    return current;
+}
+
+function setValueByPath(obj: any, path: string, value: any) {
+    if (!obj) return;
+    const parts = path.split('.');
+    let current = obj;
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const propName = part.split('!')[0].split(':')[0];
+        if (i === parts.length - 1) {
+            current[propName] = value;
+        } else {
+            if (current[propName] === undefined || current[propName] === null) {
+                current[propName] = {};
+            }
+            current = current[propName];
+            if (Array.isArray(current)) {
+                if (current.length === 0) current.push({});
+                current = current[0];
+            }
+        }
+    }
 }
