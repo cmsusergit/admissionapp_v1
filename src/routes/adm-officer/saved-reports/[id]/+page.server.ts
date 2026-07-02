@@ -129,16 +129,20 @@ export const actions: Actions = {
                 return fail(400, { message: 'HTML Profile forms cannot be previewed here. They must be printed directly from a specific application details page.' });
             }
 
+            const deduplicate = formData.get('deduplicate_student') === 'true';
+
             const { data: rawData, queryString } = await executeReportQuery(
                 supabase, 
                 userProfile, 
                 template.base_table, 
                 template.configuration, 
-                { limit: 10, userFilters }
+                { limit: deduplicate ? 50 : 10, userFilters, deduplicate }
             );
             
+            const finalRawData = deduplicate && rawData ? rawData.slice(0, 10) : rawData;
+            
             // Flatten for preview
-            const previewData = (rawData as any[]).map((row: any, index: number) => {
+            const previewData = (finalRawData as any[]).map((row: any, index: number) => {
                 const flatRow: Record<string, string> = { 'Sr. No': String(index + 1) };
                 // Handle potential null/undefined columns array safely
                 if (template.configuration && template.configuration.columns) {
@@ -158,7 +162,8 @@ export const actions: Actions = {
                 previewData, 
                 previewColumns, 
                 queryString,
-                userFilters 
+                userFilters,
+                deduplicateStudent: deduplicate
             };
         } catch (e: any) {
             console.error(e);

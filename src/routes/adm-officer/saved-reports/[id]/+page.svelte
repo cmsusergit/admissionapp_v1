@@ -5,6 +5,7 @@
     let { data, form } = $props<{ data: PageData, form: ActionData }>();
 
     let filterValues = $state<Record<string, any>>({});
+    let deduplicateStudent = $state(false);
     let loading = $state(false);
 
     // Initialize or update filterValues when template or form data changes
@@ -24,6 +25,9 @@
                 filterValues = { ...filterValues, ...initial };
             }
         }
+        if (form?.deduplicateStudent !== undefined) {
+            deduplicateStudent = form.deduplicateStudent;
+        }
     });
 
     // Reactive download URL
@@ -35,6 +39,9 @@
                 params.append(key, value);
             }
         });
+        if (deduplicateStudent) {
+            params.append('deduplicate_student', 'true');
+        }
         return `/api/reports/generate?${params.toString()}`;
     });
     // Helper to get filtered options for select parameters
@@ -139,6 +146,16 @@
                             <p class="text-muted small">No filters configured for this report.</p>
                         {/if}
                         
+                        <hr>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="dedup" name="deduplicate_student" value="true" bind:checked={deduplicateStudent}>
+                            <label class="form-check-label small fw-bold text-dark mb-0" for="dedup">
+                                Deduplicate Student Records
+                            </label>
+                            <div class="form-text x-small text-muted mt-1">
+                                Merges multiple applications by same student (combining form types to e.g. Prov, MQ/NRI).
+                            </div>
+                        </div>
                         <hr>
                         <div class="d-grid gap-2">
                             <button class="btn btn-primary btn-sm" disabled={loading}>

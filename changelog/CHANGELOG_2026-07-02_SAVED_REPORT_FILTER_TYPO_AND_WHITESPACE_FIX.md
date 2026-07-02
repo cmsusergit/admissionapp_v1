@@ -39,3 +39,16 @@ This changelog details the fix for the duplicate options and missing "COMPUTER E
   * Added trash action buttons to directly delete/toggle columns from the layout.
   * Files modified:
     * [src/routes/admin/report-builder/+page.svelte](file:///workspaces/admissionapp_v1/src/routes/admin/report-builder/+page.svelte)
+
+## 5. Duplicate Student Profile Record Deduplication
+* **Problem**: In the final rendered saved reports, if a student has multiple records (e.g. applications for both `Provisional` and `MQ/NRI` form types), they were displayed as separate duplicate rows. There was no feature to optionally deduplicate these rows and merge their form types.
+* **Fix**:
+  * Added a "Deduplicate Student Records" checkbox in the preview filter form of the saved reports view page.
+  * Added query options support in `executeReportQuery` to always fetch `student_id` for applications, group the returned rows by `student_id`, and merge their `form_type` values to a comma-separated list (e.g. `"Prov, MQ/NRI"`).
+  * Applied the deduplication check directly in `/api/reports/generate/+server.ts` for CSV exports and in the `preview` action of all three saved reports endpoints (`adm-officer`, `deo`, and `fee-collector`).
+  * Files modified:
+    * [src/lib/server/reportQueryBuilder.ts](file:///workspaces/admissionapp_v1/src/lib/server/reportQueryBuilder.ts)
+    * [src/routes/api/reports/generate/+server.ts](file:///workspaces/admissionapp_v1/src/routes/api/reports/generate/+server.ts)
+    * [src/routes/adm-officer/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/adm-officer/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/adm-officer/saved-reports/%5Bid%5D/+page.svelte)
+    * [src/routes/deo/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/deo/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/deo/saved-reports/%5Bid%5D/+page.svelte)
+    * [src/routes/fee-collector/saved-reports/\[id\]/+page.server.ts](file:///workspaces/admissionapp_v1/src/routes/fee-collector/saved-reports/%5Bid%5D/+page.server.ts) & [+page.svelte](file:///workspaces/admissionapp_v1/src/routes/fee-collector/saved-reports/%5Bid%5D/+page.svelte)

@@ -31,15 +31,18 @@ export const GET: RequestHandler = async ({ url, locals: { getAuthenticatedUser,
 
     // Extract filters from query params
     const userFilters: Record<string, any> = {};
+    let deduplicate = false;
     url.searchParams.forEach((value, key) => {
-        if (key !== 'id') {
+        if (key === 'deduplicate_student') {
+            deduplicate = value === 'true';
+        } else if (key !== 'id') {
             userFilters[key] = value;
         }
     });
 
     try {
         console.log(`Generating report for template: ${template.name} (${templateId})`);
-        const { data, queryString } = await executeReportQuery(supabaseAdmin, userProfile, template.base_table, template.configuration, { userFilters }); 
+        const { data, queryString } = await executeReportQuery(supabaseAdmin, userProfile, template.base_table, template.configuration, { userFilters, deduplicate }); 
         
         const rowCount = data ? data.length : 0;
         console.log(`Report generated. Rows: ${rowCount}. Query: ${queryString}`);

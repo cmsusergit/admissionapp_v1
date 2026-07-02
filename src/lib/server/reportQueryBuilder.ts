@@ -30,10 +30,13 @@ export async function executeReportQuery(
     userProfile: any, 
     baseTable: string, 
     config: ReportConfig,
-    options: { limit?: number; userFilters?: Record<string, any> } = {} 
+    options: { limit?: number; userFilters?: Record<string, any>; deduplicate?: boolean } = {} 
 ) {
     // 0. Collect all paths from both columns AND active filters to ensure joins are established
     const allPaths = [...(config.columns || []).map(c => c.path)];
+    if (baseTable === 'applications' && !allPaths.includes('student_id')) {
+        allPaths.push('student_id');
+    }
     const filteredRelations = new Set<string>();
     
     // Add paths from parameters that have values provided
@@ -172,7 +175,12 @@ export async function executeReportQuery(
         console.log(`[ReportQueryBuilder] Query returned no data.`);
     }
 
-    return { data, queryString };
+    let processedData = data;
+    if (options.deduplicate && data) {
+        processedData = deduplicateStudentRecords(data, config.columns || []);
+    }
+
+    return { data: processedData, queryString };
 }
 
 function convertJsonPathToFilter(path: string): string {
@@ -281,4 +289,47 @@ export function buildSelectString(columns: ReportColumn[], currentTable: string,
     });
 
     return [...new Set(rootFields), ...nestedStrings].join(',');
+}
+
+export function deduplicateStudentRecords(rawData: any[], columns: any[]): any[] {
+    if (!rawData || rawData.length === 0) return rawData;
+
+    // Group by student_id
+    const groups = new Map<string, any[]>();
+    rawData.forEach(row => {
+        const studentKey = row.student_id || row.student_user?.email || JSON.stringify(row);
+        if (!groups.has(studentKey)) {
+            groups.set(studentKey, []);
+        }
+        groups.get(studentKey)!.push(row);
+    });
+
+    const result: any[] = [];
+    groups.forEach(groupRows => {
+        if (groupRows.length === 1) {
+            result.push(groupRows[0]);
+            return;
+        }
+
+        // Merge groupRows
+        const mergedRow = { ...groupRows[0] };
+        
+        // Find if there is a form_type field to merge
+        const formTypes = new Set<string>();
+        groupRows.forEach(row => {
+            if (row.form_type) {
+                const val = String(row.form_type).trim();
+                const mappedVal = val === 'Provisional' ? 'Prov' : val;
+                formTypes.add(mappedVal);
+            }
+        });
+
+        if (formTypes.size > 0) {
+            mergedRow.form_type = Array.from(formTypes).sort().join(', ');
+        }
+
+        result.push(mergedRow);
+    });
+
+    return result;
 }

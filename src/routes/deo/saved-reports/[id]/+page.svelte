@@ -7,6 +7,7 @@
     export let form: ActionData;
 
     let filterValues: Record<string, any> = {};
+    let deduplicateStudent = false;
     let loading = false;
 
     $: downloadUrl = (() => {
@@ -15,11 +16,17 @@
         Object.entries(filterValues).forEach(([key, value]) => {
             if (value) params.append(key, value);
         });
+        if (deduplicateStudent) {
+            params.append('deduplicate_student', 'true');
+        }
         return `/api/reports/generate?${params.toString()}`;
     })();
 
     if (form?.userFilters) {
         filterValues = { ...form.userFilters };
+    }
+    if (form && form.deduplicateStudent !== undefined) {
+        deduplicateStudent = form.deduplicateStudent;
     }
 
     function getFilteredOptions(param: any) {
@@ -123,6 +130,16 @@
                             <p class="text-muted small">No filters configured for this report.</p>
                         {/if}
                         
+                        <hr>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="dedup" name="deduplicate_student" value="true" bind:checked={deduplicateStudent}>
+                            <label class="form-check-label small fw-bold text-dark mb-0" for="dedup">
+                                Deduplicate Student Records
+                            </label>
+                            <div class="form-text x-small text-muted mt-1">
+                                Merges multiple applications by same student (combining form types to e.g. Prov, MQ/NRI).
+                            </div>
+                        </div>
                         <hr>
                         <div class="d-grid gap-2">
                             <button class="btn btn-primary btn-sm" disabled={loading}>
