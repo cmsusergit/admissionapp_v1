@@ -25,3 +25,7 @@ This changelog details the fix for the duplicate options and missing "COMPUTER E
       * [src/routes/adm-officer/saved-reports/\[id\]/+page.svelte](file:///workspaces/admissionapp_v1/src/routes/adm-officer/saved-reports/%5Bid%5D/+page.svelte#L54-L60)
       * [src/routes/deo/saved-reports/\[id\]/+page.svelte](file:///workspaces/admissionapp_v1/src/routes/deo/saved-reports/%5Bid%5D/+page.svelte#L40-L44)
       * [src/routes/fee-collector/saved-reports/\[id\]/+page.svelte](file:///workspaces/admissionapp_v1/src/routes/fee-collector/saved-reports/%5Bid%5D/+page.svelte#L40-L44)
+
+## 3. Duplicate Column Name Resolution (ADMISSION REPORT)
+* **Problem**: Both the Course column (`courses!course_id.name`) and the Branch column (`branches!branch_id.name`) were configured with the same header label: `"Name"`. Because Svelte/JS objects key flat rows dynamically by their column labels (`flatRow[col.label]`), the second column (`courses!course_id.name`) overwrote the first, resulting in two duplicate columns both displaying the Course Name instead of one showing Course Name and the other showing Branch Name.
+* **Fix**: Ran a database modification script to update the column configurations inside the `report_templates` table. Renamed the labels to `"Course Name"` and `"Branch Name"` respectively. They now render as distinct columns with their correct corresponding data values.
