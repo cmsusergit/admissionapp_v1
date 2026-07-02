@@ -30,22 +30,22 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
         for (const param of template.configuration.parameters) {
             if (param.type === 'select') {
                 try {
-                    let uniqueValues = new Set(param.options || []);
+                    let uniqueValues = new Set((param.options || []).map((v: string) => v.trim()));
                     const col = param.column;
-
+ 
                     // 1. Check for known master tables based on column path/name
                     if (col.includes('courses') && col.includes('name')) {
                         const { data } = await supabase.from('courses').select('name');
-                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                        data?.forEach((d: any) => uniqueValues.add(d.name?.trim()));
                     } else if (col.includes('branches') && col.includes('name')) {
                         const { data } = await supabase.from('branches').select('name');
-                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                        data?.forEach((d: any) => uniqueValues.add(d.name?.trim()));
                     } else if (col.includes('form_type') || col === 'form_type') {
                         const { data } = await supabase.from('form_types').select('name');
-                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                        data?.forEach((d: any) => uniqueValues.add(d.name?.trim()));
                     } else if (col.includes('admission_cycles') && col.includes('name')) {
                         const { data } = await supabase.from('admission_cycles').select('name');
-                        data?.forEach((d: any) => uniqueValues.add(d.name));
+                        data?.forEach((d: any) => uniqueValues.add(d.name?.trim()));
                     } else {
                         const { data: optionsData } = await supabase
                             .from(template.base_table)
@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
                             optionsData.forEach((row: any) => {
                                 const val = getValueByPath(row, param.column);
                                 if (val !== null && val !== undefined && val !== '') {
-                                    uniqueValues.add(String(val));
+                                    uniqueValues.add(String(val).trim());
                                 }
                             });
                         }
@@ -69,14 +69,18 @@ export const load: PageServerLoad = async ({ params, locals: { supabase, getAuth
         }
     }
     
-    const branchCourseMapping: Record<string, string> = {};
+    const branchCourseMapping: Record<string, string[]> = {};
     try {
         const { data: branchData } = await supabase.from('branches').select('name, courses(name)');
         if (branchData) {
             branchData.forEach((b: any) => {
                 const courseName = b.courses && !Array.isArray(b.courses) ? (b.courses as any).name : null;
                 if (b.name && courseName) {
-                    branchCourseMapping[b.name.trim()] = courseName.trim();
+                    const branchKey = b.name.trim();
+                    if (!branchCourseMapping[branchKey]) {
+                        branchCourseMapping[branchKey] = [];
+                    }
+                    branchCourseMapping[branchKey].push(courseName.trim());
                 }
             });
         }

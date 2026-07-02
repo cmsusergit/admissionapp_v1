@@ -38,8 +38,9 @@
         const cleanSelectedCourse = selectedCourse.trim().toLowerCase();
 
         return param.options.filter((opt: string) => {
-            const mappedCourse = data.branchCourseMapping[opt.trim()];
-            return !mappedCourse || mappedCourse.toLowerCase() === cleanSelectedCourse;
+            const mappedCourses = data.branchCourseMapping[opt.trim()];
+            if (!mappedCourses || mappedCourses.length === 0) return true;
+            return mappedCourses.some((c: string) => c.toLowerCase() === cleanSelectedCourse);
         });
     }
 
