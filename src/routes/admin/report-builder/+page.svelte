@@ -142,6 +142,16 @@
         console.log('[ReportBuilder] selectedColumns is now:', JSON.stringify(selectedColumns));
     }
 
+    function moveColumn(index: number, direction: number) {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= selectedColumns.length) return;
+        const newCols = [...selectedColumns];
+        const temp = newCols[index];
+        newCols[index] = newCols[newIndex];
+        newCols[newIndex] = temp;
+        selectedColumns = newCols;
+    }
+
     function editTemplate(template: any) {
         editingId = template.id;
         templateName = template.name;
@@ -437,6 +447,62 @@
                                 </div>
                             </div>
                         </div>
+
+                        {#if reportType === 'tabular'}
+                            <div class="card mb-3 border shadow-sm">
+                                <div class="card-header bg-light fw-bold small text-dark py-2">
+                                    <i class="bi bi-list-check me-2"></i> Selected Columns & Custom Labels
+                                </div>
+                                <div class="card-body p-2">
+                                    {#if selectedColumns.length === 0}
+                                        <div class="text-muted small my-4 text-center">
+                                            <i class="bi bi-info-circle me-1"></i> No columns selected yet. Toggle columns in the **Schema Explorer** on the left.
+                                        </div>
+                                    {:else}
+                                        <div class="text-muted x-small mb-2">Reorder fields using the arrow buttons and edit labels to override default database column headers.</div>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm align-middle mb-0 bg-white border rounded">
+                                                <thead>
+                                                    <tr class="table-light">
+                                                        <th style="width: 60px">Reorder</th>
+                                                        <th>Database Column Path</th>
+                                                        <th>Report Header Label</th>
+                                                        <th style="width: 80px" class="text-end">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {#each selectedColumns as col, idx (col.path)}
+                                                        <tr>
+                                                            <td>
+                                                                <div class="btn-group btn-group-sm">
+                                                                    <button type="button" class="btn btn-xs btn-outline-secondary p-0 px-1" disabled={idx === 0} onclick={() => moveColumn(idx, -1)}>
+                                                                        <i class="bi bi-chevron-up"></i>
+                                                                    </button>
+                                                                    <button type="button" class="btn btn-xs btn-outline-secondary p-0 px-1" disabled={idx === selectedColumns.length - 1} onclick={() => moveColumn(idx, 1)}>
+                                                                        <i class="bi bi-chevron-down"></i>
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <code class="x-small text-muted">{col.path}</code>
+                                                            </td>
+                                                            <td>
+                                                                <input type="text" class="form-control form-control-sm py-0" style="height: auto; font-size: 0.85rem;" bind:value={col.label} placeholder={col.path.split('.').pop()}>
+                                                            </td>
+                                                            <td class="text-end">
+                                                                <button type="button" class="btn btn-sm btn-outline-danger border-0 py-0" onclick={() => toggleColumn(col.path, col.label)}>
+                                                                    <i class="bi bi-trash"></i>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    {/each}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {/if}
+                                </div>
+                            </div>
+                        {/if}
 
                         <div class="row border-top pt-3 mt-2">
                             <input type="hidden" name="report_type" value={reportType}>

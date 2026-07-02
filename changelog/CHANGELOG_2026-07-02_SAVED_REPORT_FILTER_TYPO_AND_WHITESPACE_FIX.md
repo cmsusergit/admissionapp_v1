@@ -30,14 +30,12 @@ This changelog details the fix for the duplicate options and missing "COMPUTER E
 * **Problem**: Both the Course column (`courses!course_id.name`) and the Branch column (`branches!branch_id.name`) were configured with the same header label: `"Name"`. Because Svelte/JS objects key flat rows dynamically by their column labels (`flatRow[col.label]`), the second column (`courses!course_id.name`) overwrote the first, resulting in two duplicate columns both displaying the Course Name instead of one showing Course Name and the other showing Branch Name.
 * **Fix**: Ran a database modification script to update the column configurations inside the `report_templates` table. Renamed the labels to `"Course Name"` and `"Branch Name"` respectively. They now render as distinct columns with their correct corresponding data values.
 
-## 4. Custom Column Names Binding in CSV Exports
-* **Problem**: When generating custom reports, the generated CSV file output headers were locked to the hardcoded database column labels. There was no way for officers to rename column headers to custom user-friendly terms or configure them before downloading.
+## 4. Custom Column Names & Reordering in Admin Report Builder
+* **Problem**: In the Admin Report Builder (`/admin/report-builder`), when adding columns to a tabular report template, they were saved with their default database names as labels. There was no user interface to rename columns or to change their ordering layout before saving the template.
 * **Fix**:
-  * Added a dynamic "Custom Column Names" list input sidebar in the Report Columns design card on `/adm-officer/reports/+page.svelte`.
-  * Bound inputs dynamically to a Svelte state dictionary `customLabels` mapping field keys to custom text values.
-  * Serialized non-empty custom labels into a `labels` JSON query parameter when compiling the dynamic `reportUrl` for downloading the CSV.
-  * Updated `/adm-officer/export/+server.ts` to parse the `labels` parameter and substitute default header labels with their custom overrides during CSV generation.
-  * Added `customLabels` serialization inside the `filters` JSON object when saving templates, enabling full restoration of custom label layouts when templates are re-loaded.
+  * Added a dedicated "Selected Columns & Custom Labels" configuration panel in `/admin/report-builder/+page.svelte` (displayed under Setup when Tabular report type is active).
+  * Rendered a list of all selected columns with custom display label text inputs bound dynamically to `col.label`.
+  * Implemented "Up" and "Down" chevron button controls to reorder columns in the template configuration array.
+  * Added trash action buttons to directly delete/toggle columns from the layout.
   * Files modified:
-    * [src/routes/adm-officer/reports/+page.svelte](file:///workspaces/admissionapp_v1/src/routes/adm-officer/reports/+page.svelte)
-    * [src/routes/adm-officer/export/+server.ts](file:///workspaces/admissionapp_v1/src/routes/adm-officer/export/+server.ts)
+    * [src/routes/admin/report-builder/+page.svelte](file:///workspaces/admissionapp_v1/src/routes/admin/report-builder/+page.svelte)
