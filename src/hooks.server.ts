@@ -109,7 +109,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (authenticatedUser) {
         const { data: profile, error } = await event.locals.supabase
             .from('users')
-            .select('id, email, role, full_name, university_id, college_id')
+            .select('id, email, role, full_name, university_id, college_id, branch_id, hod_scope')
             .eq('id', authenticatedUser.id)
             .maybeSingle();
 

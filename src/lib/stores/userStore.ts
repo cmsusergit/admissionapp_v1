@@ -9,6 +9,8 @@ export type UserProfile = {
     full_name?: string;
     university_id?: string;
     college_id?: string;
+    branch_id?: string;
+    hod_scope?: string;
 };
 
 // Writable store for user profile (including role)
