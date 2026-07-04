@@ -14,7 +14,7 @@ DECLARE
     v_mech_user_id UUID := '88888888-8888-4888-a888-8888888888d2';
     v_ash_user_id UUID := '88888888-8888-4888-a888-8888888888a3';
     v_dip_user_id UUID := '88888888-8888-4888-a888-8888888888d5';
-    v_nursing_user_id UUID := '88888888-8888-4888-a888-8888888888n6';
+    v_nursing_user_id UUID := '88888888-8888-4888-a888-8888888888f6';
 BEGIN
     -- 1. Try to dynamically find pre-existing 'COMPUTER ENGINEERING' branch and course under BE
     SELECT b.id, b.course_id INTO v_ce_branch_id, v_course_id 
