@@ -115,21 +115,42 @@
         ...new Set(data.students.map((s: any) => s.admissionType).filter(Boolean))
     ]);
 
-    // Scope-aware derived filter option lists
+    // Scope-aware derived filter option lists (grouped by code/name to prevent duplicate filter options)
     let availableCourses = $derived.by(() => {
-        if (!filterCollege) return data.filterOptions.courses;
-        return data.filterOptions.courses.filter((c: any) => c.college_id === filterCollege);
+        const rawCourses = !filterCollege 
+            ? data.filterOptions.courses 
+            : data.filterOptions.courses.filter((c: any) => c.college_id === filterCollege);
+        
+        const seen = new Set<string>();
+        return rawCourses.filter((c: any) => {
+            const key = (c.code || c.name || '').toUpperCase().trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
     });
 
     let availableBranches = $derived.by(() => {
-        const courseId = filterCourse || '';
-        return data.filterOptions.branches.filter((b: any) => {
-            if (courseId) return b.course_id === courseId;
-            if (filterCollege) {
-                // branches whose course belongs to the selected college
-                const collegeCourseIds = new Set(availableCourses.map((c: any) => c.id));
-                return collegeCourseIds.has(b.course_id);
+        const selectedCourseCode = filterCourse || '';
+        const rawBranches = data.filterOptions.branches.filter((b: any) => {
+            const course = data.filterOptions.courses.find((c: any) => c.id === b.course_id);
+            if (!course) return true;
+            
+            if (selectedCourseCode) {
+                const courseKey = (course.code || course.name || '').toUpperCase().trim();
+                if (courseKey !== selectedCourseCode.toUpperCase().trim()) return false;
             }
+            if (filterCollege) {
+                return course.college_id === filterCollege;
+            }
+            return true;
+        });
+
+        const seen = new Set<string>();
+        return rawBranches.filter((b: any) => {
+            const key = (b.name || '').toUpperCase().trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
             return true;
         });
     });
@@ -151,9 +172,14 @@
                 
             const matchesAdmission = filterAdmissionType === "all" || student.admissionType === filterAdmissionType;
             const matchesStatus    = filterAdmissionStatus === "all" || student.admissionStatus === filterAdmissionStatus;
+            
             const matchesCollege   = !filterCollege || student.collegeId === filterCollege;
-            const matchesCourse    = !filterCourse  || student.courseId  === filterCourse;
-            const matchesBranch    = !filterBranch  || student.branchId  === filterBranch;
+            
+            const studentCourseKey = (student.courseCode || student.courseName || '').toUpperCase().trim();
+            const matchesCourse    = !filterCourse  || studentCourseKey === filterCourse.toUpperCase().trim();
+            
+            const studentBranchKey = (student.branchName || '').toUpperCase().trim();
+            const matchesBranch    = !filterBranch  || studentBranchKey === filterBranch.toUpperCase().trim();
 
             return matchesSearch && matchesForm && matchesAdmission && matchesStatus
                 && matchesCollege && matchesCourse && matchesBranch;
@@ -381,54 +407,63 @@
 
             <!-- Row 2: Scope filters (college / university HODs only) -->
             {#if data.department.hodScope === 'college' || data.department.hodScope === 'university'}
-            <div class="row g-2 align-items-center pt-2 border-top">
+            <div class="row g-2 align-items-center pt-2 border-top mt-2">
                 <div class="col-auto">
-                    <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">
-                        <i class="bi bi-funnel me-1"></i>Scope Filters
+                    <span class="badge bg-primary-subtle text-primary border border-primary px-3 py-2 rounded-pill fs-7 fw-semibold">
+                        <i class="bi bi-funnel-fill me-1"></i>Scope Filters
                     </span>
                 </div>
 
                 <!-- College filter (university-scope HODs only) -->
                 {#if data.department.hodScope === 'university' && data.filterOptions.colleges.length > 0}
                 <div class="col-md-3">
-                    <select class="form-select form-select-sm bg-light" bind:value={filterCollege}>
-                        <option value="">🏛️ All Colleges</option>
-                        {#each data.filterOptions.colleges as college}
-                            <option value={college.id}>{college.name}</option>
-                        {/each}
-                    </select>
+                    <div class="input-group input-group-sm shadow-sm rounded">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-bank"></i></span>
+                        <select class="form-select form-select-sm bg-light border-start-0 ps-0 fw-medium text-secondary" bind:value={filterCollege}>
+                            <option value="">All Colleges</option>
+                            {#each data.filterOptions.colleges as college}
+                                <option value={college.id}>{college.name}</option>
+                            {/each}
+                        </select>
+                    </div>
                 </div>
                 {/if}
 
                 <!-- Course filter -->
                 {#if availableCourses.length > 0}
                 <div class="col-md-3">
-                    <select class="form-select form-select-sm bg-light" bind:value={filterCourse}>
-                        <option value="">📚 All Courses</option>
-                        {#each availableCourses as course}
-                            <option value={course.id}>{course.name} ({course.code})</option>
-                        {/each}
-                    </select>
+                    <div class="input-group input-group-sm shadow-sm rounded">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-book-half"></i></span>
+                        <select class="form-select form-select-sm bg-light border-start-0 ps-0 fw-medium text-secondary" bind:value={filterCourse}>
+                            <option value="">All Courses</option>
+                            {#each availableCourses as course}
+                                <option value={course.code || course.name}>{course.name} ({course.code})</option>
+                            {/each}
+                        </select>
+                    </div>
                 </div>
                 {/if}
 
                 <!-- Branch filter -->
                 {#if availableBranches.length > 0}
                 <div class="col-md-3">
-                    <select class="form-select form-select-sm bg-light" bind:value={filterBranch}>
-                        <option value="">🏫 All Branches</option>
-                        {#each availableBranches as branch}
-                            <option value={branch.id}>{branch.name} ({branch.code})</option>
-                        {/each}
-                    </select>
+                    <div class="input-group input-group-sm shadow-sm rounded">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-tags"></i></span>
+                        <select class="form-select form-select-sm bg-light border-start-0 ps-0 fw-medium text-secondary" bind:value={filterBranch}>
+                            <option value="">All Branches</option>
+                            {#each availableBranches as branch}
+                                <option value={branch.name}>{branch.name} ({branch.code})</option>
+                            {/each}
+                        </select>
+                    </div>
                 </div>
                 {/if}
 
                 {#if filterCollege || filterCourse || filterBranch}
-                <div class="col-auto">
-                    <button class="btn btn-sm btn-link text-danger p-0" 
+                <div class="col-auto ms-2">
+                    <button class="btn btn-sm btn-link text-danger p-0 fw-semibold text-decoration-none" 
                         onclick={() => { filterCollege = ''; filterCourse = ''; filterBranch = ''; }}>
-                        <i class="bi bi-x-circle me-1"></i>Clear scope filters
+                        <i class="bi bi-x-circle-fill me-1"></i>Clear scope
                     </button>
                 </div>
                 {/if}
