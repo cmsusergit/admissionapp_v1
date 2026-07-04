@@ -37,7 +37,24 @@
         }));
     });
 
-    let allFields = $derived([...staticFields, ...dynamicFields]);
+    const profileFields = [
+        { key: 'Profile: Contact Number', label: 'Contact Number' },
+        { key: 'Profile: Alternate Contact', label: 'Alternate Contact' },
+        { key: 'Profile: Gender', label: 'Gender' },
+        { key: 'Profile: Category', label: 'Category' },
+        { key: 'Profile: Religion', label: 'Religion' },
+        { key: 'Profile: Caste', label: 'Caste' },
+        { key: 'Profile: Birth Date', label: 'Birth Date' },
+        { key: 'Profile: Aadhar Card No', label: 'Aadhar Card No' },
+        { key: 'Profile: Father Name', label: 'Father Name' },
+        { key: 'Profile: Father Contact', label: 'Father Contact' },
+        { key: 'Profile: Mother Name', label: 'Mother Name' },
+        { key: 'Profile: Mother Contact', label: 'Mother Contact' },
+        { key: 'Profile: Permanent Address', label: 'Permanent Address' },
+        { key: 'Profile: Correspondence Address', label: 'Correspondence Address' }
+    ];
+
+    let allFields = $derived([...staticFields, ...profileFields, ...dynamicFields]);
 
     // Initialize selectedFields from localStorage or default on mount
     $effect(() => {
@@ -111,6 +128,48 @@
             return matchesSearch && matchesForm && matchesAdmission;
         })
     );
+
+    let sortBy = $state("fullName");
+    let sortOrder = $state<"asc" | "desc">("asc");
+
+    function toggleSort(column: string) {
+        if (sortBy === column) {
+            sortOrder = sortOrder === "asc" ? "desc" : "asc";
+        } else {
+            sortBy = column;
+            sortOrder = "asc";
+        }
+    }
+
+    let sortedStudents = $derived.by(() => {
+        const list = [...filteredStudents];
+        list.sort((a: any, b: any) => {
+            let valA = a[sortBy];
+            let valB = b[sortBy];
+            
+            // Handle numeric values
+            if (sortBy === "meritScore") {
+                const numA = parseFloat(valA) || 0;
+                const numB = parseFloat(valB) || 0;
+                return sortOrder === "asc" ? numA - numB : numB - numA;
+            }
+            
+            // Handle dates
+            if (sortBy === "submittedAt") {
+                const dateA = new Date(valA).getTime() || 0;
+                const dateB = new Date(valB).getTime() || 0;
+                return sortOrder === "asc" ? dateA - dateB : dateB - dateA;
+            }
+
+            // Fallback to string comparison
+            const strA = String(valA || "").toLowerCase();
+            const strB = String(valB || "").toLowerCase();
+            if (strA < strB) return sortOrder === "asc" ? -1 : 1;
+            if (strA > strB) return sortOrder === "asc" ? 1 : -1;
+            return 0;
+        });
+        return list;
+    });
 
     // Dynamic stats
     let totalAdmitted = $derived(data.students.length);
@@ -260,19 +319,59 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light text-uppercase fs-7 fw-bold text-muted border-bottom">
                     <tr>
-                        <th class="ps-4" style="width: 80px;">Sr. No</th>
-                        <th>College ID</th>
-                        <th>Admission ID</th>
-                        <th>Student Name</th>
-                        <th>Email</th>
-                        <th>Merit Score</th>
-                        <th>Form Type</th>
-                        <th>Mode</th>
-                        <th class="pe-4">College</th>
+                        <th class="ps-4 text-secondary select-none" style="width: 80px;">Sr. No</th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('enrollmentNumber')}>
+                            College ID
+                            {#if sortBy === 'enrollmentNumber'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('admissionNumber')}>
+                            Admission ID
+                            {#if sortBy === 'admissionNumber'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('fullName')}>
+                            Student Name
+                            {#if sortBy === 'fullName'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('email')}>
+                            Email
+                            {#if sortBy === 'email'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('meritScore')}>
+                            Merit Score
+                            {#if sortBy === 'meritScore'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('formType')}>
+                            Form Type
+                            {#if sortBy === 'formType'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('admissionType')}>
+                            Mode
+                            {#if sortBy === 'admissionType'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary pe-4" onclick={() => toggleSort('collegeName')}>
+                            College
+                            {#if sortBy === 'collegeName'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
                     </tr>
                 </thead>
                 <tbody class="border-top-0">
-                    {#each filteredStudents as student, i}
+                    {#each sortedStudents as student, i}
                         <tr>
                             <td class="ps-4 fw-semibold text-muted">{i + 1}</td>
                             <td>
@@ -325,7 +424,7 @@
 
 {#if showModal}
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5); z-index: 1050;">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
             <div class="modal-content shadow border-0">
                 <div class="modal-header bg-light border-0 py-3">
                     <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2">
@@ -355,11 +454,12 @@
                     </div>
 
                     <div class="row g-4">
-                        <div class="col-md-6 border-end">
+                        <!-- Col 1: Static Fields -->
+                        <div class="col-md-4 border-end">
                             <h6 class="fw-bold small text-secondary text-uppercase tracking-wider mb-3">
-                                <i class="bi bi-person-badge-fill me-1"></i> Profile (Static Fields)
+                                <i class="bi bi-person-badge-fill me-1"></i> Static Profile
                             </h6>
-                            <div class="pe-2">
+                            <div class="pe-2" style="max-height: 350px; overflow-y: auto;">
                                 {#each staticFields as field}
                                     <div class="form-check py-2 border-bottom border-light">
                                         <input type="checkbox" class="form-check-input" id="field_{field.key}" value={field.key} bind:group={selectedFields}>
@@ -370,9 +470,28 @@
                                 {/each}
                             </div>
                         </div>
-                        <div class="col-md-6">
+
+                        <!-- Col 2: Student JSONB Profile Fields -->
+                        <div class="col-md-4 border-end">
                             <h6 class="fw-bold small text-secondary text-uppercase tracking-wider mb-3">
-                                <i class="bi bi-list-nested me-1"></i> Custom Application Fields
+                                <i class="bi bi-person-lines-fill me-1"></i> Student Info
+                            </h6>
+                            <div class="pe-2" style="max-height: 350px; overflow-y: auto;">
+                                {#each profileFields as field}
+                                    <div class="form-check py-2 border-bottom border-light">
+                                        <input type="checkbox" class="form-check-input" id="field_{field.key}" value={field.key} bind:group={selectedFields}>
+                                        <label class="form-check-label small fw-semibold text-dark cursor-pointer" for="field_{field.key}">
+                                            {field.label.replace('Profile: ', '')}
+                                        </label>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+
+                        <!-- Col 3: Custom Application Fields -->
+                        <div class="col-md-4">
+                            <h6 class="fw-bold small text-secondary text-uppercase tracking-wider mb-3">
+                                <i class="bi bi-list-nested me-1"></i> Form Fields
                             </h6>
                             <div>
                                 {#if dynamicFields.length === 0}
@@ -410,5 +529,8 @@
 <style>
     .fs-7 {
         font-size: 0.75rem;
+    }
+    .cursor-pointer {
+        cursor: pointer;
     }
 </style>

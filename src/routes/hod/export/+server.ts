@@ -36,7 +36,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
             student_user:users!student_id(
                 full_name, 
                 email, 
-                student_profiles(enrollment_number, admission_status)
+                student_profiles(enrollment_number, admission_status, profile_data)
             ),
             account_admissions(admission_number),
             merit_list_entries(merit_score)
@@ -111,6 +111,22 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
         const meritEntry = Array.isArray(app.merit_list_entries) ? app.merit_list_entries[0] : app.merit_list_entries;
         const admissionEntry = Array.isArray(app.account_admissions) ? app.account_admissions[0] : app.account_admissions;
 
+        const profileData = profile?.profile_data || {};
+        const pAddr = [
+            profileData.p_address_line_1,
+            profileData.p_address_line_2,
+            profileData.p_city,
+            profileData.p_state,
+            profileData.p_zip_code
+        ].filter(Boolean).join(', ') || '';
+        const cAddr = [
+            profileData.c_address_line_1,
+            profileData.c_address_line_2,
+            profileData.c_city,
+            profileData.c_state,
+            profileData.c_zip_code
+        ].filter(Boolean).join(', ') || '';
+
         const fullRow: Record<string, any> = {
             'Sr. No': index + 1,
             'College Name': app.courses?.colleges?.name || 'N/A',
@@ -121,7 +137,22 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
             'Merit Score': meritEntry?.merit_score || '',
             'Form Type': app.form_type || '',
             'Admission Mode': app.admission_type || 'Regular',
-            'Admitted Date': app.submitted_at ? new Date(app.submitted_at).toLocaleDateString() : ''
+            'Admitted Date': app.submitted_at ? new Date(app.submitted_at).toLocaleDateString() : '',
+            // Expose profile_data fields
+            'Profile: Contact Number': profileData.contact_number || '',
+            'Profile: Alternate Contact': profileData.alternate_contact_number || '',
+            'Profile: Gender': profileData.gender || '',
+            'Profile: Category': profileData.category || '',
+            'Profile: Religion': profileData.religion || '',
+            'Profile: Caste': profileData.caste || '',
+            'Profile: Birth Date': profileData.birth_date || '',
+            'Profile: Aadhar Card No': profileData.aadhar_card_number || '',
+            'Profile: Father Name': profileData.father_full_name || '',
+            'Profile: Father Contact': profileData.father_contact_number || '',
+            'Profile: Mother Name': profileData.mother_full_name || '',
+            'Profile: Mother Contact': profileData.mother_contact_number || '',
+            'Profile: Permanent Address': pAddr,
+            'Profile: Correspondence Address': cAddr
         };
 
         // Populate dynamic form keys
