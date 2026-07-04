@@ -7,7 +7,7 @@
     let searchVal = $state("");
     let filterFormType = $state("exclude_provisional");
     let filterAdmissionType = $state("all");
-    let filterAdmissionStatus = $state("all"); // 'all', 'Admitted', 'pending', 'Cancelled'
+    let filterAdmissionStatus = $state("Admitted"); // default to Admitted
 
     let showModal = $state(false);
     let selectedFields = $state<string[]>([]);
@@ -320,7 +320,7 @@
                 <div class="col-md-2 text-md-end">
                     <button 
                         class="btn btn-outline-secondary w-100" 
-                        onclick={() => { searchVal = ""; filterFormType = "exclude_provisional"; filterAdmissionType = "all"; filterAdmissionStatus = "all"; }}
+                        onclick={() => { searchVal = ""; filterFormType = "exclude_provisional"; filterAdmissionType = "all"; filterAdmissionStatus = "Admitted"; }}
                     >
                         Reset Filters
                     </button>

@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
     // Build the query
     let query = supabase
         .from('users')
-        .select('*, universities(name), colleges(name)', { count: 'exact' });
+        .select('*, universities(name), colleges(name), branches(name)', { count: 'exact' });
 
     if (searchEmail) {
         query = query.or(`email.ilike.%${searchEmail}%,full_name.ilike.%${searchEmail}%`);
@@ -54,6 +54,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
     // Fetch lists for dropdowns
     const { data: universities } = await supabase.from('universities').select('id, name');
     const { data: colleges } = await supabase.from('colleges').select('id, name, university_id');
+    const { data: branches } = await supabase.from('branches').select('id, name, course_id, courses(college_id)');
 
     if (usersError) {
         console.error('Error fetching users:', usersError.message);
@@ -64,6 +65,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
         totalCount: totalCount || 0,
         universities: universities || [],
         colleges: colleges || [],
+        branches: branches || [],
         filters: {
             page,
             pageSize,
@@ -89,6 +91,8 @@ export const actions: Actions = {
         const role = formData.get('role') as string;
         const university_id = formData.get('university_id') as string || null;
         const college_id = formData.get('college_id') as string || null;
+        const branch_id = formData.get('branch_id') as string || null;
+        const hod_scope = (role === 'hod' ? (formData.get('hod_scope') as string || 'branch') : null);
 
         const SERVICE_KEY = SUPABASE_SERVICE_ROLE_KEY;
 
@@ -130,7 +134,9 @@ export const actions: Actions = {
                 role,
                 full_name,
                 university_id,
-                college_id
+                college_id,
+                branch_id,
+                hod_scope: role === 'hod' ? hod_scope : null
             });
 
         if (profileError) {
@@ -187,6 +193,8 @@ export const actions: Actions = {
         const role = formData.get('role') as string;
         const university_id = formData.get('university_id') as string || null;
         const college_id = formData.get('college_id') as string || null;
+        const branch_id = formData.get('branch_id') as string || null;
+        const hod_scope = (role === 'hod' ? (formData.get('hod_scope') as string || 'branch') : null);
 
         // Prevent admin from removing their own admin status (safety check)
         if (userId === authenticatedUser.id && role !== 'admin') {
@@ -197,7 +205,9 @@ export const actions: Actions = {
             full_name,
             role,
             university_id,
-            college_id
+            college_id,
+            branch_id,
+            hod_scope: role === 'hod' ? hod_scope : null
         }).eq('id', userId);
 
         if (error) {

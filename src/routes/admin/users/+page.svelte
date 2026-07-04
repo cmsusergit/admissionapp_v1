@@ -20,7 +20,9 @@
         role: 'student',
         full_name: '',
         university_id: '',
-        college_id: ''
+        college_id: '',
+        branch_id: '',
+        hod_scope: 'branch'
     });
 
     let currentUser = writable({
@@ -29,7 +31,9 @@
         role: 'student',
         university_id: '',
         college_id: '',
-        full_name: ''
+        full_name: '',
+        branch_id: '',
+        hod_scope: 'branch'
     });
     
     // New store for password reset
@@ -47,7 +51,8 @@
         'college_auth',
         'university_auth',
         'adm_officer',
-        'fee_collector'
+        'fee_collector',
+        'hod'
     ];
 
     // Filter state
@@ -82,6 +87,25 @@
     $: filteredNewColleges = $newUser.university_id
         ? data.colleges.filter(c => c.university_id === $newUser.university_id)
         : [];
+
+    function getBranchCollegeId(b: any) {
+        const c = Array.isArray(b.courses) ? b.courses[0] : b.courses;
+        return c?.college_id;
+    }
+    
+    function getBranchCourseName(b: any) {
+        const c = Array.isArray(b.courses) ? b.courses[0] : b.courses;
+        return c?.name || '';
+    }
+
+    // Filter branches based on selected college in Edit/Create Modal
+    $: filteredBranches = $currentUser.college_id 
+        ? data.branches.filter(b => getBranchCollegeId(b) === $currentUser.college_id)
+        : data.branches;
+    
+    $: filteredNewBranches = $newUser.college_id
+        ? data.branches.filter(b => getBranchCollegeId(b) === $newUser.college_id)
+        : data.branches;
 
     $: totalPages = Math.ceil(data.totalCount / (data.filters?.pageSize || 25));
     $: currentPage = data.filters?.page || 1;
@@ -145,7 +169,9 @@
             role: 'student',
             full_name: '',
             university_id: '',
-            college_id: ''
+            college_id: '',
+            branch_id: '',
+            hod_scope: 'branch'
         });
         showCreateModal = true;
     }
@@ -157,7 +183,9 @@
             role: user.role,
             university_id: user.university_id || '',
             college_id: user.college_id || '',
-            full_name: user.full_name || ''
+            full_name: user.full_name || '',
+            branch_id: user.branch_id || '',
+            hod_scope: user.hod_scope || 'branch'
         });
         showEditModal = true;
     }
@@ -262,8 +290,13 @@
                                 <td>
                                     {#if user.colleges}
                                         {user.colleges.name}
+                                        {#if user.branches}
+                                            <br><small class="text-primary fw-semibold">Dept: {user.branches.name}</small>
+                                        {/if}
                                     {:else if user.universities}
                                         {user.universities.name}
+                                    {:else if user.branches}
+                                        <small class="text-primary fw-semibold">Dept: {user.branches.name} (Global)</small>
                                     {:else}
                                         -
                                     {/if}
@@ -368,7 +401,7 @@
                     </div>
 
                     <!-- Affiliation Fields -->
-                    {#if ['university_auth', 'college_auth', 'deo', 'adm_officer', 'fee_collector'].includes($newUser.role)}
+                    {#if ['university_auth', 'college_auth', 'deo', 'adm_officer', 'fee_collector', 'hod'].includes($newUser.role)}
                         <div class="row g-3 mt-2">
                             <div class="col-md-6">
                                 <label for="create-university" class="form-label">University</label>
@@ -380,7 +413,7 @@
                                 </select>
                             </div>
                             
-                            {#if ['college_auth', 'deo', 'adm_officer', 'fee_collector'].includes($newUser.role)}
+                            {#if ['college_auth', 'deo', 'adm_officer', 'fee_collector', 'hod'].includes($newUser.role)}
                                 <div class="col-md-6">
                                     <label for="create-college" class="form-label">College</label>
                                     <select class="form-select" id="create-college" name="college_id" bind:value={$newUser.college_id} disabled={!$newUser.university_id}>
@@ -392,6 +425,30 @@
                                 </div>
                             {/if}
                         </div>
+                        {#if $newUser.role === 'hod'}
+                            <div class="row g-3 mt-2">
+                                <div class="col-12">
+                                    <label for="create-branch" class="form-label">Department/Branch (Required for HOD)</label>
+                                    <select class="form-select" id="create-branch" name="branch_id" bind:value={$newUser.branch_id} required>
+                                        <option value="">Select Department (Branch)</option>
+                                        {#each filteredNewBranches as branch}
+                                            <option value={branch.id}>{branch.name} ({getBranchCourseName(branch)})</option>
+                                        {/each}
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label for="create-hod-scope" class="form-label fw-semibold">HOD Access Scope</label>
+                                    <select class="form-select" id="create-hod-scope" name="hod_scope" bind:value={$newUser.hod_scope}>
+                                        <option value="branch">🏫 Branch Only — sees students from assigned department only</option>
+                                        <option value="college">🏛️ College-Wide — sees all departments across the entire college</option>
+                                    </select>
+                                    <div class="form-text text-muted">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        College-Wide HODs need a College ID assigned above to scope correctly.
+                                    </div>
+                                </div>
+                            </div>
+                        {/if}
                     {/if}
 
                     <div class="modal-footer mt-3">
@@ -438,7 +495,7 @@
                     </div>
 
                     <!-- Show University/College selection based on role -->
-                    {#if ['university_auth', 'college_auth', 'deo', 'adm_officer', 'fee_collector'].includes($currentUser.role)}
+                    {#if ['university_auth', 'college_auth', 'deo', 'adm_officer', 'fee_collector', 'hod'].includes($currentUser.role)}
                         <div class="mb-3">
                             <label for="edit-university" class="form-label">University</label>
                             <select class="form-select" id="edit-university" name="university_id" bind:value={$currentUser.university_id}>
@@ -450,7 +507,7 @@
                         </div>
                     {/if}
 
-                    {#if ['college_auth', 'deo', 'adm_officer', 'fee_collector'].includes($currentUser.role)}
+                    {#if ['college_auth', 'deo', 'adm_officer', 'fee_collector', 'hod'].includes($currentUser.role)}
                         <div class="mb-3">
                             <label for="edit-college" class="form-label">College</label>
                             <select class="form-select" id="edit-college" name="college_id" bind:value={$currentUser.college_id} disabled={!$currentUser.university_id}>
@@ -459,6 +516,29 @@
                                     <option value={college.id}>{college.name}</option>
                                 {/each}
                             </select>
+                        </div>
+                    {/if}
+
+                    {#if $currentUser.role === 'hod'}
+                        <div class="mb-3">
+                            <label for="edit-branch" class="form-label">Department/Branch (Required for HOD)</label>
+                            <select class="form-select" id="edit-branch" name="branch_id" bind:value={$currentUser.branch_id} required>
+                                <option value="">Select Department (Branch)</option>
+                                {#each filteredBranches as branch}
+                                    <option value={branch.id}>{branch.name} ({getBranchCourseName(branch)})</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-hod-scope" class="form-label fw-semibold">HOD Access Scope</label>
+                            <select class="form-select" id="edit-hod-scope" name="hod_scope" bind:value={$currentUser.hod_scope}>
+                                <option value="branch">🏫 Branch Only — sees students from assigned department only</option>
+                                <option value="college">🏛️ College-Wide — sees all departments across the entire college</option>
+                            </select>
+                            <div class="form-text text-muted">
+                                <i class="bi bi-info-circle me-1"></i>
+                                College-Wide HODs need a College ID assigned above to scope correctly.
+                            </div>
                         </div>
                     {/if}
 
