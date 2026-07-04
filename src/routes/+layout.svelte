@@ -97,7 +97,7 @@
   );
 
   let isSidebarCollapsed = $state(data.userProfile?.role === "student");
-  let isSidebarHidden = $state(false);
+  let isSidebarHidden = $state(data.userProfile?.role === "hod");
   // let lastSeenRole = $state(data.userProfile?.role); // Removed duplicate declaration
 
   $effect(() => {
@@ -107,7 +107,7 @@
       lastSeenRole = currentRole;
       // Default: Collapsed for students, Expanded for others
       isSidebarCollapsed = currentRole === "student";
-      isSidebarHidden = false; // Reset hidden state on role change
+      isSidebarHidden = currentRole === "hod"; // Hide for HOD on role change
     }
   });
 

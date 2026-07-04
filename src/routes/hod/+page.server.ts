@@ -105,6 +105,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 id: app.id,
                 fullName: app.student_user?.full_name || 'N/A',
                 email: app.student_user?.email || 'N/A',
+                contactNumber: profileData.contact_number || '',
+                city: profileData.p_city || profileData.c_city || '',
                 enrollmentNumber: profile?.enrollment_number || 'Pending',
                 admissionNumber: admissionEntry?.admission_number || 'N/A',
                 meritScore: meritEntry?.merit_score || 'N/A',

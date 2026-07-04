@@ -344,9 +344,15 @@
                                 <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
                             {/if}
                         </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('meritScore')}>
-                            Merit Score
-                            {#if sortBy === 'meritScore'}
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('contactNumber')}>
+                            Contact
+                            {#if sortBy === 'contactNumber'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('city')}>
+                            City
+                            {#if sortBy === 'city'}
                                 <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
                             {/if}
                         </th>
@@ -388,7 +394,8 @@
                                 <div class="fw-bold text-dark">{student.fullName}</div>
                             </td>
                             <td class="text-muted">{student.email}</td>
-                            <td class="fw-semibold text-dark">{student.meritScore}</td>
+                            <td class="text-muted small">{student.contactNumber || '—'}</td>
+                            <td class="text-muted small">{student.city || '—'}</td>
                             <td>
                                 <span class="badge bg-light text-dark border px-2 py-1">
                                     {student.formType}
