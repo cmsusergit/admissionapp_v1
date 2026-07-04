@@ -4,6 +4,31 @@ import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
+async function resolveHodAffiliation(supabase: any, branch_id: string | null) {
+    if (!branch_id) return { college_id: null, university_id: null };
+    const { data } = await supabase
+        .from('branches')
+        .select(`
+            course_id,
+            courses(
+                college_id,
+                colleges(university_id)
+            )
+        `)
+        .eq('id', branch_id)
+        .single();
+    
+    if (data) {
+        const course = data.courses as any;
+        const college = course?.colleges as any;
+        return {
+            college_id: course?.college_id || null,
+            university_id: college?.university_id || null
+        };
+    }
+    return { college_id: null, university_id: null };
+}
+
 export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthenticatedUser, userProfile } }) => {
     const authenticatedUser = await getAuthenticatedUser();
 
@@ -94,6 +119,15 @@ export const actions: Actions = {
         const branch_id = formData.get('branch_id') as string || null;
         const hod_scope = (role === 'hod' ? (formData.get('hod_scope') as string || 'branch') : null);
 
+        let resolved_college_id = college_id;
+        let resolved_university_id = university_id;
+
+        if (role === 'hod' && branch_id) {
+            const resolved = await resolveHodAffiliation(supabase, branch_id);
+            if (!resolved_college_id) resolved_college_id = resolved.college_id;
+            if (!resolved_university_id) resolved_university_id = resolved.university_id;
+        }
+
         const SERVICE_KEY = SUPABASE_SERVICE_ROLE_KEY;
 
         if (!SERVICE_KEY) {
@@ -132,8 +166,8 @@ export const actions: Actions = {
             email,
             role,
             full_name,
-            university_id,
-            college_id,
+            university_id: resolved_university_id,
+            college_id: resolved_college_id,
             branch_id
         };
 
@@ -208,6 +242,15 @@ export const actions: Actions = {
         const branch_id = formData.get('branch_id') as string || null;
         const hod_scope = (role === 'hod' ? (formData.get('hod_scope') as string || 'branch') : null);
 
+        let resolved_college_id = college_id;
+        let resolved_university_id = university_id;
+
+        if (role === 'hod' && branch_id) {
+            const resolved = await resolveHodAffiliation(supabase, branch_id);
+            if (!resolved_college_id) resolved_college_id = resolved.college_id;
+            if (!resolved_university_id) resolved_university_id = resolved.university_id;
+        }
+
         // Prevent admin from removing their own admin status (safety check)
         if (userId === authenticatedUser.id && role !== 'admin') {
              return fail(400, { message: 'You cannot remove your own admin status.', error: true });
@@ -217,8 +260,8 @@ export const actions: Actions = {
         const updatePayload: Record<string, any> = {
             full_name,
             role,
-            university_id,
-            college_id,
+            university_id: resolved_university_id,
+            college_id: resolved_college_id,
             branch_id
         };
 

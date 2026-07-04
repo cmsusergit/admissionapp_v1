@@ -13,8 +13,6 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
 
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const hodScope: string = (userProfile as any).hod_scope || 'branch';
-    const isCollegeScope = hodScope === 'college' && userProfile.college_id;
-    const isUniversityScope = hodScope === 'university';
 
     // 1. Fetch HOD's assigned branch details
     const { data: branchInfo, error: branchError } = await supabaseAdmin
@@ -48,17 +46,23 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
     const branchCollege = branchCourse?.colleges as any;
     const branchUniversity = branchCollege?.universities as any;
 
+    const resolvedCollegeId = userProfile.college_id || branchCourse?.college_id;
+    const resolvedUniversityId = userProfile.university_id || branchCollege?.university_id;
+
+    const isCollegeScope = hodScope === 'college' && resolvedCollegeId;
+    const isUniversityScope = hodScope === 'university';
+
     // 2. Build filter options based on scope
     let filterColleges: any[] = [];
     let filterCourses: any[] = [];
     let filterBranches: any[] = [];
 
-    if (isCollegeScope && userProfile.college_id) {
+    if (isCollegeScope && resolvedCollegeId) {
         // Fetch all courses under the HOD's college
         const { data: courses } = await supabaseAdmin
             .from('courses')
             .select('id, name, code')
-            .eq('college_id', userProfile.college_id)
+            .eq('college_id', resolvedCollegeId)
             .order('name');
 
         filterCourses = courses || [];
@@ -75,7 +79,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         }
     } else if (isUniversityScope) {
         // Fetch colleges under the HOD's university (derive from their branch's college's university)
-        const universityId = branchUniversity?.id;
+        const universityId = resolvedUniversityId || branchUniversity?.id;
         if (universityId) {
             const { data: colleges } = await supabaseAdmin
                 .from('colleges')
@@ -135,7 +139,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         // If branch info has a university, restrict to it — but typically global
         query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
     } else if (isCollegeScope) {
-        query = query.eq('courses.college_id', userProfile.college_id);
+        query = query.eq('courses.college_id', resolvedCollegeId);
     } else {
         // Branch-scoped HOD
         query = query.eq('branch_id', userProfile.branch_id);

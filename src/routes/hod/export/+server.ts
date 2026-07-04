@@ -16,14 +16,18 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
 
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // 1. Fetch HOD Department (Branch) details
+    // 1. Fetch HOD Department (Branch) details and college
     const { data: branchInfo } = await supabaseAdmin
         .from('branches')
-        .select('name, code')
+        .select(`
+            name, 
+            code,
+            courses(college_id)
+        `)
         .eq('id', userProfile.branch_id)
         .single();
 
-    // 2. Fetch students in HOD's branch
+    // 2. Fetch students
     let query = supabaseAdmin
         .from('applications')
         .select(`
@@ -46,10 +50,11 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
         .neq('status', 'draft');
 
     const hodScope: string = (userProfile as any).hod_scope || 'branch';
-    const isCollegeScope = hodScope === 'college' && userProfile.college_id;
+    const resolvedCollegeId = userProfile.college_id || (branchInfo?.courses as any)?.college_id;
+    const isCollegeScope = hodScope === 'college' && resolvedCollegeId;
 
     if (isCollegeScope) {
-        query = query.eq('courses.college_id', userProfile.college_id);
+        query = query.eq('courses.college_id', resolvedCollegeId);
     } else {
         query = query.eq('branch_id', userProfile.branch_id);
         // Apply the college filter
