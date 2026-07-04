@@ -126,18 +126,30 @@ export const actions: Actions = {
         // 2. Create Public Profile
         // We use the admin client here too to bypass any RLS that might block 'insert' on users table
         // although our policy allows admins to insert.
-        const { error: profileError } = await supabaseAdmin
-            .from('users')
-            .insert({
-                id: authData.user.id,
-                email,
-                role,
-                full_name,
-                university_id,
-                college_id,
-                branch_id,
-                hod_scope: role === 'hod' ? hod_scope : null
-            });
+        // Build insert payload — hod_scope only applies to hod role
+        const insertPayload: Record<string, any> = {
+            id: authData.user.id,
+            email,
+            role,
+            full_name,
+            university_id,
+            college_id,
+            branch_id
+        };
+
+        if (role === 'hod') {
+            insertPayload.hod_scope = hod_scope;
+        }
+
+        let { error: profileError } = await supabaseAdmin.from('users').insert(insertPayload);
+
+        // Graceful fallback: if hod_scope column doesn't exist yet, retry without it
+        if (profileError && profileError.message?.includes('hod_scope')) {
+            console.warn('hod_scope column not found, inserting without it. Run add_hod_scope.sql migration.');
+            delete insertPayload.hod_scope;
+            const fallback = await supabaseAdmin.from('users').insert(insertPayload);
+            profileError = fallback.error;
+        }
 
         if (profileError) {
             console.error('Error creating public profile:', profileError.message);
@@ -201,14 +213,31 @@ export const actions: Actions = {
              return fail(400, { message: 'You cannot remove your own admin status.', error: true });
         }
 
-        const { error } = await supabase.from('users').update({
+        // Build update payload — hod_scope only applies to hod role
+        const updatePayload: Record<string, any> = {
             full_name,
             role,
             university_id,
             college_id,
-            branch_id,
-            hod_scope: role === 'hod' ? hod_scope : null
-        }).eq('id', userId);
+            branch_id
+        };
+
+        // Only include hod_scope if role is hod (column may not exist in older DBs)
+        if (role === 'hod') {
+            updatePayload.hod_scope = hod_scope;
+        } else {
+            updatePayload.hod_scope = null;
+        }
+
+        let { error } = await supabase.from('users').update(updatePayload).eq('id', userId);
+
+        // Graceful fallback: if hod_scope column doesn't exist yet, retry without it
+        if (error && error.message?.includes('hod_scope')) {
+            console.warn('hod_scope column not found, updating without it. Run add_hod_scope.sql migration.');
+            const fallbackPayload = { full_name, role, university_id, college_id, branch_id };
+            const fallback = await supabase.from('users').update(fallbackPayload).eq('id', userId);
+            error = fallback.error;
+        }
 
         if (error) {
             console.error('Error updating user role:', error.message);
