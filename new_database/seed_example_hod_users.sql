@@ -4,9 +4,17 @@ DECLARE
     v_course_id UUID;
     v_ce_branch_id UUID;
     v_mech_branch_id UUID;
+    
+    v_dip_ce_branch_id UUID;
+    v_dip_college_id UUID;
+    v_nursing_branch_id UUID;
+    v_nursing_college_id UUID;
+
     v_ce_user_id UUID := '88888888-8888-4888-a888-8888888888c1';
     v_mech_user_id UUID := '88888888-8888-4888-a888-8888888888d2';
     v_ash_user_id UUID := '88888888-8888-4888-a888-8888888888a3';
+    v_dip_user_id UUID := '88888888-8888-4888-a888-8888888888d5';
+    v_nursing_user_id UUID := '88888888-8888-4888-a888-8888888888n6';
 BEGIN
     -- 1. Try to dynamically find pre-existing 'COMPUTER ENGINEERING' branch and course under BE
     SELECT b.id, b.course_id INTO v_ce_branch_id, v_course_id 
@@ -72,9 +80,24 @@ BEGIN
         RAISE NOTICE 'Found pre-existing branches. Linking HODs to Branch CE: %, Branch Mech: %, College: %', v_ce_branch_id, v_mech_branch_id, v_college_id;
     END IF;
 
+    -- Resolve Diploma CE Branch and College
+    SELECT b.id, c.college_id INTO v_dip_ce_branch_id, v_dip_college_id
+    FROM public.branches b
+    JOIN public.courses c ON b.course_id = c.id
+    WHERE UPPER(b.name) = 'COMPUTER ENGINEERING'
+      AND (UPPER(c.code) = 'DIP' OR UPPER(c.name) = 'DIPLOMA ENGINEERING')
+    LIMIT 1;
+
+    -- Resolve Nursing Branch and College
+    SELECT b.id, c.college_id INTO v_nursing_branch_id, v_nursing_college_id
+    FROM public.branches b
+    JOIN public.courses c ON b.course_id = c.id
+    WHERE UPPER(b.name) = 'B.SC. NURSING' OR UPPER(c.name) = 'BACHELOR OF SCIENCE (NURSING)'
+    LIMIT 1;
+
     -- 5. Clean up any existing example users
-    DELETE FROM auth.users WHERE email IN ('hod_ce@example.com', 'hod_mech@example.com', 'hod_ash@example.com');
-    DELETE FROM public.users WHERE email IN ('hod_ce@example.com', 'hod_mech@example.com', 'hod_ash@example.com');
+    DELETE FROM auth.users WHERE email IN ('hod_ce@example.com', 'hod_mech@example.com', 'hod_ash@example.com', 'hod_dip_ce@example.com', 'hod_nursing@example.com');
+    DELETE FROM public.users WHERE email IN ('hod_ce@example.com', 'hod_mech@example.com', 'hod_ash@example.com', 'hod_dip_ce@example.com', 'hod_nursing@example.com');
 
     -- 6. Insert users into auth.users (Supabase authentication engine schema)
     -- HOD CE
@@ -116,6 +139,32 @@ BEGIN
         '{"full_name":"General HOD (All Access)"}', now(), now(), '', '', '', ''
     );
 
+    -- HOD Diploma CE
+    INSERT INTO auth.users (
+        instance_id, id, aud, role, email, encrypted_password, 
+        email_confirmed_at, last_sign_in_at, raw_app_meta_data, 
+        raw_user_meta_data, created_at, updated_at, confirmation_token, 
+        email_change, email_change_token_new, recovery_token
+    ) VALUES (
+        '00000000-0000-0000-0000-000000000000', v_dip_user_id, 'authenticated', 'authenticated', 
+        'hod_dip_ce@example.com', crypt('password123', gen_salt('bf')), 
+        now(), now(), '{"provider":"email","providers":["email"]}', 
+        '{"full_name":"HOD Diploma CE"}', now(), now(), '', '', '', ''
+    );
+
+    -- HOD Nursing
+    INSERT INTO auth.users (
+        instance_id, id, aud, role, email, encrypted_password, 
+        email_confirmed_at, last_sign_in_at, raw_app_meta_data, 
+        raw_user_meta_data, created_at, updated_at, confirmation_token, 
+        email_change, email_change_token_new, recovery_token
+    ) VALUES (
+        '00000000-0000-0000-0000-000000000000', v_nursing_user_id, 'authenticated', 'authenticated', 
+        'hod_nursing@example.com', crypt('password123', gen_salt('bf')), 
+        now(), now(), '{"provider":"email","providers":["email"]}', 
+        '{"full_name":"HOD Nursing"}', now(), now(), '', '', '', ''
+    );
+
     -- Note: The trigger public.on_auth_user_created automatically fires and inserts 
     -- standard profiles in public.users. We now update them to HOD configurations.
     
@@ -134,6 +183,20 @@ BEGIN
     UPDATE public.users 
     SET role = 'hod', college_id = NULL, branch_id = v_ce_branch_id 
     WHERE id = v_ash_user_id;
+
+    -- HOD Diploma CE
+    IF v_dip_ce_branch_id IS NOT NULL THEN
+        UPDATE public.users 
+        SET role = 'hod', college_id = v_dip_college_id, branch_id = v_dip_ce_branch_id 
+        WHERE id = v_dip_user_id;
+    END IF;
+
+    -- HOD Nursing
+    IF v_nursing_branch_id IS NOT NULL THEN
+        UPDATE public.users 
+        SET role = 'hod', college_id = v_nursing_college_id, branch_id = v_nursing_branch_id 
+        WHERE id = v_nursing_user_id;
+    END IF;
 
     RAISE NOTICE 'Example HOD users seeded successfully!';
 END $$;
