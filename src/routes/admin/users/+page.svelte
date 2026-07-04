@@ -441,6 +441,7 @@
                                     <select class="form-select" id="create-hod-scope" name="hod_scope" bind:value={$newUser.hod_scope}>
                                         <option value="branch">🏫 Branch Only — sees students from assigned department only</option>
                                         <option value="college">🏛️ College-Wide — sees all departments across the entire college</option>
+                                        <option value="university">🎓 University-Wide — sees all colleges in the university</option>
                                     </select>
                                     <div class="form-text text-muted">
                                         <i class="bi bi-info-circle me-1"></i>
@@ -534,6 +535,7 @@
                             <select class="form-select" id="edit-hod-scope" name="hod_scope" bind:value={$currentUser.hod_scope}>
                                 <option value="branch">🏫 Branch Only — sees students from assigned department only</option>
                                 <option value="college">🏛️ College-Wide — sees all departments across the entire college</option>
+                                <option value="university">🎓 University-Wide — sees all colleges in the university</option>
                             </select>
                             <div class="form-text text-muted">
                                 <i class="bi bi-info-circle me-1"></i>

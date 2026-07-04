@@ -1,7 +1,7 @@
--- 1. Add hod_scope column: 'branch' = single branch access (default), 'college' = all branches in college
+-- 1. Add hod_scope column: 'branch' = single branch, 'college' = all branches in college, 'university' = all colleges in university
 ALTER TABLE public.users
 ADD COLUMN IF NOT EXISTS hod_scope TEXT DEFAULT 'branch'
-CHECK (hod_scope IN ('branch', 'college'));
+CHECK (hod_scope IN ('branch', 'college', 'university'));
 
 -- 2. Create index for performance
 CREATE INDEX IF NOT EXISTS idx_users_hod_scope ON public.users(hod_scope);

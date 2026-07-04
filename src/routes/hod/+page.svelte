@@ -9,6 +9,11 @@
     let filterAdmissionType = $state("all");
     let filterAdmissionStatus = $state("Admitted"); // default to Admitted
 
+    // Scope-level filters (for college/university HODs)
+    let filterCollege = $state("");  // for university-scope HODs
+    let filterCourse  = $state("");  // course ID
+    let filterBranch  = $state("");  // branch ID
+
     let showModal = $state(false);
     let selectedFields = $state<string[]>([]);
 
@@ -110,6 +115,25 @@
         ...new Set(data.students.map((s: any) => s.admissionType).filter(Boolean))
     ]);
 
+    // Scope-aware derived filter option lists
+    let availableCourses = $derived.by(() => {
+        if (!filterCollege) return data.filterOptions.courses;
+        return data.filterOptions.courses.filter((c: any) => c.college_id === filterCollege);
+    });
+
+    let availableBranches = $derived.by(() => {
+        const courseId = filterCourse || '';
+        return data.filterOptions.branches.filter((b: any) => {
+            if (courseId) return b.course_id === courseId;
+            if (filterCollege) {
+                // branches whose course belongs to the selected college
+                const collegeCourseIds = new Set(availableCourses.map((c: any) => c.id));
+                return collegeCourseIds.has(b.course_id);
+            }
+            return true;
+        });
+    });
+
     // Reactively filter students based on search term and filters
     let filteredStudents = $derived(
         data.students.filter((student: any) => {
@@ -126,10 +150,13 @@
                 student.formType === filterFormType;
                 
             const matchesAdmission = filterAdmissionType === "all" || student.admissionType === filterAdmissionType;
-            
-            const matchesStatus = filterAdmissionStatus === "all" || student.admissionStatus === filterAdmissionStatus;
+            const matchesStatus    = filterAdmissionStatus === "all" || student.admissionStatus === filterAdmissionStatus;
+            const matchesCollege   = !filterCollege || student.collegeId === filterCollege;
+            const matchesCourse    = !filterCourse  || student.courseId  === filterCourse;
+            const matchesBranch    = !filterBranch  || student.branchId  === filterBranch;
 
-            return matchesSearch && matchesForm && matchesAdmission && matchesStatus;
+            return matchesSearch && matchesForm && matchesAdmission && matchesStatus
+                && matchesCollege && matchesCourse && matchesBranch;
         })
     );
 
@@ -178,6 +205,21 @@
     // Dynamic stats
     let totalAdmitted = $derived(data.students.length);
     let filteredCount = $derived(filteredStudents.length);
+
+    function resetAllFilters() {
+        searchVal = "";
+        filterFormType = "exclude_provisional";
+        filterAdmissionType = "all";
+        filterAdmissionStatus = "Admitted";
+        filterCollege = "";
+        filterCourse = "";
+        filterBranch = "";
+    }
+
+    // When college changes, reset course/branch
+    $effect(() => { filterCollege; filterCourse = ""; filterBranch = ""; });
+    // When course changes, reset branch
+    $effect(() => { filterCourse; filterBranch = ""; });
 </script>
 
 <div class="container-fluid py-4">
@@ -185,9 +227,18 @@
     <div class="row mb-4">
         <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-3">
             <div>
-                <h1 class="h2 mb-1 text-dark fw-bold">Department Report</h1>
+                <h1 class="h2 mb-1 text-dark fw-bold">Department Report
+                    {#if data.department.hodScope === 'college'}
+                        <span class="badge bg-warning-subtle text-warning border border-warning fs-7 fw-normal ms-2">College-Wide</span>
+                    {:else if data.department.hodScope === 'university'}
+                        <span class="badge bg-purple-subtle text-purple border fs-7 fw-normal ms-2" style="background:#f3e8ff;color:#7c3aed;border-color:#c4b5fd">University-Wide</span>
+                    {/if}
+                </h1>
                 <nav aria-label="breadcrumb">
                     <ol class="breadcrumb mb-0">
+                        {#if data.department.universityName}
+                            <li class="breadcrumb-item text-muted">{data.department.universityName}</li>
+                        {/if}
                         <li class="breadcrumb-item text-muted">{data.department.collegeName}</li>
                         <li class="breadcrumb-item text-muted">{data.department.courseName}</li>
                         <li class="breadcrumb-item active text-primary fw-semibold" aria-current="page">
@@ -269,7 +320,8 @@
     <div class="card border-0 shadow-sm">
         <!-- Filters Header -->
         <div class="card-header bg-white border-bottom py-3">
-            <div class="row g-3 align-items-center">
+            <!-- Row 1: Search + basic filters -->
+            <div class="row g-2 align-items-center mb-2">
                 <!-- Search Input -->
                 <div class="col-md-4">
                     <div class="input-group">
@@ -279,7 +331,7 @@
                         <input 
                             type="text" 
                             class="form-control bg-light border-start-0 ps-0" 
-                            placeholder="Search by Name, ID or Email..."
+                            placeholder="Search by Name, ID, Email or Contact..."
                             bind:value={searchVal}
                         />
                     </div>
@@ -320,12 +372,68 @@
                 <div class="col-md-2 text-md-end">
                     <button 
                         class="btn btn-outline-secondary w-100" 
-                        onclick={() => { searchVal = ""; filterFormType = "exclude_provisional"; filterAdmissionType = "all"; filterAdmissionStatus = "Admitted"; }}
+                        onclick={resetAllFilters}
                     >
-                        Reset Filters
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
                     </button>
                 </div>
             </div>
+
+            <!-- Row 2: Scope filters (college / university HODs only) -->
+            {#if data.department.hodScope === 'college' || data.department.hodScope === 'university'}
+            <div class="row g-2 align-items-center pt-2 border-top">
+                <div class="col-auto">
+                    <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">
+                        <i class="bi bi-funnel me-1"></i>Scope Filters
+                    </span>
+                </div>
+
+                <!-- College filter (university-scope HODs only) -->
+                {#if data.department.hodScope === 'university' && data.filterOptions.colleges.length > 0}
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm bg-light" bind:value={filterCollege}>
+                        <option value="">🏛️ All Colleges</option>
+                        {#each data.filterOptions.colleges as college}
+                            <option value={college.id}>{college.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                {/if}
+
+                <!-- Course filter -->
+                {#if availableCourses.length > 0}
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm bg-light" bind:value={filterCourse}>
+                        <option value="">📚 All Courses</option>
+                        {#each availableCourses as course}
+                            <option value={course.id}>{course.name} ({course.code})</option>
+                        {/each}
+                    </select>
+                </div>
+                {/if}
+
+                <!-- Branch filter -->
+                {#if availableBranches.length > 0}
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm bg-light" bind:value={filterBranch}>
+                        <option value="">🏫 All Branches</option>
+                        {#each availableBranches as branch}
+                            <option value={branch.id}>{branch.name} ({branch.code})</option>
+                        {/each}
+                    </select>
+                </div>
+                {/if}
+
+                {#if filterCollege || filterCourse || filterBranch}
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-link text-danger p-0" 
+                        onclick={() => { filterCollege = ''; filterCourse = ''; filterBranch = ''; }}>
+                        <i class="bi bi-x-circle me-1"></i>Clear scope filters
+                    </button>
+                </div>
+                {/if}
+            </div>
+            {/if}
         </div>
 
         <!-- Table Body -->

@@ -14,17 +14,21 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const hodScope: string = (userProfile as any).hod_scope || 'branch';
     const isCollegeScope = hodScope === 'college' && userProfile.college_id;
+    const isUniversityScope = hodScope === 'university';
 
-    // 1. Fetch HOD Department (Branch) details
+    // 1. Fetch HOD's assigned branch details
     const { data: branchInfo, error: branchError } = await supabaseAdmin
         .from('branches')
         .select(`
+            id,
             name, 
             code,
             courses(
+                id,
                 name, 
                 code,
-                colleges(name)
+                college_id,
+                colleges(id, name, university_id, universities(id, name))
             )
         `)
         .eq('id', userProfile.branch_id)
@@ -33,18 +37,77 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
     if (branchError || !branchInfo) {
         console.error('HOD Load Error: Department info not found.', branchError);
         return {
-            department: {
-                branchName: 'Unknown Department',
-                courseName: 'N/A',
-                collegeName: 'N/A',
-                hodScope: 'branch'
-            },
+            department: { branchName: 'Unknown', courseName: 'N/A', collegeName: 'N/A', hodScope },
             students: [],
+            filterOptions: { colleges: [], courses: [], branches: [] },
             error: 'Department configuration missing.'
         };
     }
 
-    // 2. Query applications — scope by branch or by entire college
+    const branchCourse = branchInfo.courses as any;
+    const branchCollege = branchCourse?.colleges as any;
+    const branchUniversity = branchCollege?.universities as any;
+
+    // 2. Build filter options based on scope
+    let filterColleges: any[] = [];
+    let filterCourses: any[] = [];
+    let filterBranches: any[] = [];
+
+    if (isCollegeScope && userProfile.college_id) {
+        // Fetch all courses under the HOD's college
+        const { data: courses } = await supabaseAdmin
+            .from('courses')
+            .select('id, name, code')
+            .eq('college_id', userProfile.college_id)
+            .order('name');
+
+        filterCourses = courses || [];
+
+        // Fetch all branches under those courses
+        if (filterCourses.length > 0) {
+            const courseIds = filterCourses.map((c: any) => c.id);
+            const { data: branches } = await supabaseAdmin
+                .from('branches')
+                .select('id, name, code, course_id')
+                .in('course_id', courseIds)
+                .order('name');
+            filterBranches = branches || [];
+        }
+    } else if (isUniversityScope) {
+        // Fetch colleges under the HOD's university (derive from their branch's college's university)
+        const universityId = branchUniversity?.id;
+        if (universityId) {
+            const { data: colleges } = await supabaseAdmin
+                .from('colleges')
+                .select('id, name')
+                .eq('university_id', universityId)
+                .order('name');
+            filterColleges = colleges || [];
+
+            // Fetch all courses & branches across all those colleges
+            if (filterColleges.length > 0) {
+                const collegeIds = filterColleges.map((c: any) => c.id);
+                const { data: courses } = await supabaseAdmin
+                    .from('courses')
+                    .select('id, name, code, college_id')
+                    .in('college_id', collegeIds)
+                    .order('name');
+                filterCourses = courses || [];
+
+                if (filterCourses.length > 0) {
+                    const courseIds = filterCourses.map((c: any) => c.id);
+                    const { data: branches } = await supabaseAdmin
+                        .from('branches')
+                        .select('id, name, code, course_id')
+                        .in('course_id', courseIds)
+                        .order('name');
+                    filterBranches = branches || [];
+                }
+            }
+        }
+    }
+
+    // 3. Query applications
     let query = supabaseAdmin
         .from('applications')
         .select(`
@@ -54,8 +117,9 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             submitted_at,
             form_data,
             branch_id,
-            courses!inner(name, college_id, colleges(name)),
-            branches(name, code),
+            course_id,
+            courses!inner(id, name, code, college_id, colleges(id, name)),
+            branches(id, name, code),
             student_user:users!student_id(
                 full_name, 
                 email, 
@@ -66,27 +130,24 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         `)
         .neq('status', 'draft');
 
-    if (isCollegeScope) {
-        // College-scoped HOD: see all branches in their college
+    if (isUniversityScope) {
+        // University-wide: all apps (apply no college/branch restriction; RLS handles it)
+        // If branch info has a university, restrict to it — but typically global
+        query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
+    } else if (isCollegeScope) {
         query = query.eq('courses.college_id', userProfile.college_id);
     } else {
-        // Branch-scoped HOD (default)
+        // Branch-scoped HOD
         query = query.eq('branch_id', userProfile.branch_id);
-        // Apply college filter too (scopes to college_id if set, else global)
         query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
     }
 
     const { data: applications, error: appsError } = await query;
+    if (appsError) console.error('HOD Load Error: Applications query failed.', appsError);
 
-    if (appsError) {
-        console.error('HOD Load Error: Applications query failed.', appsError);
-    }
-
-    // 3. Filter to only show students with a college ID assigned (enrolled), include all statuses
+    // 4. Map to flat student records
     const admittedStudents = (applications || [])
-        .filter((app: any) => {
-            return app.courses?.college_id; // must be linked to a college (enrolled)
-        })
+        .filter((app: any) => app.courses?.college_id)
         .map((app: any, index: number) => {
             const profiles = app.student_user?.student_profiles;
             const profile = Array.isArray(profiles) ? profiles[0] : profiles;
@@ -119,11 +180,16 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 enrollmentNumber: profile?.enrollment_number || 'Pending',
                 admissionNumber: admissionEntry?.admission_number || 'N/A',
                 admissionStatus: profile?.admission_status || 'pending',
+                branchId: app.branches?.id || '',
                 branchName: app.branches?.name || 'N/A',
+                courseId: app.courses?.id || '',
+                courseName: app.courses?.name || 'N/A',
+                courseCode: app.courses?.code || '',
+                collegeId: app.courses?.college_id || '',
+                collegeName: app.courses?.colleges?.name || 'N/A',
                 meritScore: meritEntry?.merit_score || 'N/A',
                 formType: app.form_type || 'N/A',
                 admissionType: app.admission_type || 'Regular',
-                collegeName: app.courses?.colleges?.name || 'N/A',
                 submittedAt: app.submitted_at,
                 formData: app.form_data,
                 profileFields: {
@@ -145,18 +211,23 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             };
         });
 
-    const courseName = (branchInfo?.courses as any)?.name || 'N/A';
-    const collegeName = userProfile.college_id 
-        ? ((branchInfo?.courses as any)?.colleges?.name || 'N/A') 
-        : 'All Colleges (Global Access)';
+    const courseName = branchCourse?.name || 'N/A';
+    const collegeName = branchCollege?.name || (userProfile.college_id ? 'N/A' : 'All Colleges');
+    const universityName = branchUniversity?.name || '';
 
     return {
         department: {
             branchName: branchInfo?.name || 'N/A',
             courseName,
             collegeName,
+            universityName,
             hodScope
         },
-        students: admittedStudents
+        students: admittedStudents,
+        filterOptions: {
+            colleges: filterColleges,
+            courses: filterCourses,
+            branches: filterBranches
+        }
     };
 };
