@@ -14,7 +14,6 @@
 
     const staticFields = [
         { key: 'Sr. No', label: 'Sr. No' },
-        { key: 'College Name', label: 'College Name' },
         { key: 'Branch', label: 'Branch' },
         { key: 'College ID (Enrollment No)', label: 'College ID (Enrollment No)' },
         { key: 'Admission ID', label: 'Admission ID' },
@@ -334,69 +333,63 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light text-uppercase fs-7 fw-bold text-muted border-bottom">
                     <tr>
-                        <th class="ps-4 text-secondary select-none" style="width: 80px;">Sr. No</th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('enrollmentNumber')}>
+                        <th class="ps-3 text-secondary select-none" style="width: 50px;">#</th>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('enrollmentNumber')}>
                             College ID
                             {#if sortBy === 'enrollmentNumber'}
                                 <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
                             {/if}
                         </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('admissionNumber')}>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('admissionNumber')}>
                             Admission ID
                             {#if sortBy === 'admissionNumber'}
                                 <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
                             {/if}
                         </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('fullName')}>
-                            Student Name
-                            {#if sortBy === 'fullName'}
-                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
-                            {/if}
-                        </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('email')}>
-                            Email
-                            {#if sortBy === 'email'}
-                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
-                            {/if}
-                        </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('contactNumber')}>
-                            Contact
-                            {#if sortBy === 'contactNumber'}
-                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
-                            {/if}
-                        </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('city')}>
-                            City
-                            {#if sortBy === 'city'}
-                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
-                            {/if}
-                        </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('formType')}>
-                            Form Type
-                            {#if sortBy === 'formType'}
-                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
-                            {/if}
-                        </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('admissionType')}>
-                            Mode
-                            {#if sortBy === 'admissionType'}
-                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
-                            {/if}
-                        </th>
-                        <th class="cursor-pointer select-none text-secondary pe-4" onclick={() => toggleSort('collegeName')}>
-                            College
-                            {#if sortBy === 'collegeName'}
-                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
-                            {/if}
-                        </th>
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('admissionStatus')}>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('admissionStatus')}>
                             Status
                             {#if sortBy === 'admissionStatus'}
                                 <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
                             {/if}
                         </th>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('fullName')}>
+                            Student Name
+                            {#if sortBy === 'fullName'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('email')}>
+                            Email
+                            {#if sortBy === 'email'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('contactNumber')}>
+                            Contact
+                            {#if sortBy === 'contactNumber'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('city')}>
+                            City
+                            {#if sortBy === 'city'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap" onclick={() => toggleSort('formType')}>
+                            Form Type
+                            {#if sortBy === 'formType'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap pe-4" onclick={() => toggleSort('admissionType')}>
+                            Mode
+                            {#if sortBy === 'admissionType'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
                         {#if data.department.hodScope === 'college'}
-                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('branchName')}>
+                        <th class="cursor-pointer select-none text-secondary text-nowrap pe-4" onclick={() => toggleSort('branchName')}>
                             Branch
                             {#if sortBy === 'branchName'}
                                 <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
@@ -408,24 +401,18 @@
                 <tbody class="border-top-0">
                     {#each sortedStudents as student, i}
                         <tr>
-                            <td class="ps-4 fw-semibold text-muted">{i + 1}</td>
-                            <td>
+                            <td class="ps-3 fw-semibold text-muted text-nowrap" style="width:50px;">{i + 1}</td>
+                            <td class="text-nowrap">
                                 <span class="badge bg-secondary-subtle text-secondary border font-monospace px-2 py-1 fs-7">
                                     {student.enrollmentNumber}
                                 </span>
                             </td>
-                            <td>
+                            <td class="text-nowrap">
                                 <span class="badge bg-primary-subtle text-primary border font-monospace px-2 py-1 fs-7">
                                     {student.admissionNumber}
                                 </span>
                             </td>
-                            <td>
-                                <div class="fw-bold text-dark">{student.fullName}</div>
-                            </td>
-                            <td class="text-muted">{student.email}</td>
-                            <td class="text-muted small">{student.contactNumber || '—'}</td>
-                            <td class="text-muted small">{student.city || '—'}</td>
-                            <td>
+                            <td class="text-nowrap">
                                 {#if student.admissionStatus === 'Admitted'}
                                     <span class="badge bg-success-subtle text-success border border-success px-2 py-1">Admitted</span>
                                 {:else if student.admissionStatus === 'Cancelled'}
@@ -434,24 +421,29 @@
                                     <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1">Pending</span>
                                 {/if}
                             </td>
-                            <td>
+                            <td class="text-nowrap">
+                                <div class="fw-semibold text-dark">{student.fullName}</div>
+                            </td>
+                            <td class="text-muted text-nowrap" style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">{student.email}</td>
+                            <td class="text-muted small text-nowrap">{student.contactNumber || '—'}</td>
+                            <td class="text-muted small text-nowrap">{student.city || '—'}</td>
+                            <td class="text-nowrap">
                                 <span class="badge bg-light text-dark border px-2 py-1">
                                     {student.formType}
                                 </span>
                             </td>
-                            <td>
+                            <td class="pe-4 text-nowrap">
                                 <span class="badge bg-info-subtle text-info border px-2 py-1">
                                     {student.admissionType}
                                 </span>
                             </td>
-                            <td class="pe-4 text-muted small">{student.collegeName}</td>
                             {#if data.department.hodScope === 'college'}
-                            <td class="text-muted small">{student.branchName}</td>
+                            <td class="text-muted small pe-4 text-nowrap">{student.branchName}</td>
                             {/if}
                         </tr>
                     {:else}
                         <tr>
-                            <td colspan="12" class="text-center py-5 text-muted">
+                            <td colspan="11" class="text-center py-5 text-muted">
                                 <div class="mb-2 fs-4">
                                     <i class="bi bi-inbox text-muted opacity-50"></i>
                                 </div>
