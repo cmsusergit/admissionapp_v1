@@ -179,9 +179,9 @@ BEGIN
     SET role = 'hod', college_id = v_college_id, branch_id = v_mech_branch_id 
     WHERE id = v_mech_user_id;
 
-    -- HOD ASH: Global access (college_id is NULL), assigned to CE department branch
+    -- HOD ASH: College-wide access (all branches in the college), assigned to CE's college
     UPDATE public.users 
-    SET role = 'hod', college_id = NULL, branch_id = v_ce_branch_id 
+    SET role = 'hod', college_id = v_college_id, branch_id = v_ce_branch_id, hod_scope = 'college'
     WHERE id = v_ash_user_id;
 
     -- HOD Diploma CE

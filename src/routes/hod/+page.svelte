@@ -7,6 +7,7 @@
     let searchVal = $state("");
     let filterFormType = $state("exclude_provisional");
     let filterAdmissionType = $state("all");
+    let filterAdmissionStatus = $state("all"); // 'all', 'Admitted', 'pending', 'Cancelled'
 
     let showModal = $state(false);
     let selectedFields = $state<string[]>([]);
@@ -14,11 +15,12 @@
     const staticFields = [
         { key: 'Sr. No', label: 'Sr. No' },
         { key: 'College Name', label: 'College Name' },
+        { key: 'Branch', label: 'Branch' },
         { key: 'College ID (Enrollment No)', label: 'College ID (Enrollment No)' },
         { key: 'Admission ID', label: 'Admission ID' },
         { key: 'Student Name', label: 'Student Name' },
         { key: 'Email', label: 'Email' },
-        { key: 'Merit Score', label: 'Merit Score' },
+        { key: 'Admission Status', label: 'Admission Status' },
         { key: 'Form Type', label: 'Form Type' },
         { key: 'Admission Mode', label: 'Admission Mode' },
         { key: 'Admitted Date', label: 'Admitted Date' }
@@ -116,7 +118,8 @@
                 student.fullName.toLowerCase().includes(searchVal.toLowerCase()) ||
                 student.email.toLowerCase().includes(searchVal.toLowerCase()) ||
                 student.enrollmentNumber.toLowerCase().includes(searchVal.toLowerCase()) ||
-                student.admissionNumber.toLowerCase().includes(searchVal.toLowerCase());
+                student.admissionNumber.toLowerCase().includes(searchVal.toLowerCase()) ||
+                (student.contactNumber || '').toLowerCase().includes(searchVal.toLowerCase());
 
             const matchesForm = 
                 filterFormType === "all" ? true :
@@ -124,8 +127,10 @@
                 student.formType === filterFormType;
                 
             const matchesAdmission = filterAdmissionType === "all" || student.admissionType === filterAdmissionType;
+            
+            const matchesStatus = filterAdmissionStatus === "all" || student.admissionStatus === filterAdmissionStatus;
 
-            return matchesSearch && matchesForm && matchesAdmission;
+            return matchesSearch && matchesForm && matchesAdmission && matchesStatus;
         })
     );
 
@@ -282,20 +287,30 @@
                 </div>
                 
                 <!-- Form Type Filter -->
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <select class="form-select bg-light" bind:value={filterFormType}>
-                        <option value="exclude_provisional">Exclude Provisional (Default)</option>
-                        <option value="all">All Form Types (Incl. Provisional)</option>
+                        <option value="exclude_provisional">Excl. Provisional</option>
+                        <option value="all">All Form Types</option>
                         {#each formTypes as type}
                             <option value={type}>{type}</option>
                         {/each}
                     </select>
                 </div>
 
+                <!-- Admission Status Filter -->
+                <div class="col-md-2">
+                    <select class="form-select bg-light" bind:value={filterAdmissionStatus}>
+                        <option value="all">All Statuses</option>
+                        <option value="Admitted">✅ Admitted</option>
+                        <option value="pending">⏳ Pending</option>
+                        <option value="Cancelled">❌ Cancelled</option>
+                    </select>
+                </div>
+
                 <!-- Admission Mode Filter -->
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <select class="form-select bg-light" bind:value={filterAdmissionType}>
-                        <option value="all">All Admission Modes</option>
+                        <option value="all">All Modes</option>
                         {#each admissionTypes as mode}
                             <option value={mode}>{mode}</option>
                         {/each}
@@ -306,7 +321,7 @@
                 <div class="col-md-2 text-md-end">
                     <button 
                         class="btn btn-outline-secondary w-100" 
-                        onclick={() => { searchVal = ""; filterFormType = "exclude_provisional"; filterAdmissionType = "all"; }}
+                        onclick={() => { searchVal = ""; filterFormType = "exclude_provisional"; filterAdmissionType = "all"; filterAdmissionStatus = "all"; }}
                     >
                         Reset Filters
                     </button>
@@ -374,6 +389,20 @@
                                 <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
                             {/if}
                         </th>
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('admissionStatus')}>
+                            Status
+                            {#if sortBy === 'admissionStatus'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        {#if data.department.hodScope === 'college'}
+                        <th class="cursor-pointer select-none text-secondary" onclick={() => toggleSort('branchName')}>
+                            Branch
+                            {#if sortBy === 'branchName'}
+                                <i class="bi bi-chevron-{sortOrder === 'asc' ? 'up' : 'down'} text-primary ms-1"></i>
+                            {/if}
+                        </th>
+                        {/if}
                     </tr>
                 </thead>
                 <tbody class="border-top-0">
@@ -397,6 +426,15 @@
                             <td class="text-muted small">{student.contactNumber || '—'}</td>
                             <td class="text-muted small">{student.city || '—'}</td>
                             <td>
+                                {#if student.admissionStatus === 'Admitted'}
+                                    <span class="badge bg-success-subtle text-success border border-success px-2 py-1">Admitted</span>
+                                {:else if student.admissionStatus === 'Cancelled'}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1">Cancelled</span>
+                                {:else}
+                                    <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1">Pending</span>
+                                {/if}
+                            </td>
+                            <td>
                                 <span class="badge bg-light text-dark border px-2 py-1">
                                     {student.formType}
                                 </span>
@@ -407,14 +445,17 @@
                                 </span>
                             </td>
                             <td class="pe-4 text-muted small">{student.collegeName}</td>
+                            {#if data.department.hodScope === 'college'}
+                            <td class="text-muted small">{student.branchName}</td>
+                            {/if}
                         </tr>
                     {:else}
                         <tr>
-                            <td colspan="9" class="text-center py-5 text-muted">
+                            <td colspan="12" class="text-center py-5 text-muted">
                                 <div class="mb-2 fs-4">
                                     <i class="bi bi-inbox text-muted opacity-50"></i>
                                 </div>
-                                <div>No final admitted students match your selection criteria.</div>
+                                <div>No students match your selection criteria.</div>
                             </td>
                         </tr>
                     {/each}

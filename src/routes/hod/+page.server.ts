@@ -12,6 +12,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
     }
 
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const hodScope: string = (userProfile as any).hod_scope || 'branch';
+    const isCollegeScope = hodScope === 'college' && userProfile.college_id;
 
     // 1. Fetch HOD Department (Branch) details
     const { data: branchInfo, error: branchError } = await supabaseAdmin
@@ -34,14 +36,15 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             department: {
                 branchName: 'Unknown Department',
                 courseName: 'N/A',
-                collegeName: 'N/A'
+                collegeName: 'N/A',
+                hodScope: 'branch'
             },
             students: [],
             error: 'Department configuration missing.'
         };
     }
 
-    // 2. Query applications for HOD's branch
+    // 2. Query applications — scope by branch or by entire college
     let query = supabaseAdmin
         .from('applications')
         .select(`
@@ -50,7 +53,9 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             admission_type,
             submitted_at,
             form_data,
+            branch_id,
             courses!inner(name, college_id, colleges(name)),
+            branches(name, code),
             student_user:users!student_id(
                 full_name, 
                 email, 
@@ -59,11 +64,17 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
             account_admissions(admission_number),
             merit_list_entries(merit_score)
         `)
-        .eq('branch_id', userProfile.branch_id)
         .neq('status', 'draft');
 
-    // 3. Apply college filter (scopes to college_id if set, else global)
-    query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
+    if (isCollegeScope) {
+        // College-scoped HOD: see all branches in their college
+        query = query.eq('courses.college_id', userProfile.college_id);
+    } else {
+        // Branch-scoped HOD (default)
+        query = query.eq('branch_id', userProfile.branch_id);
+        // Apply college filter too (scopes to college_id if set, else global)
+        query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
+    }
 
     const { data: applications, error: appsError } = await query;
 
@@ -71,12 +82,10 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         console.error('HOD Load Error: Applications query failed.', appsError);
     }
 
-    // 4. Filter in-memory to only include final 'Admitted' students with college ID assigned
+    // 3. Filter to only show students with a college ID assigned (enrolled), include all statuses
     const admittedStudents = (applications || [])
         .filter((app: any) => {
-            const profiles = app.student_user?.student_profiles;
-            const profile = Array.isArray(profiles) ? profiles[0] : profiles;
-            return profile?.admission_status === 'Admitted' && app.courses?.college_id;
+            return app.courses?.college_id; // must be linked to a college (enrolled)
         })
         .map((app: any, index: number) => {
             const profiles = app.student_user?.student_profiles;
@@ -109,6 +118,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 city: profileData.p_city || profileData.c_city || '',
                 enrollmentNumber: profile?.enrollment_number || 'Pending',
                 admissionNumber: admissionEntry?.admission_number || 'N/A',
+                admissionStatus: profile?.admission_status || 'pending',
+                branchName: app.branches?.name || 'N/A',
                 meritScore: meritEntry?.merit_score || 'N/A',
                 formType: app.form_type || 'N/A',
                 admissionType: app.admission_type || 'Regular',
@@ -143,7 +154,8 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         department: {
             branchName: branchInfo?.name || 'N/A',
             courseName,
-            collegeName
+            collegeName,
+            hodScope
         },
         students: admittedStudents
     };

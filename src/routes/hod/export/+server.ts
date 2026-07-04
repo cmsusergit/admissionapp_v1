@@ -32,7 +32,9 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
             admission_type,
             submitted_at,
             form_data,
+            branch_id,
             courses!inner(name, college_id, colleges(name)),
+            branches(name, code),
             student_user:users!student_id(
                 full_name, 
                 email, 
@@ -41,11 +43,18 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
             account_admissions(admission_number),
             merit_list_entries(merit_score)
         `)
-        .eq('branch_id', userProfile.branch_id)
         .neq('status', 'draft');
 
-    // Apply the college filter
-    query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
+    const hodScope: string = (userProfile as any).hod_scope || 'branch';
+    const isCollegeScope = hodScope === 'college' && userProfile.college_id;
+
+    if (isCollegeScope) {
+        query = query.eq('courses.college_id', userProfile.college_id);
+    } else {
+        query = query.eq('branch_id', userProfile.branch_id);
+        // Apply the college filter
+        query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
+    }
 
     const { data: applications } = await query;
 
@@ -130,11 +139,12 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
         const fullRow: Record<string, any> = {
             'Sr. No': index + 1,
             'College Name': app.courses?.colleges?.name || 'N/A',
+            'Branch': app.branches?.name || 'N/A',
             'College ID (Enrollment No)': profile?.enrollment_number || 'Pending',
             'Admission ID': admissionEntry?.admission_number || 'N/A',
             'Student Name': app.student_user?.full_name || '',
             'Email': app.student_user?.email || '',
-            'Merit Score': meritEntry?.merit_score || '',
+            'Admission Status': profile?.admission_status || 'pending',
             'Form Type': app.form_type || '',
             'Admission Mode': app.admission_type || 'Regular',
             'Admitted Date': app.submitted_at ? new Date(app.submitted_at).toLocaleDateString() : '',
