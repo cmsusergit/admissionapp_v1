@@ -43,6 +43,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 throw redirect(303, '/student');
             } else if (profile.role === 'admin') {
                 throw redirect(303, '/admin/dashboard');
+            } else if (profile.role === 'hod') {
+                throw redirect(303, '/hod');
             }
             // Add other roles as needed, or let fall through to switch below
         }
@@ -82,6 +84,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getAuthent
                 throw redirect(303, '/university-auth/dashboard');
             case 'adm_officer': 
                 throw redirect(303, '/adm-officer/dashboard');
+            case 'hod':
+                throw redirect(303, '/hod');
             default:
                 // If role is unknown or not handled, stay on home page
                 break;

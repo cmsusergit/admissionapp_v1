@@ -347,6 +347,17 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
       },
     ],
   },
+  hod: {
+    title: "HOD Dashboard",
+    items: [
+      {
+        title: "Department Report",
+        href: "/hod",
+        icon: "bi-file-earmark-spreadsheet-fill",
+        exact: true,
+      },
+    ],
+  },
   authenticated: {
     // Fallback for generic authenticated users
     title: "Authenticated",

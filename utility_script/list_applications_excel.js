@@ -1,21 +1,17 @@
-
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import * as XLSX from 'xlsx';
 
 // Load environment variables
 dotenv.config();
-
 const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing environment variables: PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-
 const outputFileName = 'applications_match_report.xlsx';
 
 function getStudentDetails(app) {
@@ -51,7 +47,7 @@ function getStudentDetails(app) {
 }
 
 async function runMatchReport() {
-  console.log(`Generating Match Report for Bachelor of Engineering...`);
+  console.log(`Generating Match Report for Diploma....`);
   console.log('--------------------------------------------------');
 
   try {
@@ -72,9 +68,8 @@ async function runMatchReport() {
           student_profiles(profile_data)
         )
       `)
-      .in('form_type', ['Provisional', 'MQ/NRI'])
-      .eq('course.name', 'BACHELOR OF ENGINEERING');
-
+      .in('form_type', ['Provisional', 'MQ/NRI'])      
+      .eq('course.code', 'DIP');
     if (error) throw error;
 
     // 2. Separate and Process
