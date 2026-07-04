@@ -1,0 +1,129 @@
+import type { RequestHandler } from './$types';
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
+import { applyRoleBasedCollegeFilter } from '$lib/server/security';
+import * as XLSX from 'xlsx';
+
+export const GET: RequestHandler = async ({ url, locals: { getSession, userProfile } }) => {
+    const session = await getSession();
+    if (!session || userProfile?.role !== 'hod' || !userProfile?.branch_id) {
+        return new Response('Unauthorized', { status: 401 });
+    }
+
+    const fieldsParam = url.searchParams.get('fields');
+    const selectedFields = fieldsParam ? fieldsParam.split(',') : null;
+
+    const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // 1. Fetch HOD Department (Branch) details
+    const { data: branchInfo } = await supabaseAdmin
+        .from('branches')
+        .select('name, code')
+        .eq('id', userProfile.branch_id)
+        .single();
+
+    // 2. Fetch students in HOD's branch
+    let query = supabaseAdmin
+        .from('applications')
+        .select(`
+            id,
+            form_type,
+            admission_type,
+            submitted_at,
+            form_data,
+            courses!inner(name, college_id, colleges(name)),
+            student_user:users!student_id(
+                full_name, 
+                email, 
+                student_profiles(enrollment_number, admission_status)
+            ),
+            account_admissions(admission_number),
+            merit_list_entries(merit_score)
+        `)
+        .eq('branch_id', userProfile.branch_id)
+        .neq('status', 'draft');
+
+    // Apply the college filter
+    query = applyRoleBasedCollegeFilter(query, userProfile, 'applications');
+
+    const { data: applications } = await query;
+
+    // Filter in-memory to only include final 'Admitted' students with college ID assigned
+    const admittedStudents = (applications || []).filter((app: any) => {
+        const profiles = app.student_user?.student_profiles;
+        const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+        return profile?.admission_status === 'Admitted' && app.courses?.college_id;
+    });
+
+    if (admittedStudents.length === 0) {
+        return new Response('No admitted student records found in your department to export.', { status: 404 });
+    }
+
+    // 3. Extract all dynamic form data keys across all records
+    const dynamicKeys = new Set<string>();
+    admittedStudents.forEach((app: any) => {
+        if (app.form_data && typeof app.form_data === 'object') {
+            Object.keys(app.form_data).forEach(k => dynamicKeys.add(k));
+        }
+    });
+    const sortedDynamicKeys = Array.from(dynamicKeys).sort();
+
+    // 4. Construct sheet rows
+    const rows = admittedStudents.map((app: any, index: number) => {
+        const profiles = app.student_user?.student_profiles;
+        const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+        const meritEntry = Array.isArray(app.merit_list_entries) ? app.merit_list_entries[0] : app.merit_list_entries;
+        const admissionEntry = Array.isArray(app.account_admissions) ? app.account_admissions[0] : app.account_admissions;
+
+        const fullRow: Record<string, any> = {
+            'Sr. No': index + 1,
+            'College Name': app.courses?.colleges?.name || 'N/A',
+            'College ID (Enrollment No)': profile?.enrollment_number || 'Pending',
+            'Admission ID': admissionEntry?.admission_number || 'N/A',
+            'Student Name': app.student_user?.full_name || '',
+            'Email': app.student_user?.email || '',
+            'Merit Score': meritEntry?.merit_score || '',
+            'Form Type': app.form_type || '',
+            'Admission Mode': app.admission_type || 'Regular',
+            'Admitted Date': app.submitted_at ? new Date(app.submitted_at).toLocaleDateString() : ''
+        };
+
+        // Populate dynamic form keys
+        sortedDynamicKeys.forEach(key => {
+            const val = app.form_data?.[key];
+            fullRow[`Form Field: ${key}`] = (val !== null && val !== undefined)
+                ? (typeof val === 'object' ? JSON.stringify(val) : String(val))
+                : '';
+        });
+
+        if (selectedFields) {
+            const filteredRow: Record<string, any> = {};
+            selectedFields.forEach(f => {
+                filteredRow[f] = fullRow[f] !== undefined ? fullRow[f] : '';
+            });
+            return filteredRow;
+        }
+
+        return fullRow;
+    });
+
+    // 5. Build SheetJS Workbook
+    const worksheet = selectedFields 
+        ? XLSX.utils.json_to_sheet(rows, { header: selectedFields })
+        : XLSX.utils.json_to_sheet(rows);
+        
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Admitted Students');
+
+    // 6. Generate binary Buffer
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `Admitted_Students_${(branchInfo?.name || 'Department').replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    return new Response(excelBuffer, {
+        headers: {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="${filename}"`
+        }
+    });
+};
