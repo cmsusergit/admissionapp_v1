@@ -50,10 +50,45 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
     const { data: applications } = await query;
 
     // Filter in-memory to only include final 'Admitted' students with college ID assigned
-    const admittedStudents = (applications || []).filter((app: any) => {
+    // Filter in-memory to only include final 'Admitted' students with college ID assigned
+    const admittedStudentsRaw = (applications || []).filter((app: any) => {
         const profiles = app.student_user?.student_profiles;
         const profile = Array.isArray(profiles) ? profiles[0] : profiles;
         return profile?.admission_status === 'Admitted' && app.courses?.college_id;
+    });
+
+    // Apply active filters (form type, admission type, search query)
+    const formTypeParam = url.searchParams.get('form_type') || 'exclude_provisional';
+    const admissionTypeParam = url.searchParams.get('admission_type') || 'all';
+    const searchParam = url.searchParams.get('search') || '';
+
+    const admittedStudents = admittedStudentsRaw.filter((app: any) => {
+        const studentName = app.student_user?.full_name || '';
+        const studentEmail = app.student_user?.email || '';
+        const profiles = app.student_user?.student_profiles;
+        const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+        const enrollmentNo = profile?.enrollment_number || '';
+        const admissions = app.account_admissions;
+        const admissionEntry = Array.isArray(admissions) ? admissions[0] : admissions;
+        const admissionNo = admissionEntry?.admission_number || '';
+
+        const matchesSearch = searchParam.trim() === '' ? true : (
+            studentName.toLowerCase().includes(searchParam.toLowerCase()) ||
+            studentEmail.toLowerCase().includes(searchParam.toLowerCase()) ||
+            enrollmentNo.toLowerCase().includes(searchParam.toLowerCase()) ||
+            admissionNo.toLowerCase().includes(searchParam.toLowerCase())
+        );
+
+        const matchesForm = 
+            formTypeParam === 'all' ? true :
+            formTypeParam === 'exclude_provisional' ? app.form_type !== 'Provisional' :
+            app.form_type === formTypeParam;
+
+        const matchesAdmission = 
+            admissionTypeParam === 'all' ? true :
+            app.admission_type === admissionTypeParam;
+
+        return matchesSearch && matchesForm && matchesAdmission;
     });
 
     if (admittedStudents.length === 0) {

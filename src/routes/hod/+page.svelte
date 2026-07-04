@@ -5,7 +5,7 @@
     let { data } = $props();
 
     let searchVal = $state("");
-    let filterFormType = $state("all");
+    let filterFormType = $state("exclude_provisional");
     let filterAdmissionType = $state("all");
 
     let showModal = $state(false);
@@ -71,6 +71,15 @@
         if (selectedFields.length > 0) {
             params.append('fields', selectedFields.join(','));
         }
+        if (filterFormType !== 'all') {
+            params.append('form_type', filterFormType);
+        }
+        if (filterAdmissionType !== 'all') {
+            params.append('admission_type', filterAdmissionType);
+        }
+        if (searchVal.trim() !== '') {
+            params.append('search', searchVal.trim());
+        }
         return `/hod/export?${params.toString()}`;
     });
 
@@ -92,7 +101,11 @@
                 student.enrollmentNumber.toLowerCase().includes(searchVal.toLowerCase()) ||
                 student.admissionNumber.toLowerCase().includes(searchVal.toLowerCase());
 
-            const matchesForm = filterFormType === "all" || student.formType === filterFormType;
+            const matchesForm = 
+                filterFormType === "all" ? true :
+                filterFormType === "exclude_provisional" ? student.formType !== "Provisional" :
+                student.formType === filterFormType;
+                
             const matchesAdmission = filterAdmissionType === "all" || student.admissionType === filterAdmissionType;
 
             return matchesSearch && matchesForm && matchesAdmission;
@@ -212,7 +225,8 @@
                 <!-- Form Type Filter -->
                 <div class="col-md-3">
                     <select class="form-select bg-light" bind:value={filterFormType}>
-                        <option value="all">All Form Types</option>
+                        <option value="exclude_provisional">Exclude Provisional (Default)</option>
+                        <option value="all">All Form Types (Incl. Provisional)</option>
                         {#each formTypes as type}
                             <option value={type}>{type}</option>
                         {/each}
@@ -233,7 +247,7 @@
                 <div class="col-md-2 text-md-end">
                     <button 
                         class="btn btn-outline-secondary w-100" 
-                        onclick={() => { searchVal = ""; filterFormType = "all"; filterAdmissionType = "all"; }}
+                        onclick={() => { searchVal = ""; filterFormType = "exclude_provisional"; filterAdmissionType = "all"; }}
                     >
                         Reset Filters
                     </button>
