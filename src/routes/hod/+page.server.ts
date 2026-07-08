@@ -116,6 +116,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
         .from('applications')
         .select(`
             id,
+            status,
             form_type,
             admission_type,
             submitted_at,
@@ -184,6 +185,7 @@ export const load: PageServerLoad = async ({ locals: { getSession, userProfile }
                 enrollmentNumber: profile?.enrollment_number || 'Pending',
                 admissionNumber: admissionEntry?.admission_number || 'N/A',
                 admissionStatus: profile?.admission_status || 'pending',
+                applicationStatus: app.status || 'N/A',
                 branchId: app.branches?.id || '',
                 branchName: app.branches?.name || 'N/A',
                 courseId: app.courses?.id || '',

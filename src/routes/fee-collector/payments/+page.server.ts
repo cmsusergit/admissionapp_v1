@@ -56,7 +56,23 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
         paymentsQuery = paymentsQuery.eq('applications.course_id', courseIdFilter);
     }
     if (searchTerm) {
-        paymentsQuery = paymentsQuery.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`, { foreignTable: 'applications.student_user' });
+        // Query users and student_profiles in parallel to gather all matching student_ids (name, email, or enrollment number)
+        const [usersRes, profilesRes] = await Promise.all([
+            supabase.from('users').select('id').or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`),
+            supabase.from('student_profiles').select('user_id').ilike('enrollment_number', `%${searchTerm}%`)
+        ]);
+
+        const matchedStudentIds = [
+            ...(usersRes.data || []).map(u => u.id),
+            ...(profilesRes.data || []).map(p => p.user_id)
+        ];
+
+        if (matchedStudentIds.length > 0) {
+            paymentsQuery = paymentsQuery.in('applications.student_id', matchedStudentIds);
+        } else {
+            // No matches: filter for a non-existent UUID to return 0 results
+            paymentsQuery = paymentsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+        }
     }
     paymentsQuery = applyRoleBasedCollegeFilter(paymentsQuery, userProfile, 'payments');
 

@@ -8,6 +8,7 @@
     let filterFormType = $state("exclude_provisional");
     let filterAdmissionType = $state("all");
     let filterAdmissionStatus = $state("Admitted"); // default to Admitted
+    let filterApplicationStatus = $state("approved");
 
     // Scope-level filters (for college/university HODs)
     let filterCollege = $state("");  // for university-scope HODs
@@ -66,15 +67,16 @@
     $effect(() => {
         const storageKey = `hod_export_template_${data.department.branchName}`;
         const saved = localStorage.getItem(storageKey);
+        const defaultFields = [...staticFields, ...profileFields].map(f => f.key);
         untrack(() => {
             if (saved) {
                 try {
                     selectedFields = JSON.parse(saved);
                 } catch (e) {
-                    selectedFields = allFields.map(f => f.key);
+                    selectedFields = defaultFields;
                 }
             } else {
-                selectedFields = allFields.map(f => f.key);
+                selectedFields = defaultFields;
             }
         });
     });
@@ -86,7 +88,7 @@
     }
 
     function resetToDefault() {
-        selectedFields = allFields.map(f => f.key);
+        selectedFields = [...staticFields, ...profileFields].map(f => f.key);
     }
 
     let downloadUrl = $derived.by(() => {
@@ -172,6 +174,7 @@
                 
             const matchesAdmission = filterAdmissionType === "all" || student.admissionType === filterAdmissionType;
             const matchesStatus    = filterAdmissionStatus === "all" || student.admissionStatus === filterAdmissionStatus;
+            const matchesAppStatus = filterApplicationStatus === "all" || student.applicationStatus === filterApplicationStatus;
             
             const matchesCollege   = !filterCollege || student.collegeId === filterCollege;
             
@@ -181,12 +184,12 @@
             const studentBranchKey = (student.branchName || '').toUpperCase().trim();
             const matchesBranch    = !filterBranch  || studentBranchKey === filterBranch.toUpperCase().trim();
 
-            return matchesSearch && matchesForm && matchesAdmission && matchesStatus
+            return matchesSearch && matchesForm && matchesAdmission && matchesStatus && matchesAppStatus
                 && matchesCollege && matchesCourse && matchesBranch;
         })
     );
 
-    let sortBy = $state("fullName");
+    let sortBy = $state("enrollmentNumber");
     let sortOrder = $state<"asc" | "desc">("asc");
 
     function toggleSort(column: string) {
@@ -229,14 +232,42 @@
     });
 
     // Dynamic stats
-    let totalAdmitted = $derived(data.students.length);
+    let totalStudentsCount = $derived(data.students.length);
     let filteredCount = $derived(filteredStudents.length);
+
+    // Helper to check if a student matches all filters except status and search
+    function matchesFiltersExceptStatus(student: any) {
+        const matchesForm = 
+            filterFormType === "all" ? true :
+            filterFormType === "exclude_provisional" ? student.formType !== "Provisional" :
+            student.formType === filterFormType;
+            
+        const matchesAdmission = filterAdmissionType === "all" || student.admissionType === filterAdmissionType;
+        const matchesCollege   = !filterCollege || student.collegeId === filterCollege;
+        
+        const studentCourseKey = (student.courseCode || student.courseName || '').toUpperCase().trim();
+        const matchesCourse    = !filterCourse  || studentCourseKey === filterCourse.toUpperCase().trim();
+        
+        const studentBranchKey = (student.branchName || '').toUpperCase().trim();
+        const matchesBranch    = !filterBranch  || studentBranchKey === filterBranch.toUpperCase().trim();
+
+        return matchesForm && matchesAdmission && matchesCollege && matchesCourse && matchesBranch;
+    }
+
+    let admittedCount = $derived(
+        data.students.filter((s: any) => s.admissionStatus?.toLowerCase() === "admitted" && matchesFiltersExceptStatus(s)).length
+    );
+
+    let cancelledCount = $derived(
+        data.students.filter((s: any) => s.admissionStatus?.toLowerCase() === "cancelled" && matchesFiltersExceptStatus(s)).length
+    );
 
     function resetAllFilters() {
         searchVal = "";
         filterFormType = "exclude_provisional";
         filterAdmissionType = "all";
         filterAdmissionStatus = "Admitted";
+        filterApplicationStatus = "approved";
         filterCollege = "";
         filterCourse = "";
         filterBranch = "";
@@ -260,18 +291,6 @@
                         <span class="badge bg-purple-subtle text-purple border fs-7 fw-normal ms-2" style="background:#f3e8ff;color:#7c3aed;border-color:#c4b5fd">University-Wide</span>
                     {/if}
                 </h1>
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb mb-0">
-                        {#if data.department.universityName}
-                            <li class="breadcrumb-item text-muted">{data.department.universityName}</li>
-                        {/if}
-                        <li class="breadcrumb-item text-muted">{data.department.collegeName}</li>
-                        <li class="breadcrumb-item text-muted">{data.department.courseName}</li>
-                        <li class="breadcrumb-item active text-primary fw-semibold" aria-current="page">
-                            {data.department.branchName}
-                        </li>
-                    </ol>
-                </nav>
             </div>
             
             <div class="d-flex align-items-center gap-2">
@@ -297,46 +316,19 @@
 
     <!-- Quick Stats Row -->
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm bg-primary text-white h-100">
-                <div class="card-body d-flex align-items-center justify-content-between">
-                    <div>
-                        <h6 class="text-white-50 text-uppercase mb-2 small fw-bold">Total Admitted</h6>
-                        <h3 class="display-6 mb-0 fw-bold">{totalAdmitted}</h3>
-                    </div>
-                    <div class="bg-white bg-opacity-20 p-3 rounded-circle">
-                        <i class="bi bi-people-fill fs-2 text-white"></i>
-                    </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm text-white card-hover" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);">
+                <div class="card-body p-3">
+                    <h6 class="text-white-50 text-uppercase mb-1 small fw-bold">Admitted Student Count</h6>
+                    <h3 class="mb-0 fw-bold text-white">{admittedCount}</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm bg-info text-white h-100">
-                <div class="card-body d-flex align-items-center justify-content-between">
-                    <div>
-                        <h6 class="text-white-50 text-uppercase mb-2 small fw-bold">Filtered Count</h6>
-                        <h3 class="display-6 mb-0 fw-bold">{filteredCount}</h3>
-                    </div>
-                    <div class="bg-white bg-opacity-20 p-3 rounded-circle">
-                        <i class="bi bi-funnel-fill fs-2 text-white"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm bg-white h-100">
-                <div class="card-body d-flex align-items-center justify-content-between">
-                    <div>
-                        <h6 class="text-muted text-uppercase mb-2 small fw-bold">Status Mode</h6>
-                        <h4 class="mb-0 fw-bold text-success d-flex align-items-center gap-2">
-                            <span class="badge bg-success-subtle text-success border border-success px-3 py-2 fs-6">
-                                Final Admitted
-                            </span>
-                        </h4>
-                    </div>
-                    <div class="bg-light p-3 rounded-circle">
-                        <i class="bi bi-patch-check-fill fs-2 text-success"></i>
-                    </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm text-white card-hover" style="background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%);">
+                <div class="card-body p-3">
+                    <h6 class="text-white-50 text-uppercase mb-1 small fw-bold">Cancelled Student Count</h6>
+                    <h3 class="mb-0 fw-bold text-white">{cancelledCount}</h3>
                 </div>
             </div>
         </div>
@@ -349,8 +341,8 @@
             <!-- Row 1: Search + basic filters -->
             <div class="row g-2 align-items-center mb-2">
                 <!-- Search Input -->
-                <div class="col-md-4">
-                    <div class="input-group">
+                <div class="col-md-3">
+                    <div class="input-group" title="Search students by Name, College ID, Admission ID, Email, or Contact number">
                         <span class="input-group-text bg-light border-end-0 text-muted">
                             <i class="bi bi-search"></i>
                         </span>
@@ -365,7 +357,7 @@
                 
                 <!-- Form Type Filter -->
                 <div class="col-md-2">
-                    <select class="form-select bg-light" bind:value={filterFormType}>
+                    <select class="form-select bg-light" bind:value={filterFormType} title="Filter students by Admission Form Type">
                         <option value="exclude_provisional">Excl. Provisional</option>
                         <option value="all">All Form Types</option>
                         {#each formTypes as type}
@@ -376,17 +368,29 @@
 
                 <!-- Admission Status Filter -->
                 <div class="col-md-2">
-                    <select class="form-select bg-light" bind:value={filterAdmissionStatus}>
-                        <option value="all">All Statuses</option>
+                    <select class="form-select bg-light" bind:value={filterAdmissionStatus} title="Filter students by their Admission Status (Admitted, Pending, Cancelled)">
+                        <option value="all">All Admission Statuses</option>
                         <option value="Admitted">✅ Admitted</option>
                         <option value="pending">⏳ Pending</option>
                         <option value="Cancelled">❌ Cancelled</option>
                     </select>
                 </div>
 
+                <!-- Application Status Filter -->
+                <div class="col-md-2">
+                    <select class="form-select bg-light" bind:value={filterApplicationStatus} title="Filter students by Application Lifecycle Status (Approved, Verified, Submitted, etc.)">
+                        <option value="all">All App Statuses</option>
+                        <option value="approved">Approved</option>
+                        <option value="verified">Verified</option>
+                        <option value="submitted">Submitted</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+
                 <!-- Admission Mode Filter -->
                 <div class="col-md-2">
-                    <select class="form-select bg-light" bind:value={filterAdmissionType}>
+                    <select class="form-select bg-light" bind:value={filterAdmissionType} title="Filter students by Admission Mode (Regular, D2D, C2D, etc.)">
                         <option value="all">All Modes</option>
                         {#each admissionTypes as mode}
                             <option value={mode}>{mode}</option>
@@ -395,12 +399,13 @@
                 </div>
 
                 <!-- Reset Button -->
-                <div class="col-md-2 text-md-end">
+                <div class="col-md-1 text-md-end">
                     <button 
-                        class="btn btn-outline-secondary w-100" 
+                        class="btn btn-outline-secondary w-100 px-0" 
                         onclick={resetAllFilters}
+                        title="Reset all filters to default values"
                     >
-                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
+                        <i class="bi bi-arrow-counterclockwise"></i> Reset
                     </button>
                 </div>
             </div>
@@ -417,7 +422,7 @@
                 <!-- College filter (university-scope HODs only) -->
                 {#if data.department.hodScope === 'university' && data.filterOptions.colleges.length > 0}
                 <div class="col-md-3">
-                    <div class="input-group input-group-sm shadow-sm rounded">
+                    <div class="input-group input-group-sm shadow-sm rounded" title="Filter by College">
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-bank"></i></span>
                         <select class="form-select form-select-sm bg-light border-start-0 ps-0 fw-medium text-secondary" bind:value={filterCollege}>
                             <option value="">All Colleges</option>
@@ -432,7 +437,7 @@
                 <!-- Course filter -->
                 {#if availableCourses.length > 0}
                 <div class="col-md-3">
-                    <div class="input-group input-group-sm shadow-sm rounded">
+                    <div class="input-group input-group-sm shadow-sm rounded" title="Filter by Course">
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-book-half"></i></span>
                         <select class="form-select form-select-sm bg-light border-start-0 ps-0 fw-medium text-secondary" bind:value={filterCourse}>
                             <option value="">All Courses</option>
@@ -447,7 +452,7 @@
                 <!-- Branch filter -->
                 {#if availableBranches.length > 0}
                 <div class="col-md-3">
-                    <div class="input-group input-group-sm shadow-sm rounded">
+                    <div class="input-group input-group-sm shadow-sm rounded" title="Filter by Branch">
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-tags"></i></span>
                         <select class="form-select form-select-sm bg-light border-start-0 ps-0 fw-medium text-secondary" bind:value={filterBranch}>
                             <option value="">All Branches</option>
@@ -600,7 +605,7 @@
         
         <!-- Footer info -->
         <div class="card-footer bg-white border-top text-muted small py-3">
-            Showing {filteredCount} of {totalAdmitted} admitted students in your department.
+            Showing {filteredCount} of {totalStudentsCount} students in your department.
         </div>
     </div>
 </div>
