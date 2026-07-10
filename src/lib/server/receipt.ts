@@ -44,6 +44,11 @@ export async function generateReceiptNumber(
         }
     }
 
+    // Force non-tuition/non-admission fees to use the generic 'Regular' sequence
+    const targetAdmissionType = (paymentType === 'tuition_fee') 
+        ? (admissionType || 'Regular') 
+        : 'Regular';
+
     // 2. Determine Default Prefix (for creation if missing)
     let defaultPrefix = 'REC-';
     switch (paymentType) {
@@ -51,14 +56,21 @@ export async function generateReceiptNumber(
         case 'application_fee': 
             defaultPrefix = (formType === 'MQ/NRI') ? 'MQ-' : 'APP-';
             break;
-        case 'tuition_fee': defaultPrefix = 'TUIT-'; break;
+        case 'tuition_fee': 
+            if (targetAdmissionType && targetAdmissionType !== 'Regular') {
+                if (targetAdmissionType === 'D2D') {
+                    defaultPrefix = 'TD-';
+                } else if (targetAdmissionType === 'C2D') {
+                    defaultPrefix = 'TC-';
+                } else {
+                    defaultPrefix = `T${targetAdmissionType.toUpperCase().slice(0, 2)}-`;
+                }
+            } else {
+                defaultPrefix = 'TUIT-';
+            }
+            break;
         default: defaultPrefix = 'GEN-';
     }
-
-    // Force non-tuition/non-admission fees to use the generic 'Regular' sequence
-    const targetAdmissionType = (paymentType === 'tuition_fee') 
-        ? (admissionType || 'Regular') 
-        : 'Regular';
 
     // 3. Fetch Sequence
     let { data: sequence, error: fetchError } = await supabase
