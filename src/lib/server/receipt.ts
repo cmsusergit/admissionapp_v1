@@ -150,7 +150,7 @@ export async function createFeeReceipt(
     let receipt;
     let error;
 
-    while (attempts < 5) {
+    while (attempts < 50) {
         attempts++;
         // 1. Generate Receipt Number
         const receiptNo = await generateReceiptNumber(
@@ -203,7 +203,7 @@ export async function createFeeReceipt(
             errCode === '23505' && 
             (errMsg.includes('receipt_no') || errDetail.includes('receipt_no') || errMsg.includes('receipt_no_key') || errDetail.includes('receipt_no_key'))
         ) {
-            console.warn(`[createFeeReceipt] Duplicate receipt_no ${receiptNo} detected (code 23505). Retrying to increment sequence... Attempt ${attempts}/5`);
+            console.warn(`[createFeeReceipt] Duplicate receipt_no ${receiptNo} detected (code 23505). Retrying to increment sequence... Attempt ${attempts}/50`);
             continue;
         } else {
             // Some other database error, don't retry
