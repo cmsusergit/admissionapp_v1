@@ -108,6 +108,19 @@
     let loading = $state(false);
     let editingId: string | null = $state(null);
     let suggesting = $state(false);
+    
+    let filterReportType = $state('all');
+    let filterFormType = $state('all');
+    let filterAcademicYear = $state('all');
+    let filterCourse = $state('all');
+
+    let filteredTemplates = $derived((data.templates || []).filter((t: any) => {
+        if (filterReportType !== 'all' && t.report_type !== filterReportType) return false;
+        if (filterFormType !== 'all' && t.target_form_type_id !== filterFormType) return false;
+        if (filterAcademicYear !== 'all' && t.target_academic_year_id !== filterAcademicYear) return false;
+        if (filterCourse !== 'all' && t.target_course_id !== filterCourse) return false;
+        return true;
+    }));
     let selectedParameters: any[] = $state([]);
     let newParam = $state({ label: '', column: '', type: 'text', operator: 'eq', options: '' });
 
@@ -676,13 +689,60 @@
             <div class="card">
                 <div class="card-header">Existing Templates</div>
                 <div class="card-body p-0">
+                    <div class="p-3 border-bottom bg-light">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold mb-1">Filter Report Type</label>
+                                <select class="form-select form-select-sm" bind:value={filterReportType}>
+                                    <option value="all">All Types</option>
+                                    <option value="tabular">Tabular Report</option>
+                                    <option value="html_profile">HTML Profile (Print Template)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold mb-1">Filter Form Type</label>
+                                <select class="form-select form-select-sm" bind:value={filterFormType}>
+                                    <option value="all">All Form Types</option>
+                                    {#if data.formTypes}
+                                        {#each data.formTypes as ft}
+                                            <option value={ft.id}>{ft.name}</option>
+                                        {/each}
+                                    {/if}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold mb-1">Filter Academic Year</label>
+                                <select class="form-select form-select-sm" bind:value={filterAcademicYear}>
+                                    <option value="all">All Academic Years</option>
+                                    {#if data.academicYears}
+                                        {#each data.academicYears as ay}
+                                            <option value={ay.id}>{ay.name}</option>
+                                        {/each}
+                                    {/if}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold mb-1">Filter Course</label>
+                                <select class="form-select form-select-sm" bind:value={filterCourse}>
+                                    <option value="all">All Courses</option>
+                                    {#if data.courses}
+                                        {#each data.courses as c}
+                                            <option value={c.id}>{c.name}</option>
+                                        {/each}
+                                    {/if}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
                     <table class="table table-striped mb-0">
-                        <thead><tr><th>Name</th><th>Base</th><th>Roles</th><th>Action</th></tr></thead>
+                        <thead><tr><th>Name</th><th>Base</th><th>Course</th><th>Roles</th><th>Action</th></tr></thead>
                         <tbody>
-                            {#each data.templates as t}
+                            {#each filteredTemplates as t}
                                 <tr>
                                     <td>{t.name}</td>
                                     <td>{t.base_table}</td>
+                                    <td>{data.courses.find(c => c.id === t.target_course_id)?.name || 'All'}</td>
                                     <td>{t.allowed_roles.join(', ')}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
