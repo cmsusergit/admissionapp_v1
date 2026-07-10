@@ -140,50 +140,80 @@ export interface ReceiptCreationParams {
 
 /**
  * Creates a fee receipt record after a successful transaction.
+ * Self-heals if sequence is out of sync and a unique key violation is hit.
  */
 export async function createFeeReceipt(
     supabase: SupabaseClient,
     params: ReceiptCreationParams
 ) {
-    // 1. Generate Receipt Number
-    const receiptNo = await generateReceiptNumber(
-        supabase,
-        params.paymentType || 'tuition_fee',
-        params.academicYearId!,
-        params.collegeId!,
-        params.courseId!,
-        params.yearName,
-        undefined, // shortCode
-        params.formType,
-        params.admissionType // Forward admissionType
-    );
+    let attempts = 0;
+    let receipt;
+    let error;
 
-    // Prepare composite details object for the receipt record
-    const compositeDetails = {
-        ...(params.details || {}),
-        payment_breakdown: params.paymentBreakdown || [],
-        fee_components_breakdown: params.feeComponentsBreakdown || [],
-        payment_type: params.paymentType || 'tuition_fee'
-    };
+    while (attempts < 5) {
+        attempts++;
+        // 1. Generate Receipt Number
+        const receiptNo = await generateReceiptNumber(
+            supabase,
+            params.paymentType || 'tuition_fee',
+            params.academicYearId!,
+            params.collegeId!,
+            params.courseId!,
+            params.yearName,
+            undefined, // shortCode
+            params.formType,
+            params.admissionType // Forward admissionType
+        );
 
-    // 2. Create Receipt Record
-    const { data: receipt, error } = await supabase
-        .from('fee_receipts')
-        .insert({
-            receipt_no: receiptNo,
-            transaction_id: params.transactionId,
-            application_id: params.applicationId,
-            student_id: params.studentId,
-            amount: params.amount,
-            details: compositeDetails,
-            generated_by: params.generatedBy
-        })
-        .select()
-        .single();
+        // Prepare composite details object for the receipt record
+        const compositeDetails = {
+            ...(params.details || {}),
+            payment_breakdown: params.paymentBreakdown || [],
+            fee_components_breakdown: params.feeComponentsBreakdown || [],
+            payment_type: params.paymentType || 'tuition_fee'
+        };
+
+        // 2. Create Receipt Record
+        const insertResult = await supabase
+            .from('fee_receipts')
+            .insert({
+                receipt_no: receiptNo,
+                transaction_id: params.transactionId,
+                application_id: params.applicationId,
+                student_id: params.studentId,
+                amount: params.amount,
+                details: compositeDetails,
+                generated_by: params.generatedBy
+            })
+            .select()
+            .single();
+
+        error = insertResult.error;
+        receipt = insertResult.data;
+
+        if (!error) {
+            return receipt;
+        }
+
+        // If duplicate key error on receipt_no, log and retry to auto-increment sequence
+        const errCode = error.code || '';
+        const errMsg = error.message || '';
+        const errDetail = error.details || '';
+        if (
+            errCode === '23505' && 
+            (errMsg.includes('receipt_no') || errDetail.includes('receipt_no') || errMsg.includes('receipt_no_key') || errDetail.includes('receipt_no_key'))
+        ) {
+            console.warn(`[createFeeReceipt] Duplicate receipt_no ${receiptNo} detected (code 23505). Retrying to increment sequence... Attempt ${attempts}/5`);
+            continue;
+        } else {
+            // Some other database error, don't retry
+            break;
+        }
+    }
 
     if (error) {
-        console.error('Error creating fee receipt:', error);
-        throw new Error('Failed to generate receipt record');
+        console.error('Error creating fee receipt after retries:', error);
+        throw new Error('Failed to generate receipt record: ' + (error.message || 'Unknown database error'));
     }
 
     return receipt;
