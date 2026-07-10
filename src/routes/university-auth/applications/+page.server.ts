@@ -106,7 +106,7 @@ export const load: PageServerLoad = async ({
     supabaseAdmin.from("form_types").select("id, name, is_prov"),
     supabaseAdmin
       .from('report_templates')
-      .select('id, name, target_form_type_id')
+      .select('id, name, target_form_type_id, target_academic_year_id, target_course_id')
       .eq('report_type', 'html_profile')
       .contains('allowed_roles', [userProfile?.role]),
     supabaseAdmin

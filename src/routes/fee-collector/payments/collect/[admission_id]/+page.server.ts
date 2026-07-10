@@ -288,6 +288,7 @@ export const actions: Actions = {
                 amount,
                 generatedBy: userProfile.id,
                 paymentType: payment_type,
+                admissionType: appData.admission_type, // Added admissionType
                 academicYearId: academicYearId,
                 yearName: academicYearName,
                 collegeId: collegeId,

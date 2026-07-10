@@ -12,7 +12,8 @@ export async function generateReceiptNumber(
     courseId: string,
     yearName?: string, // e.g. "2025-2026" for formatting
     shortCode?: string, // New optional parameter
-    formType?: string // Added formType for conditional prefixing
+    formType?: string, // Added formType for conditional prefixing
+    admissionType?: string // Added admissionType
 ): Promise<string> {
     // 1. Fetch Metadata (Academic Year and Course)
     const { data: ayData } = await supabase
@@ -54,6 +55,11 @@ export async function generateReceiptNumber(
         default: defaultPrefix = 'GEN-';
     }
 
+    // Force non-tuition/non-admission fees to use the generic 'Regular' sequence
+    const targetAdmissionType = (paymentType === 'tuition_fee') 
+        ? (admissionType || 'Regular') 
+        : 'Regular';
+
     // 3. Fetch Sequence
     let { data: sequence, error: fetchError } = await supabase
         .from('receipt_sequences')
@@ -62,6 +68,7 @@ export async function generateReceiptNumber(
         .eq('course_id', courseId)
         .eq('academic_year_id', academicYearId)
         .eq('payment_type', paymentType)
+        .eq('admission_type', targetAdmissionType)
         .maybeSingle();
 
     // 4. Create if missing
@@ -73,17 +80,23 @@ export async function generateReceiptNumber(
                 course_id: courseId,
                 academic_year_id: academicYearId,
                 payment_type: paymentType,
+                admission_type: targetAdmissionType,
                 prefix: defaultPrefix,
                 current_sequence: 0
             })
             .select()
             .single();
         
-        if (createError) {
-            console.error('Error creating receipt sequence:', createError);
+        if (createError || !newSeq) {
+            console.error('Error creating receipt sequence:', createError || 'No data returned');
             return `REC-${Date.now()}`;
         }
         sequence = newSeq;
+    }
+
+    if (!sequence) {
+        console.error('Receipt sequence is null after creation attempt');
+        return `REC-${Date.now()}`;
     }
 
     // 5. Increment
@@ -122,6 +135,7 @@ export interface ReceiptCreationParams {
     yearName?: string;
     collegeId?: string;
     courseId?: string;
+    admissionType?: string; // Added admissionType
 }
 
 /**
@@ -140,7 +154,8 @@ export async function createFeeReceipt(
         params.courseId!,
         params.yearName,
         undefined, // shortCode
-        params.formType
+        params.formType,
+        params.admissionType // Forward admissionType
     );
 
     // Prepare composite details object for the receipt record

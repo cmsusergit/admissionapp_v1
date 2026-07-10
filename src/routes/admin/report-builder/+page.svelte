@@ -99,6 +99,8 @@
     let allowedRoles = $state(['adm_officer']);
     let reportType = $state('tabular');
     let targetFormTypeId = $state('');
+    let targetAcademicYearId = $state('');
+    let targetCourseId = $state('');
     let htmlContent = $state('');
     let previewData: any[] = $state([]);
     let previewColumns: string[] = $state([]);
@@ -159,6 +161,8 @@
         allowedRoles = template.allowed_roles;
         reportType = template.report_type || 'tabular';
         targetFormTypeId = template.target_form_type_id || '';
+        targetAcademicYearId = template.target_academic_year_id || '';
+        targetCourseId = template.target_course_id || '';
         htmlContent = template.html_content || '';
         if (template.configuration) {
             selectedColumns = template.configuration.columns || [];
@@ -177,6 +181,8 @@
         allowedRoles = ['adm_officer'];
         reportType = 'tabular';
         targetFormTypeId = '';
+        targetAcademicYearId = '';
+        targetCourseId = '';
         htmlContent = '';
         selectedColumns = [];
         selectedParameters = [];
@@ -508,8 +514,8 @@
                             <input type="hidden" name="report_type" value={reportType}>
                             {#if reportType === 'html_profile'}
                                 <div class="col-md-12 mb-3">
-                                    <div class="row align-items-center">
-                                        <div class="col-md-5">
+                                    <div class="row mb-2">
+                                        <div class="col-md-4">
                                             <label class="form-label fw-bold small">Target Form Type (Linkage)</label>
                                             <select class="form-select form-select-sm" name="target_form_type_id" bind:value={targetFormTypeId}>
                                                 <option value="">-- Apply to All Form Types --</option>
@@ -520,7 +526,31 @@
                                                 {/if}
                                             </select>
                                         </div>
-                                        <div class="col-md-7 text-end">
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold small">Target Academic Year</label>
+                                            <select class="form-select form-select-sm" name="target_academic_year_id" bind:value={targetAcademicYearId}>
+                                                <option value="">-- Apply to All Academic Years --</option>
+                                                {#if data.academicYears}
+                                                    {#each data.academicYears as ay}
+                                                        <option value={ay.id}>{ay.name}</option>
+                                                    {/each}
+                                                {/if}
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold small">Target Course</label>
+                                            <select class="form-select form-select-sm" name="target_course_id" bind:value={targetCourseId}>
+                                                <option value="">-- Apply to All Courses --</option>
+                                                {#if data.courses}
+                                                    {#each data.courses as c}
+                                                        <option value={c.id}>{c.name}</option>
+                                                    {/each}
+                                                {/if}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="row align-items-center mt-2">
+                                        <div class="col-md-12 text-end">
                                             <div class="btn-group btn-group-sm me-2">
                                                 <button type="button" class="btn btn-outline-secondary" class:active={sideBySide} onclick={() => sideBySide = !sideBySide} title="Split View">
                                                     <i class="bi bi-layout-split me-1"></i> Side by Side
@@ -548,7 +578,7 @@
                                                     bind:this={textareaRef}
                                                     class="form-control font-monospace" 
                                                     name="html_content" 
-                                                    rows={sideBySide ? "35" : "25"} 
+                                                    rows={sideBySide ? 35 : 25} 
                                                     bind:value={htmlContent} 
                                                     placeholder="&lt;div&gt;Hello &lbrace;&lbrace;student.full_name&rbrace;&rbrace;&lt;/div&gt;" 
                                                     style="font-size: 0.85rem; background-color: #fcfcfc;"></textarea>

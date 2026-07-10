@@ -16,11 +16,13 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
 
     const { data: templates, error } = await supabase
         .from('report_templates')
-        .select('id, name, description, base_table, configuration, allowed_roles, report_type, target_form_type_id, html_content')
+        .select('id, name, description, base_table, configuration, allowed_roles, report_type, target_form_type_id, target_academic_year_id, target_course_id, html_content')
         .order('created_at', { ascending: false });
 
-    // Fetch form types for the dropdown
+    // Fetch metadata for the dropdowns
     const { data: formTypes } = await supabase.from('form_types').select('id, name').order('name');
+    const { data: courses } = await supabase.from('courses').select('id, name').order('name');
+    const { data: academicYears } = await supabase.from('academic_years').select('id, name').order('name', { ascending: false });
 
     // Fetch all admission form schemas to extract dynamic fields
     // Use service role to bypass RLS for metadata fetching
@@ -70,6 +72,8 @@ export const load: PageServerLoad = async ({ locals: { supabase, getAuthenticate
     return {
         templates: templates || [],
         formTypes: formTypes || [],
+        courses: courses || [],
+        academicYears: academicYears || [],
         schema: getSchema(profileFields || [], dynamicFormFields)
     };
 };
@@ -87,6 +91,8 @@ export const actions: Actions = {
         // New fields for HTML Profile
         const report_type = formData.get('report_type') as string || 'tabular';
         const target_form_type_id = formData.get('target_form_type_id') as string || null;
+        const target_academic_year_id = formData.get('target_academic_year_id') as string || null;
+        const target_course_id = formData.get('target_course_id') as string || null;
         const html_content = formData.get('html_content') as string || null;
 
         const authenticatedUser = await getAuthenticatedUser();
@@ -101,7 +107,7 @@ export const actions: Actions = {
 
         const data = {
             name, description, base_table, configuration, allowed_roles,
-            report_type, target_form_type_id, html_content,
+            report_type, target_form_type_id, target_academic_year_id, target_course_id, html_content,
             created_by: authenticatedUser?.id
         };
 

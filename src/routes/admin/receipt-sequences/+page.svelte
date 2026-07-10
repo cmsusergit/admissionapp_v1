@@ -9,12 +9,21 @@
     let selectedCourseId = $state('');
     let selectedYearId = $state('');
     let selectedPaymentType = $state('');
+    let selectedAdmissionType = $state('');
     let searchTerm = $state('');
+    let addPaymentType = $state('');
 
     // Reset course when college changes
     $effect(() => {
         if (selectedCollegeId) {
             selectedCourseId = '';
+        }
+    });
+
+    // Reset admission type when payment type is not tuition_fee
+    $effect(() => {
+        if (selectedPaymentType !== 'tuition_fee') {
+            selectedAdmissionType = '';
         }
     });
 
@@ -32,6 +41,7 @@
         const matchesCourse = !selectedCourseId || s.course_id === selectedCourseId;
         const matchesYear = !selectedYearId || s.academic_year_id === selectedYearId;
         const matchesType = !selectedPaymentType || s.payment_type === selectedPaymentType;
+        const matchesAdmissionType = !selectedAdmissionType || s.admission_type === selectedAdmissionType;
         
         const term = searchTerm.toLowerCase();
         const matchesSearch = !term || 
@@ -39,7 +49,7 @@
             s.colleges?.name?.toLowerCase().includes(term) ||
             s.courses?.name?.toLowerCase().includes(term);
 
-        return matchesCollege && matchesCourse && matchesYear && matchesType && matchesSearch;
+        return matchesCollege && matchesCourse && matchesYear && matchesType && matchesAdmissionType && matchesSearch;
     }));
 
     let currentSequence = writable({
@@ -48,6 +58,7 @@
         course_id: '',
         academic_year_id: '',
         payment_type: '',
+        admission_type: 'Regular',
         prefix: '',
         current_sequence: 0,
         colleges: { name: '' },
@@ -59,10 +70,12 @@
         s.college_id === selectedCollegeId && 
         s.course_id === selectedCourseId &&
         s.academic_year_id === selectedYearId &&
-        s.payment_type === selectedPaymentType
+        s.payment_type === selectedPaymentType &&
+        (!selectedPaymentType || selectedPaymentType !== 'tuition_fee' || s.admission_type === selectedAdmissionType)
     ));
 
     function openCreateModal() {
+        addPaymentType = '';
         showAddModal = true;
     }
 
@@ -95,7 +108,7 @@
         <div class="card-header">Filter by Configuration</div>
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-3">
+                <div class="col-md">
                     <label class="form-label">College</label>
                     <select class="form-select" bind:value={selectedCollegeId}>
                         <option value="">All Colleges</option>
@@ -104,7 +117,7 @@
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md">
                     <label class="form-label">Academic Year</label>
                     <select class="form-select" bind:value={selectedYearId}>
                         <option value="">All Years</option>
@@ -113,7 +126,7 @@
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md">
                     <label class="form-label">Payment Type</label>
                     <select class="form-select" bind:value={selectedPaymentType}>
                         <option value="">All Types</option>
@@ -122,7 +135,18 @@
                         {/each}
                     </select>
                 </div>
-                <div class="col-md-3">
+                {#if selectedPaymentType === 'tuition_fee'}
+                <div class="col-md">
+                    <label class="form-label">Admission Type</label>
+                    <select class="form-select" bind:value={selectedAdmissionType}>
+                        <option value="">All Admission Types</option>
+                        {#each data.admissionTypes as at}
+                            <option value={at.value}>{at.label}</option>
+                        {/each}
+                    </select>
+                </div>
+                {/if}
+                <div class="col-md">
                     <label class="form-label">Course</label>
                     <select class="form-select" bind:value={selectedCourseId}>
                         <option value="">All Courses</option>
@@ -160,6 +184,7 @@
                                 <th>Course</th>
                                 <th>Academic Year</th>
                                 <th>Payment Type</th>
+                                <th>Admission Type</th>
                                 <th>Prefix</th>
                                 <th>Current Seq</th>
                                 <th>Preview</th>
@@ -174,6 +199,9 @@
                                     <td>{seq.academic_years?.name || 'N/A'}</td>
                                     <td>
                                         <span class="badge bg-info">{getPaymentTypeLabel(seq.payment_type)}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{seq.admission_type || 'Regular'}</span>
                                     </td>
                                     <td><code>{seq.prefix}</code></td>
                                     <td>{seq.current_sequence}</td>
@@ -261,13 +289,24 @@
 
                     <div class="mb-3">
                         <label for="add-type" class="form-label">Payment Type</label>
-                        <select class="form-select" id="add-type" name="payment_type" required>
+                        <select class="form-select" id="add-type" name="payment_type" bind:value={addPaymentType} required>
                             <option value="">Select Type</option>
                             {#each data.paymentTypes as pt}
                                 <option value={pt.value}>{pt.label}</option>
                             {/each}
                         </select>
                     </div>
+
+                    {#if addPaymentType === 'tuition_fee'}
+                    <div class="mb-3">
+                        <label for="add-admission-type" class="form-label">Admission Type</label>
+                        <select class="form-select" id="add-admission-type" name="admission_type" required>
+                            {#each data.admissionTypes as at}
+                                <option value={at.value}>{at.label}</option>
+                            {/each}
+                        </select>
+                    </div>
+                    {/if}
 
                     <div class="mb-3">
                         <label for="add-prefix" class="form-label">Receipt Prefix</label>
@@ -309,7 +348,10 @@
                         <strong>Configuration:</strong><br>
                         College: {$currentSequence.colleges?.name || 'N/A'}<br>
                         Year: {$currentSequence.academic_years?.name || 'N/A'}<br>
-                        Type: {getPaymentTypeLabel($currentSequence.payment_type)}
+                        Type: {getPaymentTypeLabel($currentSequence.payment_type)}<br>
+                        {#if $currentSequence.payment_type === 'tuition_fee'}
+                        Admission Type: {$currentSequence.admission_type || 'Regular'}
+                        {/if}
                     </div>
 
                     <div class="mb-3">

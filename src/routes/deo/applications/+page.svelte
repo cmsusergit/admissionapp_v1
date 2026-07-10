@@ -122,10 +122,15 @@
     function handlePrintClick(app: any) {
         printTargetAppId = app.id;
         const appFormTypeId = data.formTypesMap[app.form_type]?.id;
+        const appCourseId = app.course_id;
+        const appAcademicYearId = app.admission_cycles?.academic_year_id;
         
-        filteredPrintTemplates = (data.printTemplates || []).filter((t: any) => 
-            !t.target_form_type_id || t.target_form_type_id === appFormTypeId
-        );
+        filteredPrintTemplates = (data.printTemplates || []).filter((t: any) => {
+            const matchesFormType = !t.target_form_type_id || t.target_form_type_id === appFormTypeId;
+            const matchesAcademicYear = !t.target_academic_year_id || t.target_academic_year_id === appAcademicYearId;
+            const matchesCourse = !t.target_course_id || t.target_course_id === appCourseId;
+            return matchesFormType && matchesAcademicYear && matchesCourse;
+        });
 
         if (filteredPrintTemplates.length === 0) {
             toastStore.error('No print templates available for this application.');

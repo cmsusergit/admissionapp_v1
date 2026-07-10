@@ -41,7 +41,7 @@ export const POST: RequestHandler = async ({ request, locals: { getSession } }) 
         // 2. Fetch Transaction Details (to get amount, studentId, etc.)
         const { data: transaction, error: txError } = await supabaseAdmin
             .from('transactions')
-            .select('*, applications(course_id, cycle_id, form_type, courses(college_id), admission_cycles(academic_year_id))')
+            .select('*, applications(course_id, cycle_id, form_type, admission_type, courses(college_id), admission_cycles(academic_year_id))')
             .eq('id', transactionId)
             .single();
 
@@ -57,6 +57,7 @@ export const POST: RequestHandler = async ({ request, locals: { getSession } }) 
         let yearName = undefined;
         const academicYearId = (transaction.applications as any)?.admission_cycles?.academic_year_id;
         const formType = (transaction.applications as any)?.form_type;
+        const admissionType = (transaction.applications as any)?.admission_type;
 
         if (academicYearId) {
             const { data: ay } = await supabaseAdmin
@@ -83,6 +84,7 @@ export const POST: RequestHandler = async ({ request, locals: { getSession } }) 
             yearName: yearName,
             collegeId: (transaction.applications as any)?.courses?.college_id,
             courseId: (transaction.applications as any)?.course_id,
+            admissionType: admissionType, // Forward admissionType
             paymentBreakdown: initMeta.paymentBreakdown || [],
             feeComponentsBreakdown: initMeta.feeComponentsBreakdown || []
         });

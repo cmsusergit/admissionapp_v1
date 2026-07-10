@@ -74,6 +74,11 @@ export const load: PageServerLoad = async ({
     courses: courses || [],
     academicYears: academicYears || [],
     paymentTypes,
+    admissionTypes: [
+      { value: "Regular", label: "Regular" },
+      { value: "D2D", label: "D2D (Diploma to Degree)" },
+      { value: "C2D", label: "C2D (Certificate to Degree)" }
+    ]
   };
 };
 
@@ -92,15 +97,21 @@ export const actions: Actions = {
     const course_id = formData.get("course_id") as string;
     const academic_year_id = formData.get("academic_year_id") as string;
     const payment_type = formData.get("payment_type") as string;
+    const admission_type = formData.get("admission_type") as string || 'Regular';
     const prefix = formData.get("prefix") as string;
     const current_sequence =
       parseInt(formData.get("current_sequence") as string) || 0;
+
+    const resolved_admission_type = (payment_type === 'tuition_fee')
+        ? admission_type
+        : 'Regular';
 
     const { error } = await supabase.from("receipt_sequences").insert({
       college_id,
       course_id,
       academic_year_id,
       payment_type,
+      admission_type: resolved_admission_type,
       prefix,
       current_sequence,
     });

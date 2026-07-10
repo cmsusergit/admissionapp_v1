@@ -86,7 +86,7 @@ export const load: PageServerLoad = async ({
             users!applications_student_id_fkey (id, full_name, email, student_profiles(enrollment_number, profile_data)),
             courses!inner (name, college_id),
             branches(name),
-            admission_cycles(name),
+            admission_cycles(name, academic_year_id),
             creator:created_by${createdBy === 'student' ? '!inner' : ''}(full_name, role),
             updater:updated_by${updatedBy === 'student' ? '!inner' : ''}(full_name, role),
             payments(id, amount, status, payment_type, receipt_number)
@@ -218,7 +218,7 @@ export const load: PageServerLoad = async ({
     // --- NEW: Fetch Print Profile Templates for DEO ---
     const { data: printTemplates } = await supabase
         .from('report_templates')
-        .select('id, name, target_form_type_id')
+        .select('id, name, target_form_type_id, target_academic_year_id, target_course_id')
         .eq('report_type', 'html_profile')
         .contains('allowed_roles', ['deo']);
 

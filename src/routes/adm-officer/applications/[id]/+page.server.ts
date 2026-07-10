@@ -39,7 +39,7 @@ export const load: PageServerLoad = async ({
             updater_user:users!applications_updated_by_fkey(id, full_name, email),
             courses(id, name, code, colleges(id, name, universities(id, name))),
             branches(id, name, code),
-            admission_cycles(id, name, academic_years(name)),
+            admission_cycles(id, name, academic_years(id, name)),
             payments(*),
             marks(*),
             account_admissions(*),
@@ -178,10 +178,23 @@ export const load: PageServerLoad = async ({
 
   const { data: printTemplates } = await supabaseAdmin
     .from('report_templates')
-    .select('id, name, target_form_type_id')
+    .select('id, name, target_form_type_id, target_academic_year_id, target_course_id')
     .eq('report_type', 'html_profile')
-    .contains('allowed_roles', [userProfile?.role])
-    .or(`target_form_type_id.is.null,target_form_type_id.eq.${formTypeData?.id}`);
+    .contains('allowed_roles', [userProfile?.role]);
+
+  const cycleRaw = application.admission_cycles;
+  const cycle = Array.isArray(cycleRaw) ? cycleRaw[0] : cycleRaw;
+  const acYearRaw = cycle?.academic_years;
+  const acYear = Array.isArray(acYearRaw) ? acYearRaw[0] : acYearRaw;
+  const academicYearId = acYear?.id;
+
+  // Filter templates to match application characteristics
+  const filteredTemplates = (printTemplates || []).filter(t => {
+      const matchesFormType = !t.target_form_type_id || t.target_form_type_id === formTypeData?.id;
+      const matchesAcademicYear = !t.target_academic_year_id || t.target_academic_year_id === academicYearId;
+      const matchesCourse = !t.target_course_id || t.target_course_id === application.course_id;
+      return matchesFormType && matchesAcademicYear && matchesCourse;
+  });
 
   return {
     application,
@@ -189,7 +202,7 @@ export const load: PageServerLoad = async ({
     allCourses: allCourses || [],
     allCycles: allCycles || [],
     allFormTypes: allFormTypes || [],
-    printTemplates: printTemplates || []
+    printTemplates: filteredTemplates
   };
 };
 
@@ -1194,7 +1207,7 @@ export const actions: Actions = {
     // 1. Fetch application to get fee amount and IDs for receipt
     const { data: app, error: appError } = await supabaseAdmin
       .from("applications")
-      .select("student_id, course_id, cycle_id, form_type, application_fee_status, courses(college_id), admission_cycles(academic_year_id)")
+      .select("student_id, course_id, cycle_id, form_type, admission_type, application_fee_status, courses(college_id), admission_cycles(academic_year_id)")
       .eq("id", application_id)
       .single();
 
@@ -1255,6 +1268,7 @@ export const actions: Actions = {
         generatedBy: userProfile.id,
         paymentType: 'application_fee',
         formType: app.form_type, // Added formType
+        admissionType: app.admission_type, // Added admissionType
         academicYearId: academicYearId,
         yearName: yearName,
         collegeId: (app.courses as any)?.college_id,

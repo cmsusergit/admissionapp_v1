@@ -46,7 +46,8 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     let query = supabaseAdmin
         .from('applications')
         .select(`
-            id, status, form_type, admission_type, submitted_at,
+            id, status, form_type, admission_type, submitted_at, course_id, cycle_id,
+            admission_cycles(academic_year_id),
             student_user:users!student_id!inner (
                 full_name, 
                 email,
@@ -153,7 +154,7 @@ export const load: PageServerLoad = async ({ url, locals: { supabase, getSession
     // --- NEW: Fetch Print Profile Templates ---
     const { data: printTemplates } = await supabaseAdmin
         .from('report_templates')
-        .select('id, name, target_form_type_id')
+        .select('id, name, target_form_type_id, target_academic_year_id, target_course_id')
         .eq('report_type', 'html_profile')
         .contains('allowed_roles', [userProfile?.role]);
 
