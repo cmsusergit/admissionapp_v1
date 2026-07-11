@@ -19,7 +19,12 @@
                 is_merit?: boolean;
                 default_max_score?: number;
                 aggregate?: 'sum' | 'mean' | 'max' | 'min' | 'count';
-            }[] 
+            }[];
+            showWhen?: {
+                field: string;
+                operator?: 'equals' | 'notEquals' | 'in' | 'contains' | 'notContains';
+                equals?: string | string[];
+            };
         }[];
         fields: any[];
     } = { fields: [] };
@@ -90,8 +95,18 @@
 
     // Section Config
     let newSectionTitle = '';
-    let isEditingSection = false;
-    let editingSectionId = '';
+    
+    // State for editing sections
+    let showEditSectionModal = false;
+    let editingSection: any = null;
+    let editingSectionTitle = '';
+    let editingSectionLayout: 'column' | 'table' = 'column';
+    let editingSectionRowHeaderLabel = '';
+    let editingSectionShowSummaryRow = false;
+    let editingSectionSummaryRowLabel = '';
+    let editingSectionShowWhenField = '';
+    let editingSectionShowWhenOperator = 'equals';
+    let editingSectionShowWhenValues = '';
 
     // State for editing fields
     let isEditing = false;
@@ -113,6 +128,72 @@
         schema.sections = [...(schema.sections || []), { id, title: newSectionTitle, layout: 'column' }];
         newSectionTitle = '';
         showAddSectionModal = false;
+        notifyChange();
+    }
+
+    function openEditSectionModal(section: any) {
+        editingSection = section;
+        editingSectionTitle = section.title || '';
+        editingSectionLayout = section.layout || 'column';
+        editingSectionRowHeaderLabel = section.rowHeaderLabel || '';
+        editingSectionShowSummaryRow = !!section.showSummaryRow;
+        editingSectionSummaryRowLabel = section.summaryRowLabel || '';
+        
+        if (section.showWhen) {
+            editingSectionShowWhenField = section.showWhen.field || '';
+            editingSectionShowWhenOperator = section.showWhen.operator || 'equals';
+            if (Array.isArray(section.showWhen.equals)) {
+                editingSectionShowWhenValues = section.showWhen.equals.join(', ');
+            } else {
+                editingSectionShowWhenValues = section.showWhen.equals || '';
+            }
+        } else {
+            editingSectionShowWhenField = '';
+            editingSectionShowWhenOperator = 'equals';
+            editingSectionShowWhenValues = '';
+        }
+        
+        showEditSectionModal = true;
+    }
+
+    function saveSection() {
+        if (!editingSection) return;
+        
+        editingSection.title = editingSectionTitle;
+        editingSection.layout = editingSectionLayout;
+        if (editingSectionLayout === 'table') {
+            editingSection.rowHeaderLabel = editingSectionRowHeaderLabel;
+            editingSection.showSummaryRow = editingSectionShowSummaryRow;
+            editingSection.summaryRowLabel = editingSectionSummaryRowLabel;
+        } else {
+            delete editingSection.rowHeaderLabel;
+            delete editingSection.showSummaryRow;
+            delete editingSection.summaryRowLabel;
+        }
+        
+        if (editingSectionShowWhenField && editingSectionShowWhenField.trim()) {
+            if (editingSectionShowWhenOperator === 'in' && editingSectionShowWhenValues) {
+                const values = editingSectionShowWhenValues.split(',').map((v: string) => v.trim()).filter(Boolean);
+                editingSection.showWhen = {
+                    field: editingSectionShowWhenField.trim(),
+                    operator: 'in',
+                    equals: values
+                };
+            } else if (editingSectionShowWhenValues) {
+                editingSection.showWhen = {
+                    field: editingSectionShowWhenField.trim(),
+                    operator: editingSectionShowWhenOperator,
+                    equals: editingSectionShowWhenValues.trim()
+                };
+            } else {
+                delete editingSection.showWhen;
+            }
+        } else {
+            delete editingSection.showWhen;
+        }
+        
+        schema.sections = [...(schema.sections || [])];
+        showEditSectionModal = false;
         notifyChange();
     }
 
@@ -546,8 +627,19 @@
                         {#each schema.sections || [] as section, sectionIndex}
                             <li class="list-group-item {sectionIndex % 2 === 0 ? 'bg-light' : ''}">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="fw-semibold">{section.title}</span>
+                                    <span class="fw-semibold">
+                                        {section.title}
+                                        {#if section.layout === 'table'}
+                                            <span class="badge bg-secondary ms-1 small" style="font-size: 0.7rem;">Table</span>
+                                        {/if}
+                                        {#if section.showWhen && section.showWhen.field}
+                                            <span class="badge bg-info ms-1 small" style="font-size: 0.7rem;" title="Shows conditionally when {section.showWhen.field} {section.showWhen.operator || 'equals'} {section.showWhen.equals}"><i class="bi bi-eye-slash-fill"></i> Conditional</span>
+                                        {/if}
+                                    </span>
                                     <div class="d-flex align-items-center gap-1">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                on:click={() => openEditSectionModal(section)}
+                                                title="Configure Section"><i class="bi bi-gear"></i></button>
                                         <button type="button" class="btn btn-sm btn-outline-secondary" 
                                                 on:click={() => moveSectionUp(sectionIndex)}
                                                 disabled={sectionIndex === 0}
@@ -561,16 +653,9 @@
                                         {/if}
                                     </div>
                                 </div>
-                                <select bind:value={section.layout} class="form-select form-select-sm" on:change={notifyChange}>
-                                    <option value="column">Column Layout</option>
-                                    <option value="table">Table Layout</option>
-                                </select>
                                 {#if section.layout === 'table'}
                                     <div class="mt-2">
-                                        <label class="form-label small">Row Header Label</label>
-                                        <input type="text" class="form-control form-control-sm mb-2" bind:value={section.rowHeaderLabel} placeholder="E.g. Subject Name" on:input={notifyChange} />
-                                        
-                                        <label class="form-label small">Columns</label>
+                                        <label class="form-label small fw-bold">Columns</label>
                                         {#each section.tableColumns || [] as col, colIndex}
                                             <div class="border p-2 mb-2 bg-white rounded small">
                                                 <div class="d-flex justify-content-between mb-1">
@@ -588,8 +673,8 @@
                                                     <input type="text" class="form-control form-control-sm mb-1" bind:value={col.formula} placeholder="E.g. col1 + col2" on:input={notifyChange} />
                                                 {/if}
                                                 <div class="form-check mt-1">
-                                                    <input type="checkbox" class="form-check-input" id="col-merit-{colIndex}" bind:checked={col.is_merit} on:change={notifyChange}>
-                                                    <label class="form-check-label small" for="col-merit-{colIndex}">Is Merit Score?</label>
+                                                    <input type="checkbox" class="form-check-input" id="col-merit-{section.id}-{colIndex}" bind:checked={col.is_merit} on:change={notifyChange}>
+                                                    <label class="form-check-label small" for="col-merit-{section.id}-{colIndex}">Is Merit Score?</label>
                                                 </div>
                                                 {#if col.is_merit}
                                                     <input type="number" class="form-control form-control-sm mt-1" bind:value={col.default_max_score} placeholder="Default Max Score (e.g. 100)" on:input={notifyChange} />
@@ -607,17 +692,6 @@
                                             </div>
                                         {/each}
                                         <button type="button" class="btn btn-sm btn-outline-secondary w-100" on:click={() => { section.tableColumns = [...(section.tableColumns || []), { key: '', label: '', type: 'number' }]; notifyChange(); }}><i class="bi bi-plus-lg"></i> Add Column</button>
-                                        
-                                        <!-- Summary Row Settings -->
-                                        <div class="border p-2 mt-3 rounded">
-                                            <div class="form-check">
-                                                <input type="checkbox" class="form-check-input" id="show-summary-{section.id}" bind:checked={section.showSummaryRow} on:change={notifyChange}>
-                                                <label class="form-check-label" for="show-summary-{section.id}">Show Summary Row</label>
-                                            </div>
-                                            {#if section.showSummaryRow}
-                                                <input type="text" class="form-control form-control-sm mt-2" bind:value={section.summaryRowLabel} placeholder="Label (e.g., Total, Average)" on:input={notifyChange} />
-                                            {/if}
-                                        </div>
                                     </div>
                                 {/if}
                             </li>
@@ -1011,14 +1085,118 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Section</h5>
+                <h5 class="modal-title text-dark">Add Section</h5>
                 <button type="button" class="btn-close" on:click={() => showAddSectionModal = false}></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body text-dark">
                 <input type="text" class="form-control" placeholder="Section Title" bind:value={newSectionTitle}>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-primary" on:click={addSection}>Add</button>
+            </div>
+        </div>
+    </div>
+</div>
+{/if}
+
+<!-- Edit Section Modal -->
+{#if showEditSectionModal && editingSection}
+<div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content text-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Configure Section: {editingSection.title}</h5>
+                <button type="button" class="btn-close" on:click={() => showEditSectionModal = false}></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Section Title</label>
+                    <input type="text" class="form-control" bind:value={editingSectionTitle} placeholder="Section Title">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Section Layout</label>
+                    <select class="form-select" bind:value={editingSectionLayout}>
+                        <option value="column">Column Layout (Fields flow in columns)</option>
+                        <option value="table">Table Layout (Fields rendered as columns of a single row)</option>
+                    </select>
+                </div>
+                
+                {#if editingSectionLayout === 'table'}
+                    <div class="mb-3 border p-3 rounded bg-light">
+                        <h6 class="fw-bold mb-2">Table Layout Configuration</h6>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Row Header Label</label>
+                            <input type="text" class="form-control form-control-sm" bind:value={editingSectionRowHeaderLabel} placeholder="E.g. Subject Name">
+                        </div>
+                        <div class="form-check mb-2">
+                            <input type="checkbox" class="form-check-input" id="edit-sec-summary" bind:checked={editingSectionShowSummaryRow}>
+                            <label class="form-check-label small" for="edit-sec-summary">Show Summary/Total Row?</label>
+                        </div>
+                        {#if editingSectionShowSummaryRow}
+                            <div>
+                                <label class="form-label small fw-bold">Summary Row Label</label>
+                                <input type="text" class="form-control form-control-sm" bind:value={editingSectionSummaryRowLabel} placeholder="E.g. Total Marks">
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
+                
+                <div class="p-3 border rounded bg-light">
+                    <h6 class="fw-bold mb-2"><i class="bi bi-eye me-1"></i> Conditional Visibility</h6>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Field to Check</label>
+                            <input 
+                                type="text" 
+                                bind:value={editingSectionShowWhenField} 
+                                list="section-available-fields-list"
+                                class="form-control form-control-sm" 
+                                placeholder="Search or type field key..."
+                            />
+                            <datalist id="section-available-fields-list">
+                                <!-- System Fields -->
+                                <option value="course_id">Course ID (System Field)</option>
+                                <option value="course_name">Course Name (System Field)</option>
+                                <option value="branch_id">Branch ID (System Field)</option>
+                                <option value="branch_name">Branch Name (System Field)</option>
+                                <option value="admission_type">Admission Type (System Field)</option>
+                                <option value="cycle_id">Cycle (System Field)</option>
+                                <option value="form_type">Form Type (System Field)</option>
+                                
+                                <!-- Form Fields -->
+                                {#each schema.fields as field}
+                                    <option value={field.key}>{field.label} ({field.key})</option>
+                                {/each}
+                            </datalist>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold">Operator</label>
+                            <select bind:value={editingSectionShowWhenOperator} class="form-select form-select-sm">
+                                <option value="equals">Equals</option>
+                                <option value="notEquals">Not Equals</option>
+                                <option value="in">In (Multiple)</option>
+                                <option value="contains">Contains (Partial Match)</option>
+                                <option value="notContains">Not Contains</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small fw-bold">
+                                Value {editingSectionShowWhenOperator === 'in' ? '(comma-separated)' : ''}
+                            </label>
+                            {#if editingSectionShowWhenOperator === 'in'}
+                                <input bind:value={editingSectionShowWhenValues} class="form-control form-control-sm" placeholder="science, medical, vocational" />
+                            {:else}
+                                <input bind:value={editingSectionShowWhenValues} class="form-control form-control-sm" placeholder="value" />
+                            {/if}
+                        </div>
+                    </div>
+                    <small class="text-muted d-block mt-2">Leave "Field to Check" empty to show this section unconditionally.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" on:click={() => showEditSectionModal = false}>Cancel</button>
+                <button type="button" class="btn btn-primary" on:click={saveSection}>Save Section Settings</button>
             </div>
         </div>
     </div>

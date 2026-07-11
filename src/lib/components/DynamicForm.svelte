@@ -31,7 +31,7 @@
         dependsOn?: string;
         showWhen?: { 
             field: string; 
-            operator?: 'equals' | 'notEquals' | 'in';
+            operator?: 'equals' | 'notEquals' | 'in' | 'contains' | 'notContains';
             equals?: string | string[];  // string[] for 'in' operator
         };
         // Datagrid/Table specific
@@ -63,6 +63,11 @@
         tableColumns?: TableColumn[];
         showSummaryRow?: boolean;
         summaryRowLabel?: string;
+        showWhen?: { 
+            field: string; 
+            operator?: 'equals' | 'notEquals' | 'in' | 'contains' | 'notContains';
+            equals?: string | string[];  // string[] for 'in' operator
+        };
     }
 
     interface FormSchema {
@@ -103,10 +108,20 @@
     // Visibility is computed reactively based on formData changes
     // We'll compute it inline in templates using checkVisibility function
     
+    // Helper to check if a section is visible
+    function isSectionVisible(section: FormSection): boolean {
+        if (!section.showWhen) return true;
+        return checkVisibility(section.showWhen, formData);
+    }
+    
     // Helper to check if a field is visible - uses formData directly
     function isFieldVisible(field: FormField): boolean {
-        if (!field.showWhen) return true;
-        return checkVisibility(field.showWhen, formData);
+        if (field.showWhen && !checkVisibility(field.showWhen, formData)) return false;
+        if (field.sectionId) {
+            const section = normalizedSchema.sections.find(s => s.id === field.sectionId);
+            if (section && !isSectionVisible(section)) return false;
+        }
+        return true;
     }
     
     onMount(() => {
@@ -117,17 +132,40 @@
     });
 
     // Normalize Schema
-    let normalizedSchema = $derived({
-        layout: schema.layout || 'list',
-        sections: (schema.sections && schema.sections.length > 0) 
+    let normalizedSchema = $derived.by(() => {
+        const layout = schema.layout || 'list';
+        const sections = (schema.sections && schema.sections.length > 0) 
             ? schema.sections 
-            : [{ id: 'default', title: 'General', layout: 'column' as const }],
-        fields: schema.fields || []
+            : [{ id: 'default', title: 'General', layout: 'column' as const }];
+        
+        // Filter out duplicate fields (keep first one)
+        const seenKeys = new Set<string>();
+        const uniqueFields = (schema.fields || []).filter(f => {
+            const key = f.key || f.name || '';
+            if (!key) return true;
+            if (seenKeys.has(key)) return false;
+            seenKeys.add(key);
+            return true;
+        });
+
+        return {
+            layout,
+            sections,
+            fields: uniqueFields
+        };
     });
 
+    let visibleSections = $derived(
+        normalizedSchema.sections.filter(section => isSectionVisible(section))
+    );
+
     $effect(() => {
-        if (!activeTabId && normalizedSchema.sections.length > 0) {
-            activeTabId = normalizedSchema.sections[0].id;
+        if (visibleSections.length > 0) {
+            if (!activeTabId || !visibleSections.some(s => s.id === activeTabId)) {
+                activeTabId = visibleSections[0].id;
+            }
+        } else {
+            activeTabId = '';
         }
     });
 
@@ -283,11 +321,7 @@
         }
     });
 
-    $effect(() => {
-        if (!activeTabId && normalizedSchema.sections.length > 0) {
-            activeTabId = normalizedSchema.sections[0].id;
-        }
-    });
+    // Handled reactively by the visibleSections effect above
 
     // Helper to get fields for a section
     function getFieldsForSection(sectionId: string) {
@@ -829,7 +863,7 @@
     {/if}
 {/snippet}
 
-{#snippet sectionContent(section: FormSection, rKeys: Set<string>)}
+{#snippet sectionContent(section: FormSection)}
     {@const sectionFields = getFieldsForSection(section.id)}
     {@const isTableLayout = section.layout === 'table' && section.tableColumns && section.tableColumns.length > 0}
     {@const regularFields = isTableLayout ? sectionFields.filter(f => !f.inDatagrid) : sectionFields}
@@ -841,9 +875,8 @@
             {#each regularFields as field, fieldIndex (getKey(field) + '-' + fieldIndex)}
                 {@const key = getKey(field)}
                 {@const fieldId = `reg-${section.id}-${key}-${fieldIndex}`}
-                {#if isFieldVisible(field) && !rKeys.has(key)}
+                {#if isFieldVisible(field)}
                     <div class="{`col-md-${field.col || 12}`} mb-2">
-                        {rKeys.add(key) ? '' : ''}
                         <label for={fieldId} class="form-label">
                             {field.label}
                             {#if field.required}<span class="text-danger">*</span>{/if}
@@ -877,10 +910,9 @@
                     {#each datagridFields as field, fieldIndex (getKey(field) + '-' + fieldIndex)}
                         {@const key = getKey(field)}
                         {@const fieldId = `dg-${section.id}-${key}-${fieldIndex}`}
-                        {#if isFieldVisible(field) && !rKeys.has(key)}
+                        {#if isFieldVisible(field)}
                             <tr>
                                 <td>
-                                    {rKeys.add(key) ? '' : ''}
                                     <label for={fieldId} class="form-label mb-0 fw-semibold">
                                         {field.label}
                                         {#if field.required}<span class="text-danger">*</span>{/if}
@@ -1004,10 +1036,9 @@
 
 <div class="dynamic-form-container">
     {#if true}
-        {@const rKeys = new Set<string>()}
         {#if normalizedSchema.layout === 'tabs'}
             <ul class="nav nav-tabs mb-3">
-                {#each normalizedSchema.sections as section (section.id)}
+                {#each visibleSections as section (section.id)}
                     <li class="nav-item">
                         <button 
                             class="nav-link {activeTabId === section.id ? 'active' : ''}"
@@ -1021,21 +1052,21 @@
             </ul>
             
             <div class="tab-content border p-3 border-top-0 rounded-bottom bg-white">
-                {#each normalizedSchema.sections as section (section.id)}
+                {#each visibleSections as section (section.id)}
                     <div class="tab-pane fade {activeTabId === section.id ? 'show active' : ''}" style="display: {activeTabId === section.id ? 'block' : 'none'}">
-                        {@render sectionContent(section, rKeys)}
+                        {@render sectionContent(section)}
                     </div>
                 {/each}
             </div>
 
         {:else if normalizedSchema.layout === 'cards'}
-            {#each normalizedSchema.sections as section (section.id)}
+            {#each visibleSections as section (section.id)}
                 <div class="card mb-4 shadow-sm">
                     <div class="card-header bg-light">
                         <h5 class="mb-0 text-primary">{section.title}</h5>
                     </div>
                     <div class="card-body">
-                        {@render sectionContent(section, rKeys)}
+                        {@render sectionContent(section)}
                     </div>
                 </div>
             {/each}
@@ -1046,9 +1077,8 @@
                 {#each normalizedSchema.fields as field, fieldIndex (getKey(field) + '-' + fieldIndex)}
                     {@const key = getKey(field)}
                     {@const fieldId = `list-${key}-${fieldIndex}`} 
-                    {#if isFieldVisible(field) && !rKeys.has(key)}
+                    {#if isFieldVisible(field)}
                         <div class="{`col-md-${field.col || 12}`} mb-3">
-                            {rKeys.add(key) ? '' : ''}
                             <label for={fieldId} class="form-label">
                                 {field.label}
                                 {#if field.required}<span class="text-danger">*</span>{/if}

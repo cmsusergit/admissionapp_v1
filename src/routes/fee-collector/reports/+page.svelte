@@ -25,6 +25,7 @@
         { key: 'branch', label: 'Branch', default: true },
         { key: 'college', label: 'College', default: false },
         { key: 'enrollment_number', label: 'College ID', default: false },
+        { key: 'admission_type', label: 'Admission Type', default: false },
         { key: 'application_id', label: 'Application ID', default: false }
     ];
 

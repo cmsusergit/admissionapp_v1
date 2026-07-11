@@ -35,6 +35,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
             payment_breakdown,
             applications!inner(
                 id,
+                admission_type,
                 student_user:users!student_id(full_name, student_profiles(enrollment_number)),
                 courses(name, id)
             )
@@ -70,9 +71,9 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
     // 4. Prepare Data for Excel
     const header1 = [`${collegeName}-${yearName}`];
     const header2 = [`From Date:${startDate} To Date:${endDate}`];
-    const headerEmpty = [];
+    const headerEmpty: any[] = [];
     const columnHeaders = [
-        'Sr.', 'Rec. Numb', 'Rec. Date', 'College ID', 'Student Name', 
+        'Sr.', 'Rec. Numb', 'Rec. Date', 'College ID', 'Student Name', 'Admission Type',
         'Cash Amount', 'DD/Cheque Amount', 'Online Amount', 'ACPC Amount', 
         'Advance Amount', 'Freeship Amount', 'Total Amount', 'CollectedBy', 'Comment'
     ];
@@ -124,6 +125,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
             p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB').replace(/\//g, '-') : '',
             p.applications?.student_user?.student_profiles?.enrollment_number || '',
             p.applications?.student_user?.full_name || '',
+            p.applications?.admission_type || 'Regular',
             cashAmt,
             ddAmt,
             onlineAmt,
@@ -138,7 +140,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
 
     // Add Totals row
     rows.push([
-        '', '', '', '', '',
+        '', '', '', '', '', '',
         totals.cash,
         totals.dd,
         totals.online,

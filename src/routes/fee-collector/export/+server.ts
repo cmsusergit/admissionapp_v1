@@ -28,6 +28,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
         applications (
             id,
             status,
+            admission_type,
             student_user:users!student_id(full_name, email, student_profiles(enrollment_number)),
             courses(name, code, colleges(name)),
             branches(name),
@@ -48,6 +49,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
                 status,
                 course_id,
                 branch_id,
+                admission_type,
                 student_user:users!student_id(full_name, email, student_profiles(enrollment_number)),
                 courses(name, code, colleges(name)),
                 branches(name),
@@ -95,6 +97,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
         'branch': { label: 'Branch', getValue: p => p.applications?.branches?.name || '' },
         'college': { label: 'College', getValue: p => `"${p.applications?.courses?.colleges?.name || ''}"` },
         'enrollment_number': { label: 'College ID', getValue: p => p.applications?.student_user?.student_profiles?.enrollment_number || '' },
+        'admission_type': { label: 'Admission Type', getValue: p => p.applications?.admission_type || 'Regular' },
         'application_id': { label: 'Application ID', getValue: p => p.applications?.id || '' }
     };
 
