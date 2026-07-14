@@ -84,7 +84,7 @@
             const activeAppRaw = record.student?.active_app;
             const activeApp = Array.isArray(activeAppRaw) ? activeAppRaw[0] : activeAppRaw;
 
-            const collegeName = 'Shri Ambica Travels-Vasad';
+            const collegeName = 'Shree Ambica Travels-Vasad';
             const branchName = activeApp?.branches?.name || 'N/A';
             const collectorName = record.collector?.full_name || 'N/A';
             const routeName = record.route_name || 'N/A';
