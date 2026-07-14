@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { PageData, ActionData } from './$types';
     import { enhance } from '$app/forms';
-    import { startLoading, stopLoading } from '$lib/stores/loadingStore';
+    import { startLoading, stopLoading, isLoading } from '$lib/stores/loadingStore';
     import { toastStore } from '$lib/stores/toastStore';
     import { goto, invalidateAll } from '$app/navigation';
     import { generateReceiptPDF, downloadReceiptPDF, type ReceiptData } from '$lib/utils/pdfGenerator';
@@ -450,7 +450,7 @@
                         </div>
 
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg py-3 fw-bold" disabled={totalCollectingNow <= 0 || initialRemainingAmount <= 0}>
+                            <button type="submit" class="btn btn-primary btn-lg py-3 fw-bold" disabled={totalCollectingNow <= 0 || initialRemainingAmount <= 0 || $isLoading}>
                                 <i class="bi bi-cash-stack me-2"></i> Confirm & Record Payment
                             </button>
                         </div>
