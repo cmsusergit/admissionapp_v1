@@ -84,7 +84,7 @@
             const activeAppRaw = record.student?.active_app;
             const activeApp = Array.isArray(activeAppRaw) ? activeAppRaw[0] : activeAppRaw;
 
-            const collegeName = data.collegeName || activeApp?.courses?.colleges?.name || 'Sardar Vallabhbhai Patel Institute of Technology';
+            const collegeName = 'Shri Ambica Travels-Vasad';
             const branchName = activeApp?.branches?.name || 'N/A';
             const collectorName = record.collector?.full_name || 'N/A';
             const routeName = record.route_name || 'N/A';
@@ -93,27 +93,10 @@
             const createReceiptLayout = (title: string, photo: string | null, logo: string | null) => [
                 {
                     columns: [
-                        // Left Column: College Logo
+                        // Left Column: Spacer (replaces logo to keep center alignment balanced)
                         {
                             width: 60,
-                            stack: [
-                                logo ? {
-                                    image: logo,
-                                    width: 45,
-                                    height: 45,
-                                    alignment: 'left'
-                                } : {
-                                    table: {
-                                        widths: [45],
-                                        heights: [45],
-                                        body: [[{ text: 'LOGO', alignment: 'center', fontSize: 8, margin: [0, 15, 0, 0] }]]
-                                    },
-                                    layout: {
-                                        defaultBorder: true
-                                    },
-                                    alignment: 'left'
-                                }
-                            ]
+                            text: ''
                         },
                         // Center Column: College Name and details (center-aligned)
                         {
