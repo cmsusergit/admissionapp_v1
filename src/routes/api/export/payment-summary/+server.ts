@@ -69,102 +69,121 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
     });
 
     // 4. Prepare Data for Excel
-    const header1 = [`${collegeName}-${yearName}`];
-    const header2 = [`From Date:${startDate} To Date:${endDate}`];
-    const headerEmpty: any[] = [];
+    const workbook = XLSX.utils.book_new();
+
+    // Group payments by admission type
+    const paymentsByAdmissionType: Record<string, any[]> = {};
+    payments?.forEach((p: any) => {
+        const admissionType = p.applications?.admission_type || 'Regular';
+        if (!paymentsByAdmissionType[admissionType]) {
+            paymentsByAdmissionType[admissionType] = [];
+        }
+        paymentsByAdmissionType[admissionType].push(p);
+    });
+
+    // Ensure we have at least one sheet if there are no payments
+    if (Object.keys(paymentsByAdmissionType).length === 0) {
+        paymentsByAdmissionType['Regular'] = [];
+    }
+
     const columnHeaders = [
-        'Sr.', 'Rec. Numb', 'Rec. Date', 'College ID', 'Student Name', 'Admission Type',
+        'Sr.', 'Rec. Numb', 'Rec. Date', 'College ID', 'Student Name',
         'Cash Amount', 'DD/Cheque Amount', 'Online Amount', 'ACPC Amount', 
         'Advance Amount', 'Freeship Amount', 'Total Amount', 'CollectedBy', 'Comment'
     ];
 
-    const rows: any[][] = [
-        header1,
-        header2,
-        headerEmpty,
-        columnHeaders
-    ];
+    for (const [admissionType, typePayments] of Object.entries(paymentsByAdmissionType)) {
+        const header1 = [`${collegeName}-${yearName} (${admissionType})`];
+        const header2 = [`From Date:${startDate} To Date:${endDate}`];
+        const headerEmpty: any[] = [];
+        const rows: any[][] = [
+            header1,
+            header2,
+            headerEmpty,
+            columnHeaders
+        ];
 
-    let totals = {
-        cash: 0,
-        dd: 0,
-        online: 0,
-        acpc: 0,
-        advance: 0,
-        freeship: 0,
-        total: 0
-    };
-
-    payments?.forEach((p: any, index: number) => {
-        const breakdown = p.payment_breakdown || [];
-        const getModeAmt = (modes: string[]) => {
-            return breakdown
-                .filter((m: any) => modes.includes(m.mode?.toLowerCase() || ''))
-                .reduce((sum: number, m: any) => sum + (Number(m.amount) || 0), 0);
+        let totals = {
+            cash: 0,
+            dd: 0,
+            online: 0,
+            acpc: 0,
+            advance: 0,
+            freeship: 0,
+            total: 0
         };
 
-        const cashAmt = getModeAmt(['cash']);
-        const ddAmt = getModeAmt(['dd', 'cheque']);
-        const onlineAmt = getModeAmt(['online', 'upi', 'card', 'gateway']);
-        const acpcAmt = getModeAmt(['acpc']);
-        const advanceAmt = getModeAmt(['advance']);
-        const freeshipAmt = getModeAmt(['freeship']);
-        const totalAmt = Number(p.amount) || 0;
+        typePayments.forEach((p: any, index: number) => {
+            const breakdown = p.payment_breakdown || [];
+            const getModeAmt = (modes: string[]) => {
+                return breakdown
+                    .filter((m: any) => modes.includes(m.mode?.toLowerCase() || ''))
+                    .reduce((sum: number, m: any) => sum + (Number(m.amount) || 0), 0);
+            };
 
-        totals.cash += cashAmt;
-        totals.dd += ddAmt;
-        totals.online += onlineAmt;
-        totals.acpc += acpcAmt;
-        totals.advance += advanceAmt;
-        totals.freeship += freeshipAmt;
-        totals.total += totalAmt;
+            const cashAmt = getModeAmt(['cash']);
+            const ddAmt = getModeAmt(['dd', 'cheque']);
+            const onlineAmt = getModeAmt(['online', 'upi', 'card', 'gateway']);
+            const acpcAmt = getModeAmt(['acpc']);
+            const advanceAmt = getModeAmt(['advance']);
+            const freeshipAmt = getModeAmt(['freeship']);
+            const totalAmt = Number(p.amount) || 0;
 
-        rows.push([
-            index + 1,
-            p.receipt_number || '',
-            p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB').replace(/\//g, '-') : '',
-            p.applications?.student_user?.student_profiles?.enrollment_number || '',
-            p.applications?.student_user?.full_name || '',
-            p.applications?.admission_type || 'Regular',
-            cashAmt,
-            ddAmt,
-            onlineAmt,
-            acpcAmt,
-            advanceAmt,
-            freeshipAmt,
-            totalAmt,
-            receiptCollectorMap.get(p.receipt_number) || '',
-            '' // Comment column (empty until remarks column is added to DB)
-        ]);
-    });
+            totals.cash += cashAmt;
+            totals.dd += ddAmt;
+            totals.online += onlineAmt;
+            totals.acpc += acpcAmt;
+            totals.advance += advanceAmt;
+            totals.freeship += freeshipAmt;
+            totals.total += totalAmt;
 
-    // Add Totals row
-    rows.push([
-        '', '', '', '', '', '',
-        totals.cash,
-        totals.dd,
-        totals.online,
-        totals.acpc,
-        totals.advance,
-        totals.freeship,
-        totals.total,
-        '', ''
-    ]);
-
-    // 5. Generate Excel Buffer
-    const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Payment Summary');
-
-    // Auto-size columns (rough estimate)
-    const maxWidths = columnHeaders.map(() => 15);
-    rows.forEach(row => {
-        row.forEach((cell, i) => {
-            const val = String(cell || '');
-            if (val.length > maxWidths[i]) maxWidths[i] = val.length;
+            rows.push([
+                index + 1,
+                p.receipt_number || '',
+                p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB').replace(/\//g, '-') : '',
+                p.applications?.student_user?.student_profiles?.enrollment_number || '',
+                p.applications?.student_user?.full_name || '',
+                cashAmt,
+                ddAmt,
+                onlineAmt,
+                acpcAmt,
+                advanceAmt,
+                freeshipAmt,
+                totalAmt,
+                receiptCollectorMap.get(p.receipt_number) || '',
+                '' // Comment column (empty until remarks column is added to DB)
+            ]);
         });
-    });
-    worksheet['!cols'] = maxWidths.map(w => ({ wch: w + 2 }));
+
+        // Add Totals row
+        rows.push([
+            '', '', '', '', '',
+            totals.cash,
+            totals.dd,
+            totals.online,
+            totals.acpc,
+            totals.advance,
+            totals.freeship,
+            totals.total,
+            '', ''
+        ]);
+
+        const worksheet = XLSX.utils.aoa_to_sheet(rows);
+
+        // Auto-size columns (rough estimate)
+        const maxWidths = columnHeaders.map(() => 15);
+        rows.forEach(row => {
+            row.forEach((cell, i) => {
+                const val = String(cell || '');
+                if (val.length > maxWidths[i]) maxWidths[i] = val.length;
+            });
+        });
+        worksheet['!cols'] = maxWidths.map(w => ({ wch: w + 2 }));
+
+        // Sheet names must be <= 31 chars
+        const sheetName = admissionType.substring(0, 31);
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    }
 
     const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
