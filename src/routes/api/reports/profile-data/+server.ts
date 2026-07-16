@@ -409,15 +409,15 @@ export const POST: RequestHandler = async ({ request, locals: { getAuthenticated
             marks: formattedMarks,
             marks_list: enhancedMarksData.filter((m: any) => {
                 const subject = (m.subject || '').toLowerCase();
-                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry');
+                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry') || subject.includes('science') || subject.includes('english');
             }),
             marcs_list: enhancedMarksData.filter((m: any) => {
                 const subject = (m.subject || '').toLowerCase();
-                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry');
+                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry') || subject.includes('science') || subject.includes('english');
             }), // Alias for spelling compatibility
             merit_marks: enhancedMarksData.filter((m: any) => {
                 const subject = (m.subject || '').toLowerCase();
-                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry');
+                return subject.includes('math') || subject.includes('physics') || subject.includes('chemistry') || subject.includes('science') || subject.includes('english');
             }), // Alias for standard names
             payments: appData.payments || [],
             entrance_marks: entranceMarksObj,

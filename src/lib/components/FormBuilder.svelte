@@ -41,6 +41,7 @@
     let label = '';
     let type = 'text';
     let col = '12';
+    let maxFileSize = 2;
     let required = false;
     let isMerit = false; 
     let maxScore = 100; 
@@ -323,6 +324,10 @@
             profileFieldKey: undefined
         };
 
+        if (type === 'file' || type === 'image' || type === 'document') {
+            field.maxFileSize = Number(maxFileSize) || 2;
+        }
+
         if (required) field.required = true;
         if (dependsOn) field.dependsOn = dependsOn;
         if (isMerit) field.is_merit = true;
@@ -426,6 +431,7 @@
             key = field.key;
             label = field.label;
             type = field.type;
+            maxFileSize = field.maxFileSize || 2;
             required = !!field.required;
             isMerit = !!field.is_merit; 
             maxScore = field.max_score || 100;
@@ -572,6 +578,7 @@
         label = '';
         type = 'text';
         col = '12';
+        maxFileSize = 2;
         required = false;
         isMerit = false; 
         maxScore = 100; 
@@ -868,6 +875,22 @@
                 {/if}
 
                 {#if !linkToProfileField}
+                    {#if type === 'file' || type === 'image' || type === 'document'}
+                        <div class="mt-3 p-2 border rounded bg-light">
+                            <h6>File Upload Config</h6>
+                            <label class="form-label small mb-1">Max File Size (MB)</label>
+                            <input 
+                                type="number" 
+                                class="form-control form-control-sm mb-1" 
+                                bind:value={maxFileSize} 
+                                min="1" 
+                                max="100" 
+                                placeholder="2" 
+                            />
+                            <div class="form-text xx-small text-muted">Specify the maximum file upload size in Megabytes. (default: 2MB)</div>
+                        </div>
+                    {/if}
+
                     {#if type === 'select'}
                         <div class="mt-3 p-2 border rounded bg-light">
                             <h6>Select Options Config</h6>

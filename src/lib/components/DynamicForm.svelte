@@ -43,6 +43,7 @@
             label: string;
         };
         transform?: 'uppercase' | 'none';
+        maxFileSize?: number;
     }
 
     interface TableColumn {
@@ -573,8 +574,9 @@
              return;
         }
 
-        if (file.size > 2 * 1024 * 1024) { 
-            errors[fieldName] = 'File size exceeds 2MB limit.';
+        const limitMb = field?.maxFileSize || 2;
+        if (file.size > limitMb * 1024 * 1024) { 
+            errors[fieldName] = `File size exceeds ${limitMb}MB limit.`;
             return;
         }
 
@@ -795,7 +797,7 @@
             {/if}
         </div>
         <div class="form-text">
-            Max size: 2MB. 
+            Max size: {field.maxFileSize || 2}MB. 
             {#if field.type === 'image'}
                 Allowed: Images (JPG, PNG, etc).
             {:else if field.type === 'document'}
