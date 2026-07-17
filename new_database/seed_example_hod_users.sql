@@ -55,26 +55,36 @@ BEGIN
 
         -- Create course
         SELECT id INTO v_course_id FROM public.courses 
-        WHERE name = 'Bachelor of Engineering' AND college_id = v_college_id;
+        WHERE UPPER(name) = 'BACHELOR OF ENGINEERING' AND college_id = v_college_id;
         
         IF v_course_id IS NULL THEN
             v_course_id := uuid_generate_v4();
             INSERT INTO public.courses (id, college_id, name, code, duration_years)
-            VALUES (v_course_id, v_college_id, 'Bachelor of Engineering', 'BE', 4);
+            VALUES (v_course_id, v_college_id, 'BACHELOR OF ENGINEERING', 'BE', 4);
         END IF;
 
         -- Create CE branch
         IF v_ce_branch_id IS NULL THEN
-            v_ce_branch_id := uuid_generate_v4();
-            INSERT INTO public.branches (id, course_id, name, code)
-            VALUES (v_ce_branch_id, v_course_id, 'Computer Engineering', 'CE');
+            SELECT id INTO v_ce_branch_id FROM public.branches
+            WHERE UPPER(name) = 'COMPUTER ENGINEERING' AND course_id = v_course_id;
+            
+            IF v_ce_branch_id IS NULL THEN
+                v_ce_branch_id := uuid_generate_v4();
+                INSERT INTO public.branches (id, course_id, name, code)
+                VALUES (v_ce_branch_id, v_course_id, 'COMPUTER ENGINEERING', 'CE');
+            END IF;
         END IF;
 
         -- Create Mech branch
         IF v_mech_branch_id IS NULL THEN
-            v_mech_branch_id := uuid_generate_v4();
-            INSERT INTO public.branches (id, course_id, name, code)
-            VALUES (v_mech_branch_id, v_course_id, 'Mechanical Engineering', 'MECH');
+            SELECT id INTO v_mech_branch_id FROM public.branches
+            WHERE UPPER(name) = 'MECHANICAL ENGINEERING' AND course_id = v_course_id;
+            
+            IF v_mech_branch_id IS NULL THEN
+                v_mech_branch_id := uuid_generate_v4();
+                INSERT INTO public.branches (id, course_id, name, code)
+                VALUES (v_mech_branch_id, v_course_id, 'MECHANICAL ENGINEERING', 'ME');
+            END IF;
         END IF;
     ELSE
         RAISE NOTICE 'Found pre-existing branches. Linking HODs to Branch CE: %, Branch Mech: %, College: %', v_ce_branch_id, v_mech_branch_id, v_college_id;
