@@ -32,9 +32,6 @@ export const load: PageServerLoad = async ({
   const branchId = url.searchParams.get("branch_id") || "";
 
   let formTypeFilter = url.searchParams.get("form_type");
-  if (!formTypeFilter && activeTab === "approved") {
-    formTypeFilter = "MQ/NRI";
-  }
 
   const supabaseAdmin = createClient(
     PUBLIC_SUPABASE_URL,
@@ -70,9 +67,14 @@ export const load: PageServerLoad = async ({
     query = query.eq("status", "approved");
   }
 
-  // Form Type Filter
-  if (formTypeFilter && formTypeFilter.toLowerCase() !== "all") {
-    query = query.eq("form_type", formTypeFilter);
+  // Form Type Filter (Support 'all', case-insensitive, and compound types like MQ/NRI)
+  if (formTypeFilter && formTypeFilter.toLowerCase() !== "all" && formTypeFilter.trim() !== "") {
+    if (formTypeFilter.includes("/")) {
+      const types = formTypeFilter.split("/").map((t) => t.trim());
+      query = query.in("form_type", [...types, formTypeFilter]);
+    } else {
+      query = query.ilike("form_type", formTypeFilter);
+    }
   }
 
   // Course & Branch Filters

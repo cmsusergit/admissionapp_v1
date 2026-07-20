@@ -6,7 +6,7 @@ import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
 
 export const load: PageServerLoad = async ({ params, url, locals: { getAuthenticatedUser, userProfile } }) => {
     const authenticatedUser = await getAuthenticatedUser();
-    if (!authenticatedUser || !['admin', 'adm_officer', 'deo', 'fee_collector'].includes(userProfile?.role || '')) {
+    if (!authenticatedUser || !['admin', 'adm_officer', 'deo', 'fee_collector', 'univ_auth', 'university_auth', 'college_auth'].includes(userProfile?.role || '')) {
         throw redirect(303, '/login');
     }
 

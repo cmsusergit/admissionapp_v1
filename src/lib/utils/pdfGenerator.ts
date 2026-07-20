@@ -430,7 +430,7 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
         headerRow.push({
             width: 70,
             image: data.university.logoUrl,
-            fit: [55, 55],
+            fit: [50, 50],
             alignment: "left"
         });
     } else {
@@ -440,27 +440,27 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
     headerRow.push({
         width: "*",
         stack: [
-            { text: data.university.name.toUpperCase(), fontSize: 13, bold: true, alignment: "center" },
-            { text: data.university.address || "Vasad", fontSize: 10, alignment: "center", margin: [0, 2, 0, 0] }
+            { text: data.university.name.toUpperCase(), fontSize: 12, bold: true, alignment: "center" },
+            { text: data.university.address || "Vasad", fontSize: 9, alignment: "center", margin: [0, 2, 0, 0] }
         ],
-        margin: [0, 5, 0, 0]
+        margin: [0, 2, 0, 0]
     });
 
     headerRow.push({ width: 70, text: "" });
 
     content.push({
         columns: headerRow,
-        margin: [0, 0, 0, 15]
+        margin: [0, 0, 0, 10]
     });
 
     content.push({
         text: "PROVISIONAL ADMISSION SLIP",
-        fontSize: 14,
+        fontSize: 12,
         bold: true,
         alignment: "center",
         color: "white",
         background: "#333",
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, 12]
     });
 
     // Student and Admission Number
@@ -470,32 +470,31 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
                 width: "*",
                 stack: [
                     { text: "Student Full Name", fontSize: 8, color: "#666", margin: [0, 0, 0, 2] },
-                    { text: data.studentName.toUpperCase(), fontSize: 12, bold: true }
+                    { text: data.studentName.toUpperCase(), fontSize: 11, bold: true }
                 ]
             },
             {
                 width: "auto",
                 stack: [
                     { text: "Admission Number", fontSize: 8, color: "#666", alignment: "right", margin: [0, 0, 0, 2] },
-                    { text: data.admissionNumber || "PENDING", fontSize: 12, bold: true, color: "#0d6efd", alignment: "right" }
+                    { text: data.admissionNumber || "PENDING", fontSize: 11, bold: true, color: "#0d6efd", alignment: "right" }
                 ]
             }
         ],
-        margin: [0, 0, 0, 15],
-        canvas: [{ type: 'line', x1: 0, y1: 30, x2: 535, y2: 30, lineWidth: 0.5, lineColor: '#ddd' }]
+        margin: [0, 0, 0, 10]
     });
 
     // Info Grid
     const infoGridBody = [
         [
-            { stack: [{ text: "COURSE", fontSize: 7, color: "#666" }, { text: data.courseName, fontSize: 10, bold: true }] },
-            { stack: [{ text: "BRANCH", fontSize: 7, color: "#666" }, { text: data.branchName || "General / N/A", fontSize: 10, bold: true }] },
-            { stack: [{ text: "ACADEMIC YEAR", fontSize: 7, color: "#666" }, { text: data.academicYear || "-", fontSize: 10, bold: true }] }
+            { stack: [{ text: "COURSE", fontSize: 7, color: "#666" }, { text: data.courseName, fontSize: 9.5, bold: true }] },
+            { stack: [{ text: "BRANCH", fontSize: 7, color: "#666" }, { text: data.branchName || "General / N/A", fontSize: 9.5, bold: true }] },
+            { stack: [{ text: "ACADEMIC YEAR", fontSize: 7, color: "#666" }, { text: data.academicYear || "-", fontSize: 9.5, bold: true }] }
         ],
         [
-            { stack: [{ text: "APPLICATION TYPE", fontSize: 7, color: "#666" }, { text: data.admissionType || data.paymentType || "-", fontSize: 10, bold: true }] },
-            { stack: [{ text: "ADMISSION MODE", fontSize: 7, color: "#666" }, { text: "Regular", fontSize: 10, bold: true }] },
-            { stack: [{ text: "DATE OF ISSUE", fontSize: 7, color: "#666" }, { text: formatDate(new Date().toISOString()), fontSize: 10, bold: true }] }
+            { stack: [{ text: "APPLICATION TYPE", fontSize: 7, color: "#666" }, { text: data.admissionType || data.paymentType || "-", fontSize: 9.5, bold: true }] },
+            { stack: [{ text: "ADMISSION MODE", fontSize: 7, color: "#666" }, { text: "Regular", fontSize: 9.5, bold: true }] },
+            { stack: [{ text: "DATE OF ISSUE", fontSize: 7, color: "#666" }, { text: formatDate(new Date().toISOString()), fontSize: 9.5, bold: true }] }
         ]
     ];
 
@@ -505,16 +504,16 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
             body: infoGridBody
         },
         layout: "noBorders",
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, 10]
     });
 
     content.push({
         stack: [
-            { text: `Status: APPROVED`, fontSize: 11, bold: true, color: "#198754", alignment: "center" }
+            { text: `Status: APPROVED`, fontSize: 10, bold: true, color: "#198754", alignment: "center" }
         ],
         fillColor: "#f8f9fa",
-        margin: [0, 0, 0, 30],
-        padding: [10, 10, 10, 10]
+        margin: [0, 0, 0, 12],
+        padding: [5, 5, 5, 5]
     });
 
     // Footer Signatures
@@ -524,12 +523,13 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
             {
                 width: 150,
                 stack: [
-                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 150, y2: 0, lineWidth: 0.5 }], margin: [0, 40, 0, 5] },
+                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 150, y2: 0, lineWidth: 0.5 }], margin: [0, 10, 0, 3] },
                     { text: "Authorized Signature", fontSize: 8, alignment: "center" },
                     { text: `${data.collegeAlias || "SVIT"}, Vasad`, fontSize: 7, color: "#666", alignment: "center" }
                 ]
             }
-        ]
+        ],
+        margin: [0, 60, 0, 4]
     });
 
     content.push({
@@ -537,8 +537,7 @@ function createAdmissionSlipContent(data: ReceiptData): any[] {
         fontSize: 7,
         italics: true,
         color: "#666",
-        margin: [0, 20, 0, 0],
-        canvas: [{ type: 'line', x1: 0, y1: -5, x2: 535, y2: -5, lineWidth: 0.5, lineColor: '#ddd' }]
+        margin: [0, 6, 0, 0]
     });
 
     return content;
@@ -554,7 +553,7 @@ async function buildAdmissionSlipDocument(data: ReceiptData, filename?: string):
   const docDefinition: any = {
     pageSize: "A5",
     pageOrientation: "landscape",
-    pageMargins: [30, 30, 30, 30],
+    pageMargins: [25, 20, 25, 20],
     content: createAdmissionSlipContent(docData),
   };
 

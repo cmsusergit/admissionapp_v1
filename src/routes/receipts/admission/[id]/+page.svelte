@@ -70,30 +70,30 @@
 
 <div class="receipt-outer-container">
     <div class="receipt-page">
-        <div class="receipt-header text-center mb-4">
-            <div class="d-flex align-items-center justify-content-center mb-3">
+        <div class="receipt-header text-center mb-2">
+            <div class="d-flex align-items-center justify-content-center mb-2">
                 {#if college?.logo_url || university?.logo_url}
-                    <img src={college?.logo_url || university?.logo_url} alt="Logo" class="me-3" style="height: 60px;">
+                    <img src={college?.logo_url || university?.logo_url} alt="Logo" class="me-3" style="height: 45px;">
                 {/if}
                 <div>
                     <h2 class="m-0 fw-bold">{college?.name || university?.name || 'College Name'}</h2>
                     <p class="small text-muted m-0">{college?.address || university?.address || ''}</p>
                 </div>
             </div>
-            <div class="badge bg-dark px-4 py-2 text-uppercase" style="font-size: 1rem; letter-spacing: 1px;">
+            <div class="badge bg-dark px-3 py-1 text-uppercase" style="font-size: 0.85rem; letter-spacing: 1px;">
                 Provisional Admission Slip
             </div>
         </div>
 
         <div class="receipt-body">
-            <div class="row mb-4 border-bottom pb-3">
+            <div class="row mb-2 border-bottom pb-2">
                 <div class="col-7">
                     <p class="mb-1 text-muted small">Student Full Name</p>
-                    <h5 class="fw-bold text-uppercase">{student?.full_name || 'N/A'}</h5>
+                    <h5 class="fw-bold text-uppercase m-0">{student?.full_name || 'N/A'}</h5>
                 </div>
                 <div class="col-5 text-end">
                     <p class="mb-1 text-muted small">Admission Number</p>
-                    <h5 class="fw-bold text-primary">{admissionNo || 'PENDING'}</h5>
+                    <h5 class="fw-bold text-primary m-0">{admissionNo || 'PENDING'}</h5>
                 </div>
             </div>
 
@@ -112,7 +112,7 @@
                 </div>
                 <div class="info-item">
                     <span class="label">Application Type</span>
-                    <span class="value badge bg-secondary">{application.form_type}</span>
+                    <span class="value"><span class="badge bg-secondary">{application.form_type}</span></span>
                 </div>
                 <div class="info-item">
                     <span class="label">Admission Mode</span>
@@ -124,7 +124,7 @@
                 </div>
             </div>
 
-            <div class="status-box mt-4 p-3 bg-light border rounded text-center">
+            <div class="status-box mt-2 p-2 bg-light border rounded text-center">
                 <p class="m-0 fw-bold text-success">
                     <i class="bi bi-patch-check-fill me-2"></i>
                     Status: {application.status.toUpperCase()}
@@ -132,16 +132,16 @@
             </div>
         </div>
 
-        <div class="receipt-footer mt-auto pt-5">
-            <div class="d-flex justify-content-between align-items-end">                
+        <div class="receipt-footer mt-auto pt-2">
+            <div class="d-flex justify-content-end align-items-end">                
                 <div class="signature-box text-center">
                     <div class="sig-line"></div>
                     <p class="small m-0">Authorized Signature</p>
-                    <p class="x-small text-muted">{college?.code || 'SVIT'}, Vasad</p>
+                    <p class="x-small text-muted m-0">{college?.code || 'SVIT'}, Vasad</p>
                 </div>
             </div>
             
-            <div class="footer-note mt-4 border-top pt-2">
+            <div class="footer-note mt-1 border-top pt-1">
                 <p class="x-small text-muted italic m-0">
                     * This is a computer-generated admission slip. Please present this slip for fee payment and enrollment processes.
                 </p>
@@ -162,24 +162,25 @@
     }
 
     .receipt-page {
-        width: 148mm;
-        height: 210mm;
+        width: 210mm;
+        height: 148mm;
         background: white;
-        padding: 20mm;
+        padding: 10mm 15mm;
         box-shadow: 0 0 10px rgba(0,0,0,0.1);
         display: flex;
         flex-direction: column;
         color: #333;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        box-sizing: border-box;
     }
 
-    h2 { font-size: 1.4rem; color: #1a1a1a; }
+    h2 { font-size: 1.25rem; color: #1a1a1a; }
     
     .info-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 20px;
-        margin-top: 10px;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+        margin-top: 8px;
     }
 
     .info-item {
@@ -188,14 +189,14 @@
     }
 
     .label {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: #666;
         text-transform: uppercase;
         margin-bottom: 2px;
     }
 
     .value {
-        font-size: 0.95rem;
+        font-size: 0.9rem;
         font-weight: 600;
         color: #222;
     }
@@ -206,15 +207,15 @@
 
     .sig-line {
         border-top: 1px solid #333;
-        margin-bottom: 5px;
-        height: 40px;
+        margin-bottom: 4px;
+        height: 25px;
     }
 
     .x-small { font-size: 0.65rem; }
     .italic { font-style: italic; }
 
     @page {
-        size: A5;
+        size: A5 landscape;
         margin: 0;
     }
 
@@ -224,9 +225,9 @@
         .receipt-page { 
             box-shadow: none; 
             margin: 0; 
-            width: 148mm;
-            height: 210mm;
-            padding: 15mm;
+            width: 210mm;
+            height: 148mm;
+            padding: 8mm 12mm;
         }
     }
 </style>

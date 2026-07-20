@@ -44,9 +44,9 @@
 
     function triggerSearch() { updateQuery({ search: searchQuery, page: '1' }); }
     function handleKeydown(e: KeyboardEvent) { if (e.key === 'Enter') triggerSearch(); }
-    function changePage(p: number) { updateQuery({ page: p.toString() }); }
-    function handleFormTypeChange() {
-        updateQuery({ form_type: formTypeFilter === 'all' ? '' : formTypeFilter, page: '1' });
+    function handleFormTypeChange(e: Event) {
+        const val = (e.currentTarget as HTMLSelectElement).value;
+        updateQuery({ form_type: val === 'all' ? '' : val, page: '1' });
     }
     
     function handleCourseChange(e: Event) {
@@ -57,6 +57,13 @@
     function handleBranchChange(e: Event) {
         const val = (e.currentTarget as HTMLSelectElement).value;
         updateQuery({ branch_id: val === 'all' ? '' : val, page: '1' });
+    }
+
+    function getTabUrl(t: string) {
+        const params = new URLSearchParams($sveltePage.url.searchParams);
+        params.set('tab', t);
+        params.set('page', '1');
+        return `?${params.toString()}`;
     }
 
     $: filteredBranches = (data.courseId && data.courseId !== 'all')
@@ -323,7 +330,7 @@
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <select class="form-select" bind:value={formTypeFilter} on:change={handleFormTypeChange}>
+                    <select class="form-select" value={data.formTypeFilter || 'all'} on:change={handleFormTypeChange}>
                         <option value="all">All Form Types</option>
                         {#if data.formTypesMap}
                             {#each Object.keys(data.formTypesMap) as type}
@@ -362,7 +369,7 @@
             <ul class="nav nav-tabs card-header-tabs">
                 <li class="nav-item">
                     <a 
-                        href="?tab=verified&page=1&search={searchQuery}"
+                        href={getTabUrl('verified')}
                         class="nav-link {activeTab === 'verified' ? 'active' : ''}"
                         data-sveltekit-noscroll
                         data-sveltekit-keepfocus
@@ -372,7 +379,7 @@
                 </li>
                 <li class="nav-item">
                     <a 
-                        href="?tab=approved&page=1&search={searchQuery}"
+                        href={getTabUrl('approved')}
                         class="nav-link {activeTab === 'approved' ? 'active' : ''}"
                         data-sveltekit-noscroll
                         data-sveltekit-keepfocus
