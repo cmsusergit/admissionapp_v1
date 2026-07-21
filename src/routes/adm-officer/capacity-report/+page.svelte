@@ -72,6 +72,17 @@
         goto(`?${params.toString()}`);
     }
 
+    function handleAdmissionTypeChange(event: Event) {
+        const target = event.target as HTMLSelectElement;
+        const params = new URLSearchParams($page.url.searchParams);
+        if (target.value && target.value !== 'all') {
+            params.set('admission_type', target.value);
+        } else {
+            params.delete('admission_type');
+        }
+        goto(`?${params.toString()}`);
+    }
+
     const metrics = [
         { id: 'approved', label: 'Approved Apps', icon: 'bi-check-all' },
         { id: 'paid', label: 'Paid Students', icon: 'bi-currency-dollar' },
@@ -246,12 +257,15 @@
             // Distribute remaining space equally to the form type columns
             const widths = [courseBranchWidth, intakeWidth, ...data.globalUniqueFormTypes.map(() => '*')];
 
+            const admTypeSuffix = data.selectedAdmissionType && data.selectedAdmissionType !== 'all' ? ` (${data.selectedAdmissionType.toUpperCase()})` : '';
+            const admTypeFileStr = data.selectedAdmissionType && data.selectedAdmissionType !== 'all' ? `_${data.selectedAdmissionType}` : '';
+
             const docDefinition = {
                 pageSize: 'A4',
                 pageOrientation: 'portrait',
                 pageMargins: [dynamicMargin, dynamicMargin, dynamicMargin, dynamicMargin],
                 content: [
-                    { text: `CAPACITY REPORT - ${metricLabel}`, style: 'header' },
+                    { text: `CAPACITY REPORT - ${metricLabel}${admTypeSuffix}`, style: 'header' },
                     { text: `Report Date: ${new Date().toLocaleDateString('en-GB')}`, style: 'subheader' },
                     {
                         table: {
@@ -290,7 +304,7 @@
                 }
             };
 
-            pdfMake.createPdf(docDefinition).download(`${metricLabel.replace(' ', '_')}_Capacity_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+            pdfMake.createPdf(docDefinition).download(`${metricLabel.replace(' ', '_')}${admTypeFileStr}_Capacity_Report_${new Date().toISOString().split('T')[0]}.pdf`);
         } catch (error) {
             console.error('PDF Generation Error:', error);
             alert('Failed to generate PDF. Please try again.');
@@ -363,7 +377,8 @@
             });
         });
 
-        const fileName = viewMode === 'simple' ? `Simple_Capacity_Report_${metricLabel.replace(' ', '_')}.xlsx` : 'Detailed_Capacity_Report.xlsx';
+        const admTypeFileStr = data.selectedAdmissionType && data.selectedAdmissionType !== 'all' ? `_${data.selectedAdmissionType}` : '';
+        const fileName = viewMode === 'simple' ? `Simple_Capacity_Report_${metricLabel.replace(' ', '_')}${admTypeFileStr}.xlsx` : `Detailed_Capacity_Report${admTypeFileStr}.xlsx`;
         XLSX.writeFile(workbook, fileName);
     }
 </script>
@@ -412,7 +427,20 @@
                 </div>
             </div>
         </div>
-        <div class="d-flex gap-2 align-self-start">
+        <div class="d-flex gap-2 align-self-start flex-wrap">
+            <div class="me-2">
+                <select 
+                    class="form-select shadow-sm" 
+                    value={data.selectedAdmissionType || 'all'} 
+                    onchange={handleAdmissionTypeChange}
+                    title="Filter by Admission Type"
+                >
+                    <option value="all">All Admission Types</option>
+                    {#each data.availableAdmissionTypes || [] as type}
+                        <option value={type}>{type}</option>
+                    {/each}
+                </select>
+            </div>
             <div class="me-2">
                 <select 
                     class="form-select shadow-sm" 
@@ -608,7 +636,12 @@
             <div class="card shadow-sm border-0 bg-white">
                 <div class="card-body p-4">
                     <div class="text-center mb-4">
-                        <h4 class="fw-bold mb-1">CAPACITY REPORT - {metrics.find(m => m.id === selectedMetric)?.label.toUpperCase()}</h4>
+                        <h4 class="fw-bold mb-1">
+                            CAPACITY REPORT - {metrics.find(m => m.id === selectedMetric)?.label.toUpperCase()}
+                            {#if data.selectedAdmissionType && data.selectedAdmissionType !== 'all'}
+                                ({data.selectedAdmissionType.toUpperCase()})
+                            {/if}
+                        </h4>
                         <p class="text-muted small mb-0">{new Date().toLocaleDateString('en-GB')}</p>
                     </div>
                     

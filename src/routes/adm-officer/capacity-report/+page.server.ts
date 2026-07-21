@@ -25,6 +25,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
     const selectedYearId = url.searchParams.get('academic_year_id') || activeYear?.id || (academicYears && academicYears[0]?.id);
     const includeRejected = url.searchParams.get('include_rejected') === 'true';
+    const selectedAdmissionType = url.searchParams.get('admission_type') || 'all';
     const provFormTypes = new Set((formTypes || []).filter(ft => ft.is_prov).map(ft => ft.name));
     const bypassFormTypes = new Set((formTypes || []).filter(ft => ft.direct_admission_on_submit || ft.is_government_quota).map(ft => ft.name));
 
@@ -58,6 +59,7 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
                 id, 
                 status, 
                 form_type, 
+                admission_type,
                 student_id,
                 application_fee_status,
                 admission_cycles!inner (
@@ -138,6 +140,11 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         return 0;
     });
 
+    // Extract available admission types across fetched applications
+    const defaultAdmissionTypes = ['Regular', 'D2D', 'C2D'];
+    const existingAdmissionTypes = (allApps || []).map(a => (a.admission_type || 'Regular').trim()).filter(Boolean);
+    const availableAdmissionTypes = Array.from(new Set([...defaultAdmissionTypes, ...existingAdmissionTypes])).sort();
+
     // Deduplicate by student, branch AND form_type to avoid counting the same person twice for capacity
     // However, for MQ, NRI, and Provisional types, we allow all applications to be counted separately
     const seenStudentBranchType = new Set<string>();
@@ -147,6 +154,11 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
         const isExcludedStatus = app.status === 'cancelled' || app.status === 'removed' || app.status === 'rejected';
         if (!includeRejected && isExcludedStatus) {
+            return false;
+        }
+
+        const appAdmissionType = (app.admission_type || 'Regular').trim();
+        if (selectedAdmissionType !== 'all' && appAdmissionType.toLowerCase() !== selectedAdmissionType.toLowerCase()) {
             return false;
         }
 
@@ -431,6 +443,8 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         academicYears: academicYears || [],
         selectedYearId,
         includeRejected,
+        selectedAdmissionType,
+        availableAdmissionTypes,
         activeYearId: activeYear?.id
     };
 };
