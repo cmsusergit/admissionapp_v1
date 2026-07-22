@@ -140,6 +140,11 @@ export const NAVIGATION_CONFIG: Record<string, RoleNavigation> = {
         icon: "bi-bar-chart-line",
       },
       {
+        title: "Admission Report",
+        href: "/adm-officer/admission-report",
+        icon: "bi-file-earmark-person-fill",
+      },
+      {
         title: "Saved Reports",
         href: "/adm-officer/saved-reports",
         icon: "bi-file-earmark-spreadsheet",
