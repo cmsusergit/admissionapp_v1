@@ -9,6 +9,9 @@
     { key: 'contact', label: 'Contact Number', category: 'Basic', default: true },
     { key: 'email', label: 'Email ID', category: 'Basic', default: true },
     { key: 'college_id', label: 'College ID (Enrollment No)', category: 'Academic', default: true },
+    { key: 'acpc_merit_number', label: 'ACPC / Merit Rank Number', category: 'Academic', default: true },
+    { key: 'acpc_application_number', label: 'ACPC / Seat / Application Number', category: 'Academic', default: true },
+    { key: 'admission_no', label: 'Admission Number', category: 'Academic', default: true },
     { key: 'photo_url', label: 'Photo URL', category: 'Basic', default: true },
     { key: 'dob', label: 'Date of Birth', category: 'Personal', default: true },
     { key: 'address', label: 'Address', category: 'Personal', default: true },
@@ -22,19 +25,60 @@
     { key: 'father_name', label: 'Father Name', category: 'Personal', default: false },
     { key: 'father_contact', label: 'Father Contact', category: 'Personal', default: false },
     { key: 'mother_name', label: 'Mother Name', category: 'Personal', default: false },
-    { key: 'admission_no', label: 'Admission Number', category: 'Academic', default: true },
     { key: 'form_type', label: 'Form Type', category: 'Academic', default: true },
     { key: 'submitted_date', label: 'Submitted Date', category: 'Academic', default: false }
   ];
+
+  // Extended Standard Profile Fields List
+  const baseProfileFields = [
+    { key: 'father_occupation', label: 'Father Occupation', category: 'Parent / Guardian' },
+    { key: 'mother_occupation', label: 'Mother Occupation', category: 'Parent / Guardian' },
+    { key: 'guardian_name', label: 'Guardian Name', category: 'Parent / Guardian' },
+    { key: 'guardian_contact', label: 'Guardian Contact', category: 'Parent / Guardian' },
+    { key: 'caste', label: 'Caste', category: 'Personal & Caste' },
+    { key: 'sub_caste', label: 'Sub-Caste', category: 'Personal & Caste' },
+    { key: 'religion', label: 'Religion', category: 'Personal & Caste' },
+    { key: 'nationality', label: 'Nationality', category: 'Personal & Caste' },
+    { key: 'blood_group', label: 'Blood Group', category: 'Personal & Caste' },
+    { key: 'aadhar_number', label: 'Aadhaar Card Number', category: 'Identity & Govt IDs' },
+    { key: 'abc_id', label: 'ABC ID / APAAR ID', category: 'Identity & Govt IDs' },
+    { key: 'bank_name', label: 'Bank Name', category: 'Bank Details' },
+    { key: 'bank_account_number', label: 'Bank Account Number', category: 'Bank Details' },
+    { key: 'ifsc_code', label: 'Bank IFSC Code', category: 'Bank Details' },
+    { key: 'ssc_percentage', label: 'SSC Marks / Percentage', category: 'Academic Qualification' },
+    { key: 'hsc_percentage', label: 'HSC Marks / Percentage', category: 'Academic Qualification' },
+  ];
+
+  // Extended Standard Application Form Fields List
+  const baseAppFields = [
+    { key: 'gcas_id', label: 'GCAS Application ID', category: 'Application / Entrance' },
+    { key: 'gujcet_roll_no', label: 'GUJCET Roll Number', category: 'Application / Entrance' },
+    { key: 'gujcet_percentile', label: 'GUJCET Percentile / Marks', category: 'Application / Entrance' },
+    { key: 'jee_application_no', label: 'JEE Main App Number', category: 'Application / Entrance' },
+    { key: 'jee_percentile', label: 'JEE Main Percentile', category: 'Application / Entrance' },
+  ];
+
+  // Merge DB dynamic fields
+  let profileFieldsCombined = $derived(() => {
+    const existingKeys = new Set(baseProfileFields.map(f => f.key));
+    const extra = (data.dbProfileFields || []).filter((pf: any) => !existingKeys.has(pf.key));
+    return [...baseProfileFields, ...extra];
+  });
+
+  let appFieldsCombined = $derived(() => {
+    const existingKeys = new Set(baseAppFields.map(f => f.key));
+    const extra = (data.dbAppFields || []).filter((af: any) => !existingKeys.has(af.key));
+    return [...baseAppFields, ...extra];
+  });
 
   // Selections State
   let selectedCourseIds = $state<string[]>((data.courses || []).map((c: any) => c.id));
   let selectedBranchIds = $state<string[]>((data.branches || []).map((b: any) => b.id));
   let selectedFormTypes = $state<string[]>([]);
-  let excludeProvisional = $state<boolean>(true); // DEFAULT: Exclude Provisional
-  let admissionTypeFilter = $state<string>('Regular'); // DEFAULT: Regular
+  let excludeProvisional = $state<boolean>(false); // DEFAULT: Include all admitted
+  let admissionTypeFilter = $state<string>('all'); // DEFAULT: All admission modes
   let admissionStatusFilter = $state<'admitted' | 'approved' | 'all'>('admitted');
-  let paymentStatusFilter = $state<'paid' | 'tuition_paid' | 'app_fee_paid' | 'all'>('paid');
+  let paymentStatusFilter = $state<'paid' | 'tuition_paid' | 'app_fee_paid' | 'all'>('all'); // DEFAULT: All admitted students
 
   let selectedFieldKeys = $state<string[]>(fieldOptions.filter(f => f.default).map(f => f.key));
   let sheetMode = $state<'branch' | 'course' | 'single'>('branch');
@@ -42,8 +86,29 @@
   let searchQuery = $state<string>('');
   let isDownloading = $state<boolean>(false);
 
-  // 1. Reactive Filtering across ALL student records
-  let filteredStudents = $derived(
+  // Drawer & Accordion State
+  let isDrawerOpen = $state<boolean>(false);
+  let drawerSearchQuery = $state<string>('');
+  let drawerTab = $state<'all' | 'profile' | 'application'>('all');
+  let activeAccordionTab = $state<'profile' | 'application'>('profile');
+
+  // Filtered fields for drawer search
+  let filteredDrawerProfileFields = $derived(
+    profileFieldsCombined().filter(f =>
+      f.label.toLowerCase().includes(drawerSearchQuery.toLowerCase()) ||
+      f.key.toLowerCase().includes(drawerSearchQuery.toLowerCase())
+    )
+  );
+
+  let filteredDrawerAppFields = $derived(
+    appFieldsCombined().filter(f =>
+      f.label.toLowerCase().includes(drawerSearchQuery.toLowerCase()) ||
+      f.key.toLowerCase().includes(drawerSearchQuery.toLowerCase())
+    )
+  );
+
+  // Base Filtering (Global criteria ONLY: admission type, provisional switch, form types, status, payment status, search)
+  let baseFilteredStudents = $derived(
     (data.allStudents || []).filter((student: any) => {
       // Exclude Provisional filter (Default: Exclude)
       if (excludeProvisional && student.isProv) {
@@ -57,14 +122,6 @@
       }
       // Specific Form Types Selection Filter
       if (selectedFormTypes.length > 0 && !selectedFormTypes.includes(student.formType)) {
-        return false;
-      }
-      // Course filter
-      if (selectedCourseIds.length > 0 && !selectedCourseIds.includes(student.courseId)) {
-        return false;
-      }
-      // Branch filter
-      if (selectedBranchIds.length > 0 && student.branchId && !selectedBranchIds.includes(student.branchId)) {
         return false;
       }
       // Admission Status filter
@@ -99,10 +156,25 @@
     })
   );
 
-  // 2. Reactive counts for branches & courses based on current primary filters
+  // 1. Reactive Filtering across ALL student records (including Course & Branch checkboxes)
+  let filteredStudents = $derived(
+    baseFilteredStudents.filter((student: any) => {
+      // Course filter
+      if (selectedCourseIds.length > 0 && !selectedCourseIds.includes(student.courseId)) {
+        return false;
+      }
+      // Branch filter
+      if (selectedBranchIds.length > 0 && student.branchId && !selectedBranchIds.includes(student.branchId)) {
+        return false;
+      }
+      return true;
+    })
+  );
+
+  // 2. Reactive counts for branches & courses based on base filtered records (before branch/course checkbox filtering)
   let filteredBranchCounts = $derived(() => {
     const counts: Record<string, number> = {};
-    filteredStudents.forEach((student: any) => {
+    baseFilteredStudents.forEach((student: any) => {
       if (student.branchId) {
         counts[student.branchId] = (counts[student.branchId] || 0) + 1;
       }
@@ -112,7 +184,7 @@
 
   let filteredCourseCounts = $derived(() => {
     const counts: Record<string, number> = {};
-    filteredStudents.forEach((student: any) => {
+    baseFilteredStudents.forEach((student: any) => {
       if (student.courseId) {
         counts[student.courseId] = (counts[student.courseId] || 0) + 1;
       }
@@ -199,7 +271,11 @@
   }
 
   function selectAllFields() {
-    selectedFieldKeys = fieldOptions.map(f => f.key);
+    selectedFieldKeys = Array.from(new Set([
+      ...fieldOptions.map(f => f.key),
+      ...profileFieldsCombined().map(f => f.key),
+      ...appFieldsCombined().map(f => f.key)
+    ]));
   }
 
   function deselectAllFields() {
@@ -208,6 +284,26 @@
 
   function resetDefaultFields() {
     selectedFieldKeys = fieldOptions.filter(f => f.default).map(f => f.key);
+  }
+
+  function selectAllProfileFields() {
+    const keys = profileFieldsCombined().map(f => f.key);
+    selectedFieldKeys = Array.from(new Set([...selectedFieldKeys, ...keys]));
+  }
+
+  function deselectAllProfileFields() {
+    const keys = new Set(profileFieldsCombined().map(f => f.key));
+    selectedFieldKeys = selectedFieldKeys.filter(k => !keys.has(k));
+  }
+
+  function selectAllAppFields() {
+    const keys = appFieldsCombined().map(f => f.key);
+    selectedFieldKeys = Array.from(new Set([...selectedFieldKeys, ...keys]));
+  }
+
+  function deselectAllAppFields() {
+    const keys = new Set(appFieldsCombined().map(f => f.key));
+    selectedFieldKeys = selectedFieldKeys.filter(k => !keys.has(k));
   }
 
   // Download Trigger
@@ -508,7 +604,6 @@
                   />
                   <label class="form-check-label fw-bold text-dark cursor-pointer" for={`course-${course.id}`}>
                     {course.name} ({course.code})
-                    <span class="badge bg-primary ms-1">{matchCourseCount} Matching</span>
                   </label>
                 </div>
                 {#if courseBranches.length > 0}
@@ -524,7 +619,6 @@
               {#if courseBranches.length > 0}
                 <div class="row g-2 ps-3">
                   {#each courseBranches as branch (branch.id)}
-                    {@const matchBranchCount = filteredBranchCounts()[branch.id] || 0}
                     <div class="col-12">
                       <div class="form-check">
                         <input
@@ -536,7 +630,6 @@
                         />
                         <label class="form-check-label text-dark small cursor-pointer" for={`branch-${branch.id}`}>
                           {branch.name} <span class="text-muted">({branch.code})</span>
-                          <span class="badge bg-light text-dark border ms-1">{matchBranchCount} Matching</span>
                         </label>
                       </div>
                     </div>
@@ -551,7 +644,7 @@
       </div>
 
       <!-- Field / Column Selection -->
-      <div class="card border-0 shadow-sm">
+      <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom-0">
           <h5 class="card-title fw-bold mb-0 text-dark"><i class="bi bi-layout-three-columns me-2 text-info"></i>Student Fields to Export</h5>
           <div class="btn-group btn-group-sm">
@@ -561,11 +654,11 @@
           </div>
         </div>
         <div class="card-body pt-0">
-          <p class="text-muted small mb-3">Check the fields you want to include as columns in the exported Excel sheets:</p>
+          <p class="text-muted small mb-2">Check the fields you want to include as columns in the exported Excel sheets:</p>
           <div class="row g-2">
             {#each fieldOptions as field (field.key)}
               <div class="col-md-6">
-                <div class="form-check p-2 rounded border bg-white h-100 d-flex align-items-center gap-2">
+                <div class="form-check py-1 px-2.5 rounded border bg-white h-100 d-flex align-items-center gap-2">
                   <input
                     type="checkbox"
                     class="form-check-input ms-1 my-0"
@@ -575,13 +668,126 @@
                   />
                   <label class="form-check-label text-dark small mb-0 cursor-pointer w-100" for={`field-${field.key}`}>
                     {field.label}
-                    {#if field.default}
-                      <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">Default</span>
-                    {/if}
                   </label>
                 </div>
               </div>
             {/each}
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Student Profile Fields (Accordion & Drawer Selector) -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom-0">
+          <div>
+            <h5 class="card-title fw-bold mb-0 text-dark">
+              <i class="bi bi-person-lines-fill me-2 text-primary"></i>Student Profile Fields
+            </h5>
+            <div class="text-muted small">Select additional profile or application form fields</div>
+          </div>
+          <button 
+            class="btn btn-outline-primary btn-sm fw-bold d-flex align-items-center gap-1 shadow-sm px-3"
+            onclick={() => isDrawerOpen = true}
+          >
+            <i class="bi bi-arrows-angle-expand"></i>
+            <span>Expand as Drawer</span>
+          </button>
+        </div>
+
+        <div class="card-body pt-0">
+          <!-- Accordion View for Student Profile Fields & Application-Wise Fields -->
+          <div class="accordion" id="fieldsAccordion">
+            <!-- Panel 1: Student Profile Fields -->
+            <div class="accordion-item border rounded mb-3 overflow-hidden">
+              <h2 class="accordion-header" id="headingProfile">
+                <button 
+                  class="accordion-button {activeAccordionTab === 'profile' ? '' : 'collapsed'} fw-bold bg-light text-primary py-2 px-3" 
+                  type="button" 
+                  onclick={() => activeAccordionTab = activeAccordionTab === 'profile' ? 'application' : 'profile'}
+                >
+                  <i class="bi bi-person-badge me-2 fs-5"></i>
+                  <span>Student Profile Fields</span>
+                  <span class="badge bg-primary ms-auto me-2">
+                    {profileFieldsCombined().filter(f => selectedFieldKeys.includes(f.key)).length} / {profileFieldsCombined().length} Selected
+                  </span>
+                </button>
+              </h2>
+              <div class="accordion-collapse collapse {activeAccordionTab === 'profile' ? 'show' : ''}">
+                <div class="accordion-body p-2 bg-white">
+                  <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                    <span class="small text-muted fw-semibold">Personal, Guardian, Identification & Bank fields:</span>
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-xs btn-outline-primary" onclick={selectAllProfileFields}>Select All</button>
+                      <button class="btn btn-xs btn-outline-secondary" onclick={deselectAllProfileFields}>Clear</button>
+                    </div>
+                  </div>
+                  <div class="row g-2" style="max-height: 260px; overflow-y: auto;">
+                    {#each profileFieldsCombined() as field (field.key)}
+                      <div class="col-md-6">
+                        <div class="form-check py-1 px-2.5 rounded border bg-light d-flex align-items-center gap-2 h-100">
+                          <input
+                            type="checkbox"
+                            class="form-check-input ms-1 my-0"
+                            id={`profile-field-${field.key}`}
+                            checked={selectedFieldKeys.includes(field.key)}
+                            onchange={() => toggleField(field.key)}
+                          />
+                          <label class="form-check-label text-dark small mb-0 cursor-pointer w-100" for={`profile-field-${field.key}`}>
+                            {field.label}
+                          </label>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 2: Application-Wise Fields -->
+            <div class="accordion-item border rounded overflow-hidden">
+              <h2 class="accordion-header" id="headingApp">
+                <button 
+                  class="accordion-button {activeAccordionTab === 'application' ? '' : 'collapsed'} fw-bold bg-light text-info py-2 px-3" 
+                  type="button" 
+                  onclick={() => activeAccordionTab = activeAccordionTab === 'application' ? 'profile' : 'application'}
+                >
+                  <i class="bi bi-file-earmark-text me-2 fs-5"></i>
+                  <span>Application-Wise Fields</span>
+                  <span class="badge bg-info text-dark ms-auto me-2">
+                    {appFieldsCombined().filter(f => selectedFieldKeys.includes(f.key)).length} / {appFieldsCombined().length} Selected
+                  </span>
+                </button>
+              </h2>
+              <div class="accordion-collapse collapse {activeAccordionTab === 'application' ? 'show' : ''}">
+                <div class="accordion-body p-2 bg-white">
+                  <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                    <span class="small text-muted fw-semibold">Course form schemas, ACPC & Entrance exam fields:</span>
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-xs btn-outline-info" onclick={selectAllAppFields}>Select All</button>
+                      <button class="btn btn-xs btn-outline-secondary" onclick={deselectAllAppFields}>Clear</button>
+                    </div>
+                  </div>
+                  <div class="row g-2" style="max-height: 260px; overflow-y: auto;">
+                    {#each appFieldsCombined() as field (field.key)}
+                      <div class="col-md-6">
+                        <div class="form-check py-1 px-2.5 rounded border bg-light d-flex align-items-center gap-2 h-100">
+                          <input
+                            type="checkbox"
+                            class="form-check-input ms-1 my-0"
+                            id={`app-field-${field.key}`}
+                            checked={selectedFieldKeys.includes(field.key)}
+                            onchange={() => toggleField(field.key)}
+                          />
+                          <label class="form-check-label text-dark small mb-0 cursor-pointer w-100" for={`app-field-${field.key}`}>
+                            {field.label}
+                          </label>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -643,6 +849,12 @@
                         </span>
                         {#if student.admissionNo && student.admissionNo !== student.collegeId}
                           <div class="text-muted" style="font-size: 0.75rem;">Adm: {student.admissionNo}</div>
+                        {/if}
+                        {#if student.acpcMeritNo && student.acpcMeritNo !== '-'}
+                          <div class="text-primary font-monospace" style="font-size: 0.75rem;">Merit: {student.acpcMeritNo}</div>
+                        {/if}
+                        {#if student.acpcAppNo && student.acpcAppNo !== '-'}
+                          <div class="text-info font-monospace" style="font-size: 0.75rem;">ACPC: {student.acpcAppNo}</div>
                         {/if}
                       </td>
                       <td>
@@ -711,8 +923,185 @@
   </div>
 </div>
 
+<!-- Slide-Over Side Drawer Modal for Full Field Selector -->
+{#if isDrawerOpen}
+  <div 
+    class="offcanvas-backdrop fade show" 
+    onclick={() => isDrawerOpen = false}
+    role="button"
+    tabindex="0"
+    aria-label="Close drawer backdrop"
+  ></div>
+  <div class="drawer-container shadow-lg bg-white d-flex flex-column" role="dialog" aria-modal="true">
+    <!-- Drawer Header -->
+    <div class="drawer-header p-3 bg-primary text-white d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="fw-bold mb-0 d-flex align-items-center gap-2">
+          <i class="bi bi-sliders"></i>
+          Student Profile & Application Fields Selector
+        </h5>
+        <div class="small opacity-75">{selectedFieldKeys.length} total fields selected for export</div>
+      </div>
+      <button 
+        type="button" 
+        class="btn-close btn-close-white" 
+        onclick={() => isDrawerOpen = false}
+        aria-label="Close"
+      ></button>
+    </div>
+
+    <!-- Drawer Search & Controls -->
+    <div class="p-3 bg-light border-bottom">
+      <div class="input-group mb-2">
+        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+        <input
+          type="text"
+          class="form-control"
+          placeholder="Search profile or application fields..."
+          bind:value={drawerSearchQuery}
+        />
+        {#if drawerSearchQuery}
+          <button class="btn btn-outline-secondary" onclick={() => drawerSearchQuery = ''}>
+            <i class="bi bi-x"></i>
+          </button>
+        {/if}
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div class="btn-group btn-group-sm">
+          <button 
+            class="btn {drawerTab === 'all' ? 'btn-primary' : 'btn-outline-secondary'}"
+            onclick={() => drawerTab = 'all'}
+          >
+            All ({profileFieldsCombined().length + appFieldsCombined().length})
+          </button>
+          <button 
+            class="btn {drawerTab === 'profile' ? 'btn-primary' : 'btn-outline-secondary'}"
+            onclick={() => drawerTab = 'profile'}
+          >
+            Profile ({profileFieldsCombined().length})
+          </button>
+          <button 
+            class="btn {drawerTab === 'application' ? 'btn-primary' : 'btn-outline-secondary'}"
+            onclick={() => drawerTab = 'application'}
+          >
+            Application ({appFieldsCombined().length})
+          </button>
+        </div>
+
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-primary" onclick={selectAllFields}>Select All</button>
+          <button class="btn btn-outline-secondary" onclick={resetDefaultFields}>Default Only</button>
+          <button class="btn btn-outline-danger" onclick={deselectAllFields}>Clear All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer Body List -->
+    <div class="drawer-body p-3 flex-grow-1 overflow-y-auto">
+      {#if drawerTab === 'all' || drawerTab === 'profile'}
+        <div class="mb-4">
+          <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+            <h6 class="fw-bold text-primary mb-0">
+              <i class="bi bi-person-badge me-1"></i>Student Profile Fields
+            </h6>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-xs btn-link text-decoration-none" onclick={selectAllProfileFields}>Select All Profile</button>
+              <button class="btn btn-xs btn-link text-muted text-decoration-none" onclick={deselectAllProfileFields}>Deselect</button>
+            </div>
+          </div>
+          <div class="row g-2">
+            {#each filteredDrawerProfileFields as field (field.key)}
+              <div class="col-md-6">
+                <div class="p-2 rounded border bg-light d-flex align-items-center gap-2 cursor-pointer h-100">
+                  <input
+                    type="checkbox"
+                    class="form-check-input ms-1 my-0"
+                    id={`drawer-pf-${field.key}`}
+                    checked={selectedFieldKeys.includes(field.key)}
+                    onchange={() => toggleField(field.key)}
+                  />
+                  <label class="form-check-label text-dark small mb-0 cursor-pointer w-100" for={`drawer-pf-${field.key}`}>
+                    {field.label}
+                    <span class="badge bg-secondary-subtle text-dark border ms-1" style="font-size: 0.65rem;">{field.category}</span>
+                  </label>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if drawerTab === 'all' || drawerTab === 'application'}
+        <div>
+          <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+            <h6 class="fw-bold text-info mb-0">
+              <i class="bi bi-file-earmark-text me-1"></i>Application-Wise / Form Fields
+            </h6>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-xs btn-link text-decoration-none" onclick={selectAllAppFields}>Select All Form</button>
+              <button class="btn btn-xs btn-link text-muted text-decoration-none" onclick={deselectAllAppFields}>Deselect</button>
+            </div>
+          </div>
+          <div class="row g-2">
+            {#each filteredDrawerAppFields as field (field.key)}
+              <div class="col-md-6">
+                <div class="p-2 rounded border bg-light d-flex align-items-center gap-2 cursor-pointer h-100">
+                  <input
+                    type="checkbox"
+                    class="form-check-input ms-1 my-0"
+                    id={`drawer-af-${field.key}`}
+                    checked={selectedFieldKeys.includes(field.key)}
+                    onchange={() => toggleField(field.key)}
+                  />
+                  <label class="form-check-label text-dark small mb-0 cursor-pointer w-100" for={`drawer-af-${field.key}`}>
+                    {field.label}
+                    <span class="badge bg-info-subtle text-dark border ms-1" style="font-size: 0.65rem;">{field.category}</span>
+                  </label>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Drawer Footer -->
+    <div class="drawer-footer p-3 bg-light border-top d-flex justify-content-between align-items-center">
+      <span class="text-muted small">
+        <strong class="text-dark">{selectedFieldKeys.length}</strong> fields ready for Excel export
+      </span>
+      <button class="btn btn-primary fw-bold px-4" onclick={() => isDrawerOpen = false}>
+        <i class="bi bi-check2-circle me-1"></i> Done & Apply Selection
+      </button>
+    </div>
+  </div>
+{/if}
+
 <style>
   .cursor-pointer {
     cursor: pointer;
+  }
+  .btn-xs {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.75rem;
+  }
+  .drawer-container {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 600px;
+    max-width: 92vw;
+    height: 100vh;
+    z-index: 1060;
+  }
+  .offcanvas-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1050;
   }
 </style>

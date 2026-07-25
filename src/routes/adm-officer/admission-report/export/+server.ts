@@ -70,11 +70,17 @@ export const GET: RequestHandler = async ({
   const courseMap = new Map(allCourses.map((c) => [c.id, c]));
   const branchMap = new Map(allBranches.map((b) => [b.id, b]));
 
-  // 2. Fetch Applications
-  let query = supabaseAdmin
-    .from("applications")
-    .select(
-      `
+  // 2. Fetch ALL applications across all colleges and courses using pagination loop
+  let applications: any[] = [];
+  let from = 0;
+  const pageLimit = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    let query = supabaseAdmin
+      .from("applications")
+      .select(
+        `
         id,
         student_id,
         course_id,
@@ -93,97 +99,168 @@ export const GET: RequestHandler = async ({
           email,
           student_profiles(enrollment_number, admission_status, profile_data)
         ),
-        account_admissions(admission_number),
+        account_admissions(
+          admission_number,
+          application_id,
+          applications!application_id(
+            id,
+            course_id,
+            branch_id,
+            courses(id, name, code, colleges(name)),
+            branches(id, name, code)
+          )
+        ),
         payments(id, payment_type, status, amount, receipt_number)
       `
-    )
-    .neq("status", "draft")
-    .neq("status", "cancelled")
-    .neq("status", "removed")
-    .order("submitted_at", { ascending: false });
+      )
+      .neq("status", "draft")
+      .neq("status", "cancelled")
+      .neq("status", "removed")
+      .order("submitted_at", { ascending: false });
 
-  if (selectedCourseIds.length > 0) {
-    query = query.in("course_id", selectedCourseIds);
-  }
-
-  if (selectedBranchIds.length > 0) {
-    query = query.in("branch_id", selectedBranchIds);
-  }
-
-  if (selectedFormTypes.length > 0) {
-    query = query.in("form_type", selectedFormTypes);
-  }
-
-  const { data: applications, error } = await query;
-
-  if (error) {
-    console.error("Admission report export query error:", error);
-    return new Response("Error fetching data: " + error.message, {
-      status: 500,
-    });
-  }
-
-  // 3. Filter based on provisional flag, admission type, admission status, payment status, and search query
-  const filteredStudents = (applications || []).filter((app: any) => {
-    const profiles = app.student_user?.student_profiles;
-    const profile = Array.isArray(profiles) ? profiles[0] : profiles;
-    const enrollmentNo = profile?.enrollment_number || "";
-
-    // College ID check: Must have College ID assigned
-    if (!enrollmentNo) return false;
-
-    // Provisional Admission Check
-    const formTypeLower = (app.form_type || "").toLowerCase().trim();
-    const isProvisional = provFormTypeNames.has(formTypeLower) || formTypeLower.includes("provisional");
-    if (excludeProvisional && isProvisional) {
-      return false;
+    if (selectedFormTypes.length > 0) {
+      query = query.in("form_type", selectedFormTypes);
     }
 
-    // Admission Type Filter (Default: 'Regular')
-    const appAdmissionType = app.admission_type || "Regular";
+    const { data: page, error } = await query.range(from, from + pageLimit - 1);
+
+    if (error) {
+      console.error("Admission report export query error:", error);
+      return new Response("Error fetching data: " + error.message, {
+        status: 500,
+      });
+    }
+
+    if (page && page.length > 0) {
+      applications = applications.concat(page);
+      from += page.length;
+      if (page.length < pageLimit) hasMore = false;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  // Build map of student applications for non-provisional application fallback
+  const appsByStudent = new Map<string, any[]>();
+  (applications || []).forEach((a: any) => {
+    if (!a.student_id) return;
+    if (!appsByStudent.has(a.student_id)) {
+      appsByStudent.set(a.student_id, []);
+    }
+    appsByStudent.get(a.student_id)!.push(a);
+  });
+
+  // Helper to resolve final admitted course and branch (Option 2 primary, Option 1 fallback)
+  function resolveFinalCourseAndBranch(app: any) {
+    const admissions = Array.isArray(app.account_admissions)
+      ? app.account_admissions[0]
+      : app.account_admissions;
+
+    // Option 2 (Primary): Check official account_admissions referenced application
+    const accApp = admissions?.applications;
+    if (accApp?.branches?.name && accApp?.courses?.name) {
+      return {
+        courseId: accApp.course_id,
+        courseName: accApp.courses.name,
+        collegeName: accApp.courses.colleges?.name || app.courses?.colleges?.name || "N/A",
+        branchId: accApp.branch_id,
+        branchName: accApp.branches.name,
+      };
+    }
+
+    // Option 1 (Fallback): Check student's non-provisional application (Regular / MQ / NRI)
+    const allUserApps = appsByStudent.get(app.student_id) || [];
+    const regularApp = allUserApps.find(
+      (a: any) =>
+        a.status !== "draft" &&
+        a.status !== "cancelled" &&
+        a.status !== "removed" &&
+        !a.form_type?.toLowerCase().includes("provisional") &&
+        a.branches?.name
+    );
+
+    if (regularApp?.branches?.name && regularApp?.courses?.name) {
+      return {
+        courseId: regularApp.course_id,
+        courseName: regularApp.courses.name,
+        collegeName: regularApp.courses.colleges?.name || app.courses?.colleges?.name || "N/A",
+        branchId: regularApp.branch_id,
+        branchName: regularApp.branches.name,
+      };
+    }
+
+    // Ultimate Fallback: Current application record's course & branch
+    return {
+      courseId: app.course_id,
+      courseName: app.courses?.name || "N/A",
+      collegeName: app.courses?.colleges?.name || "N/A",
+      branchId: app.branch_id,
+      branchName: app.branches?.name || "N/A",
+    };
+  }
+
+  // Filter non-provisional applications and de-duplicate ONLY among branches for the same student
+  const uniqueBranchAppsMap = new Map<string, any>();
+
+  (applications || []).forEach((app: any) => {
+    // 1. Exclude provisional forms (is_prov == true or form_type includes provisional)
+    const formTypeLower = (app.form_type || "").toLowerCase().trim();
+    const isProv = provFormTypeNames.has(formTypeLower) || formTypeLower.includes("provisional");
+    if (isProv) return;
+
+    // 2. Must have College ID (enrollment_number) or Account Admission Number
+    const profiles = app.student_user?.student_profiles;
+    const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+    const admissionEntry = Array.isArray(app.account_admissions)
+      ? app.account_admissions[0]
+      : app.account_admissions;
+
+    const hasEnrollmentOrAdmNo = !!profile?.enrollment_number || !!admissionEntry?.admission_number;
+    if (!hasEnrollmentOrAdmNo) return;
+
+    // 3. Payment status check for admission / tuition fees (completed payment in payments OR application_fee_status == paid)
+    const payments = Array.isArray(app.payments) ? app.payments : [];
+    const hasPaidPayment = payments.some((p: any) => p.status === "completed") || app.application_fee_status === "paid";
+    if (!hasPaidPayment) return;
+
+    const finalInfo = resolveFinalCourseAndBranch(app);
+
+    // Course & Branch filter matching final resolved course/branch
+    if (selectedCourseIds.length > 0 && !selectedCourseIds.includes(finalInfo.courseId)) {
+      return;
+    }
+    if (selectedBranchIds.length > 0 && finalInfo.branchId && !selectedBranchIds.includes(finalInfo.branchId)) {
+      return;
+    }
+
+    // Admission Type Filter
+    const isD2D = (app.admission_type || "").toLowerCase().includes("d2d") ||
+                  (app.form_type || "").toLowerCase().includes("d2d") ||
+                  JSON.stringify(app.form_data || {}).toLowerCase().includes("d2d");
+    const appAdmissionType = isD2D ? "D2D" : (app.admission_type || "Regular");
     if (admissionTypeFilter !== "all" && admissionTypeFilter !== "") {
       if (appAdmissionType.toLowerCase() !== admissionTypeFilter.toLowerCase()) {
-        return false;
+        return;
+    // Search Query Filter
+    if (searchParam && searchParam.trim()) {
+      const q = searchParam.toLowerCase().trim();
+      const matchName = app.student_user?.full_name?.toLowerCase().includes(q);
+      const matchEmail = app.student_user?.email?.toLowerCase().includes(q);
+      const matchId = (profile?.enrollment_number || admissionEntry?.admission_number || "").toLowerCase().includes(q);
+      const matchBranch = finalInfo.branchName.toLowerCase().includes(q);
+      if (!matchName && !matchEmail && !matchId && !matchBranch) {
+        return;
       }
     }
 
-    // Admission Status Filter
-    const admStatus = (profile?.admission_status || "").toLowerCase();
-    const appStatus = (app.status || "").toLowerCase();
-    if (admissionStatusFilter === "admitted") {
-      if (admStatus !== "admitted" && appStatus !== "approved") return false;
-    } else if (admissionStatusFilter === "approved") {
-      if (appStatus !== "approved") return false;
+    const branchKey = `${app.student_id}_${finalInfo.branchId || "unassigned"}`;
+
+    if (!uniqueBranchAppsMap.has(branchKey)) {
+      uniqueBranchAppsMap.set(branchKey, app);
     }
-
-    // Payment Status Filter
-    const payments = Array.isArray(app.payments) ? app.payments : [];
-    const hasTuitionPaid = payments.some(
-      (p: any) => p.payment_type === "tuition_fee" && p.status === "completed"
-    );
-    const hasAppFeePaid =
-      payments.some(
-        (p: any) => p.payment_type === "application_fee" && p.status === "completed"
-      ) || app.application_fee_status === "paid";
-    const hasAnyPaid = payments.some((p: any) => p.status === "completed") || hasAppFeePaid;
-
-    if (paymentStatusFilter === "paid" && !hasAnyPaid) return false;
-    if (paymentStatusFilter === "tuition_paid" && !hasTuitionPaid) return false;
-    if (paymentStatusFilter === "app_fee_paid" && !hasAppFeePaid) return false;
-
-    // Search Query Filter
-    const matchesSearch =
-      !searchParam.trim() ||
-      app.student_user?.full_name
-        ?.toLowerCase()
-        .includes(searchParam.toLowerCase()) ||
-      app.student_user?.email
-        ?.toLowerCase()
-        .includes(searchParam.toLowerCase()) ||
-      enrollmentNo.toLowerCase().includes(searchParam.toLowerCase());
-
-    return matchesSearch;
   });
+
+  const filteredStudents = Array.from(uniqueBranchAppsMap.values());
 
   if (filteredStudents.length === 0) {
     return new Response(
@@ -234,7 +311,16 @@ export const GET: RequestHandler = async ({
         const profiles = app.student_user?.student_profiles;
         const profile = Array.isArray(profiles) ? profiles[0] : profiles;
         const pData = profile?.profile_data || {};
-        return pData.photo || app.form_data?.photo || "";
+        const photoPath = pData.photo || app.form_data?.photo || "";
+        if (!photoPath) return "";
+        if (photoPath.startsWith("http://") || photoPath.startsWith("https://")) {
+          return photoPath;
+        }
+        const cleanPath = photoPath.replace(/^\/+/, "");
+        const { data: pubData } = supabaseAdmin.storage
+          .from("documents")
+          .getPublicUrl(cleanPath);
+        return pubData?.publicUrl || photoPath;
       },
     },
     dob: {
@@ -271,15 +357,24 @@ export const GET: RequestHandler = async ({
     },
     department: {
       label: "College / Department",
-      getValue: (app) => app.courses?.colleges?.name || "N/A",
+      getValue: (app) => {
+        const finalInfo = resolveFinalCourseAndBranch(app);
+        return finalInfo.collegeName;
+      },
     },
     course: {
       label: "Course",
-      getValue: (app) => app.courses?.name || "",
+      getValue: (app) => {
+        const finalInfo = resolveFinalCourseAndBranch(app);
+        return finalInfo.courseName;
+      },
     },
     branch: {
       label: "Branch",
-      getValue: (app) => app.branches?.name || "N/A",
+      getValue: (app) => {
+        const finalInfo = resolveFinalCourseAndBranch(app);
+        return finalInfo.branchName;
+      },
     },
     admission_type: {
       label: "Admission Type",
@@ -341,25 +436,182 @@ export const GET: RequestHandler = async ({
         return entry?.admission_number || "";
       },
     },
-    form_type: {
-      label: "Form Type",
-      getValue: (app) => app.form_type || "",
+    acpc_merit_number: {
+      label: "ACPC / Merit Rank Number",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        const pData = profile?.profile_data || {};
+        return (
+          app.form_data?.acpc_merit_number ||
+          app.form_data?.merit_number ||
+          app.form_data?.merit_no ||
+          app.form_data?.merit_rank ||
+          app.form_data?.gcas_merit_no ||
+          pData.acpc_merit_number ||
+          pData.merit_number ||
+          ""
+        );
+      },
     },
-    submitted_date: {
-      label: "Submitted Date",
-      getValue: (app) =>
-        app.submitted_at
-          ? new Date(app.submitted_at).toISOString().split("T")[0]
-          : "",
+    acpc_application_number: {
+      label: "ACPC / Seat / Application Number",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        const pData = profile?.profile_data || {};
+        return (
+          app.form_data?.acpc_number ||
+          app.form_data?.acpc_app_number ||
+          app.form_data?.acpc_application_number ||
+          app.form_data?.acpc_seat_number ||
+          app.form_data?.gcas_id ||
+          app.form_data?.application_no ||
+          pData.acpc_number ||
+          pData.acpc_application_number ||
+          ""
+        );
+      },
+    },
+    aadhar_number: {
+      label: "Aadhaar Card Number",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return (
+          profile?.profile_data?.aadhar_number ||
+          profile?.profile_data?.aadhaar_card_no ||
+          app.form_data?.aadhar_number ||
+          ""
+        );
+      },
+    },
+    abc_id: {
+      label: "ABC ID / APAAR ID",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return (
+          profile?.profile_data?.abc_id ||
+          profile?.profile_data?.apaar_id ||
+          app.form_data?.abc_id ||
+          ""
+        );
+      },
+    },
+    caste: {
+      label: "Caste",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return profile?.profile_data?.caste || app.form_data?.caste || "";
+      },
+    },
+    sub_caste: {
+      label: "Sub-Caste",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return profile?.profile_data?.sub_caste || app.form_data?.sub_caste || "";
+      },
+    },
+    religion: {
+      label: "Religion",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return profile?.profile_data?.religion || app.form_data?.religion || "";
+      },
+    },
+    nationality: {
+      label: "Nationality",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return profile?.profile_data?.nationality || app.form_data?.nationality || "";
+      },
+    },
+    blood_group: {
+      label: "Blood Group",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return profile?.profile_data?.blood_group || app.form_data?.blood_group || "";
+      },
+    },
+    bank_name: {
+      label: "Bank Name",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return profile?.profile_data?.bank_name || app.form_data?.bank_name || "";
+      },
+    },
+    bank_account_number: {
+      label: "Bank Account Number",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return (
+          profile?.profile_data?.bank_account_number ||
+          app.form_data?.bank_account_number ||
+          ""
+        );
+      },
+    },
+    ifsc_code: {
+      label: "Bank IFSC Code",
+      getValue: (app) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        return profile?.profile_data?.ifsc_code || app.form_data?.ifsc_code || "";
+      },
     },
   };
 
   // Determine export columns
   let activeKeys = Object.keys(availableFieldMap);
   if (selectedFields && selectedFields.length > 0) {
-    const validKeys = selectedFields.filter((k) => availableFieldMap[k]);
-    if (validKeys.length > 0) activeKeys = validKeys;
+    activeKeys = selectedFields;
   }
+
+  // Dynamic field resolver for any key not explicitly defined
+  const getFieldConfig = (key: string) => {
+    if (availableFieldMap[key]) {
+      return availableFieldMap[key];
+    }
+    // Dynamic fallback for custom student profile or application form fields
+    const formattedLabel = key
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    return {
+      label: formattedLabel,
+      getValue: (app: any) => {
+        const profile = Array.isArray(app.student_user?.student_profiles)
+          ? app.student_user?.student_profiles[0]
+          : app.student_user?.student_profiles;
+        const pData = profile?.profile_data || {};
+        const val = pData[key] ?? app.form_data?.[key] ?? "";
+        if (typeof val === "object" && val !== null) {
+          return JSON.stringify(val);
+        }
+        return val != null ? String(val) : "";
+      },
+    };
+  };
 
   // Helper to format rows for a given list of applications
   const formatRowsForApps = (appList: any[]) => {
@@ -368,7 +620,7 @@ export const GET: RequestHandler = async ({
         "Sr. No": idx + 1,
       };
       activeKeys.forEach((key) => {
-        const fieldConfig = availableFieldMap[key];
+        const fieldConfig = getFieldConfig(key);
         if (fieldConfig) {
           row[fieldConfig.label] = fieldConfig.getValue(app);
         }
@@ -411,13 +663,13 @@ export const GET: RequestHandler = async ({
 
   // 2. Individual sheets based on sheetMode
   if (sheetMode === "branch") {
-    // Group by Branch
+    // Group by Final Branch
     const branchGroupMap = new Map<string, { branchName: string; apps: any[] }>();
 
     filteredStudents.forEach((app: any) => {
-      const branchId = app.branch_id || "unassigned";
-      const branchObj = branchMap.get(branchId);
-      const branchName = branchObj ? branchObj.name : app.branches?.name || "Unassigned Branch";
+      const finalInfo = resolveFinalCourseAndBranch(app);
+      const branchId = finalInfo.branchId || "unassigned";
+      const branchName = finalInfo.branchName || "Unassigned Branch";
 
       if (!branchGroupMap.has(branchId)) {
         branchGroupMap.set(branchId, { branchName, apps: [] });
@@ -433,13 +685,13 @@ export const GET: RequestHandler = async ({
       XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
     }
   } else if (sheetMode === "course") {
-    // Group by Course
+    // Group by Final Course
     const courseGroupMap = new Map<string, { courseName: string; apps: any[] }>();
 
     filteredStudents.forEach((app: any) => {
-      const courseId = app.course_id || "unassigned";
-      const courseObj = courseMap.get(courseId);
-      const courseName = courseObj ? courseObj.name : app.courses?.name || "Unassigned Course";
+      const finalInfo = resolveFinalCourseAndBranch(app);
+      const courseId = finalInfo.courseId || "unassigned";
+      const courseName = finalInfo.courseName || "Unassigned Course";
 
       if (!courseGroupMap.has(courseId)) {
         courseGroupMap.set(courseId, { courseName, apps: [] });
