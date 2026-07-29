@@ -241,6 +241,8 @@ export const GET: RequestHandler = async ({
     if (admissionTypeFilter !== "all" && admissionTypeFilter !== "") {
       if (appAdmissionType.toLowerCase() !== admissionTypeFilter.toLowerCase()) {
         return;
+      }
+    }
     // Search Query Filter
     if (searchParam && searchParam.trim()) {
       const q = searchParam.toLowerCase().trim();
