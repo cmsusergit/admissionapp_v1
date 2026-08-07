@@ -72,7 +72,7 @@ export const GET: RequestHandler = async ({ url, locals: { getSession, userProfi
     });
 
     // Apply active filters (form type, admission type, search query)
-    const formTypeParam = url.searchParams.get('form_type') || 'exclude_provisional';
+    const formTypeParam = url.searchParams.get('form_type') || 'all';
     const admissionTypeParam = url.searchParams.get('admission_type') || 'all';
     const searchParam = url.searchParams.get('search') || '';
 

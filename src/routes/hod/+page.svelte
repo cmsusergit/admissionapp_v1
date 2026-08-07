@@ -5,10 +5,10 @@
     let { data } = $props();
 
     let searchVal = $state("");
-    let filterFormType = $state("exclude_provisional");
+    let filterFormType = $state("all");
     let filterAdmissionType = $state("all");
     let filterAdmissionStatus = $state("Admitted"); // default to Admitted
-    let filterApplicationStatus = $state("approved");
+    let filterApplicationStatus = $state("all");
 
     // Scope-level filters (for college/university HODs)
     let filterCollege = $state("");  // for university-scope HODs
@@ -264,10 +264,10 @@
 
     function resetAllFilters() {
         searchVal = "";
-        filterFormType = "exclude_provisional";
+        filterFormType = "all";
         filterAdmissionType = "all";
         filterAdmissionStatus = "Admitted";
-        filterApplicationStatus = "approved";
+        filterApplicationStatus = "all";
         filterCollege = "";
         filterCourse = "";
         filterBranch = "";
