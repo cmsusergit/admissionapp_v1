@@ -17,17 +17,22 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
     const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // 1. Fetch Metadata
-    const [{ data: academicYears }, { data: activeYear }, { data: formTypes }] = await Promise.all([
+    const [{ data: academicYears }, { data: activeYear }, { data: formTypes }, { data: transferHistory }] = await Promise.all([
         supabaseAdmin.from('academic_years').select('id, name').order('name', { ascending: false }),
         supabaseAdmin.from('academic_years').select('id').eq('is_active', true).maybeSingle(),
-        supabaseAdmin.from('form_types').select('name, is_prov, direct_admission_on_submit, is_government_quota')
+        supabaseAdmin.from('form_types').select('name, is_prov, direct_admission_on_submit, is_government_quota'),
+        supabaseAdmin.from('student_transfer_history').select('application_id, previous_branch_id, previous_course_id')
     ]);
 
     const selectedYearId = url.searchParams.get('academic_year_id') || activeYear?.id || (academicYears && academicYears[0]?.id);
     const includeRejected = url.searchParams.get('include_rejected') === 'true';
+    const excludeProv = url.searchParams.get('exclude_prov') === 'true';
+    const includeCancelled = url.searchParams.get('include_cancelled') === 'true';
+    const includeTransferred = url.searchParams.get('include_transferred') !== 'false';
     const selectedAdmissionType = url.searchParams.get('admission_type') || 'all';
     const provFormTypes = new Set((formTypes || []).filter(ft => ft.is_prov).map(ft => ft.name));
     const bypassFormTypes = new Set((formTypes || []).filter(ft => ft.direct_admission_on_submit || ft.is_government_quota).map(ft => ft.name));
+    const transferredAppIds = new Set((transferHistory || []).map(t => t.application_id));
 
     // 2. Fetch Courses
     let coursesQuery = supabaseAdmin
@@ -152,7 +157,12 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         // Strictly exclude drafts from all capacity calculations
         if (app.status === 'draft') return false;
 
-        const isExcludedStatus = app.status === 'cancelled' || app.status === 'removed' || app.status === 'rejected';
+        const isCancelled = app.status === 'cancelled';
+        if (isCancelled && !includeCancelled && !includeRejected) {
+            return false;
+        }
+
+        const isExcludedStatus = app.status === 'removed' || app.status === 'rejected';
         if (!includeRejected && isExcludedStatus) {
             return false;
         }
@@ -164,6 +174,15 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
 
         const type = (app.form_type || '').trim();
         const isProv = provFormTypes.has(type);
+        if (excludeProv && isProv) {
+            return false;
+        }
+
+        const isTransferred = transferredAppIds.has(app.id);
+        if (!includeTransferred && isTransferred) {
+            return false;
+        }
+
         const isMQorNRI = type === 'MQ' || type === 'NRI' || type === 'MQ/NRI' || type === 'MNNQ/NRI' || type === 'Vacant';
         
         const branchKey = app.branch_id || `unassigned_${app.course_id}`;
@@ -443,6 +462,9 @@ export const load: PageServerLoad = async ({ url, locals: { getSession, userProf
         academicYears: academicYears || [],
         selectedYearId,
         includeRejected,
+        excludeProv,
+        includeCancelled,
+        includeTransferred,
         selectedAdmissionType,
         availableAdmissionTypes,
         activeYearId: activeYear?.id

@@ -72,6 +72,27 @@
         goto(`?${params.toString()}`);
     }
 
+    function handleExcludeProvToggle(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const params = new URLSearchParams($page.url.searchParams);
+        params.set('exclude_prov', target.checked.toString());
+        goto(`?${params.toString()}`);
+    }
+
+    function handleCancelledToggle(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const params = new URLSearchParams($page.url.searchParams);
+        params.set('include_cancelled', target.checked.toString());
+        goto(`?${params.toString()}`);
+    }
+
+    function handleTransferredToggle(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const params = new URLSearchParams($page.url.searchParams);
+        params.set('include_transferred', target.checked.toString());
+        goto(`?${params.toString()}`);
+    }
+
     function handleAdmissionTypeChange(event: Event) {
         const target = event.target as HTMLSelectElement;
         const params = new URLSearchParams($page.url.searchParams);
@@ -406,11 +427,47 @@
             </p>
 
             <!-- Filters Row -->
-            <div class="d-flex align-items-center bg-white border rounded px-3 py-2 shadow-sm" style="width: fit-content;">
+            <div class="d-flex align-items-center bg-white border rounded px-3 py-2 shadow-sm flex-wrap gap-2" style="width: fit-content;">
                 <div class="form-check mb-0 me-3 border-end pe-3">
                     <input class="form-check-input" type="checkbox" id="includeUnassigned" bind:checked={includeUnassigned}>
                     <label class="form-check-label small fw-bold" for="includeUnassigned">
                         Include Unassigned
+                    </label>
+                </div>
+                <div class="form-check mb-0 me-3 border-end pe-3">
+                    <input 
+                        class="form-check-input" 
+                        type="checkbox" 
+                        id="excludeProv" 
+                        checked={data.excludeProv}
+                        onchange={handleExcludeProvToggle}
+                    >
+                    <label class="form-check-label small fw-bold text-danger" for="excludeProv" title="Exclude provisional forms to show final admitted students only">
+                        Excl. Provisional Forms
+                    </label>
+                </div>
+                <div class="form-check mb-0 me-3 border-end pe-3">
+                    <input 
+                        class="form-check-input" 
+                        type="checkbox" 
+                        id="includeCancelled" 
+                        checked={data.includeCancelled}
+                        onchange={handleCancelledToggle}
+                    >
+                    <label class="form-check-label small fw-bold" for="includeCancelled" title="Enable or disable cancelled student count in capacity metrics">
+                        Include Cancelled
+                    </label>
+                </div>
+                <div class="form-check mb-0 me-3 border-end pe-3">
+                    <input 
+                        class="form-check-input" 
+                        type="checkbox" 
+                        id="includeTransferred" 
+                        checked={data.includeTransferred}
+                        onchange={handleTransferredToggle}
+                    >
+                    <label class="form-check-label small fw-bold" for="includeTransferred" title="Enable or disable transferred student count in capacity metrics">
+                        Include Transferred
                     </label>
                 </div>
                 <div class="form-check mb-0">
